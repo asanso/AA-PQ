@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {ethers} from 'ethers';
+import {operationSignature} from './user-operation.mjs';
 
 const port = Number(process.env.PORT || 3001);
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || 'http://127.0.0.1:8545');
@@ -63,7 +64,8 @@ async function api(path) {
     await sync();
     const op = operations.find(op => op.userOpHash.toLowerCase() === id.toLowerCase());
     if (!op) throw new Error('Confirmed UserOperation not found');
-    return op;
+    const tx = await provider.getTransaction(op.transactionHash);
+    return {...op, signature:operationSignature(tx, op, entryPoint)};
   }
   if (kind === 'address' && ethers.isAddress(id || '')) {
     await sync();

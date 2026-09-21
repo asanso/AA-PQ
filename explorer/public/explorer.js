@@ -32,7 +32,11 @@ async function render(){
       html=details('Transaction',[['Hash',escape(tx.hash)],['Status',escape(tx.status)],['Transaction type',tx.isAaBundle?'<span class="tag">ERC-4337 AA bundle</span>':'Ordinary Ethereum transaction (not a confirmed AA bundle)'],['From / bundler',link('address',tx.from,true)],['To',tx.to?link('address',tx.to,true):'Contract creation'],['Outer ETH value',`${tx.value} ETH`],['Block',`<a href="#block/${tx.blockNumber}">${tx.blockNumber??'Pending'}</a>`],['Gas used',escape(tx.gasUsed)],['Method selector',escape(tx.selector)]])+card('EntryPoint UserOperations',opRows(tx.events.filter(e=>e.type==='UserOperationEvent')));
     } else if(kind==='op') {
       const op=await api(`op/${id}`);
+      const signature = op.signature == null
+        ? '<p class="note">Signature unavailable: the enclosing transaction could not be decoded as a supported EntryPoint bundle.</p>'
+        : `<p class="note">Full UserOperation signature from the bundle calldata · ${(op.signature.length-2)/2} bytes. These bytes alone do not identify the account’s signature scheme.</p><pre class="signature mono">${escape(op.signature)}</pre>`;
       html=details('UserOperation',[['UserOperation hash',escape(op.userOpHash)],['Smart account sender',link('address',op.sender,true)],['Execution',op.success?'Succeeded':'Reverted'],['Nonce',escape(op.nonce)],['Bundler transaction',link('tx',op.transactionHash,true)],['Block',`<a href="#block/${op.blockNumber}">${op.blockNumber}</a>`],['Actual gas cost',`${eth(op.actualGasCost)} ETH`],['Actual gas used',escape(op.actualGasUsed)],['Paymaster',op.paymaster==='0x0000000000000000000000000000000000000000'?'None — account pays gas':escape(op.paymaster)]]);
+      html += card('Signature (hex)',signature);
     } else if(kind==='address') {
       const a=await api(`address/${id}`);
       html=details('Address',[['Address',escape(a.address)],['Account type',escape(a.type)],['ETH balance',`${escape(a.balance)} ETH`],...(a.deployment?[['Deployment transaction',link('tx',a.deployment.transactionHash,true)]]:[])])+card('Latest 100 UserOperations from this account',opRows(a.operations));

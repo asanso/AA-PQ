@@ -10,11 +10,10 @@
     <section id="welcome" class="card welcome" aria-labelledby="welcomeTitle">
       <span class="welcome-logo" aria-hidden="true">AA</span>
       <p class="eyebrow">WELCOME TO AA PQ TESTNET</p>
-      <h1 id="welcomeTitle">Create your AA wallet</h1>
-      <p class="muted">Your own smart account. No wallet extension.<br>Every outgoing transaction uses account abstraction.</p>
-      <ol class="setup-steps"><li><span>1</span>Create a signing key in this browser</li><li><span>2</span>Deploy your smart account through the bundler</li><li><span>3</span>Start with test ETH, ready to send</li></ol>
-      <button id="createAa" class="primary" disabled>Create AA wallet</button>
-      <p class="intro">Testnet only. Save a key backup after creation.<br>Your key stays in this browser; clearing its data can lose access.</p>
+      <h1 id="welcomeTitle">Create a wallet with NiceTry</h1>
+      <p class="muted">Get started with NiceTry for the AA PQ testnet.</p>
+      <a id="createAa" class="primary" href="https://nicetry.xyz/" target="_blank" rel="noopener noreferrer">Create a wallet with NiceTry ↗</a>
+      <p class="intro">Opens the NiceTry website in a new tab.</p>
       <div id="setupStatus" class="wallet-status" role="status" aria-live="polite">Checking for an existing AA wallet…</div>
     </section>
     <div class="page-title"><div><p class="eyebrow">YOUR SMART ACCOUNT</p><h1>My wallet</h1><p class="muted">One wallet. Every transaction through account abstraction.</p></div><span class="pill">ERC-4337</span></div>
@@ -37,7 +36,7 @@
     <section class="card assets"><div class="section-heading"><h2>Assets</h2><span class="muted small">AA PQ testnet</span></div><div class="asset-row"><span class="eth-icon">Ξ</span><div><strong>Ethereum</strong><small class="muted">ETH</small></div><div class="asset-value"><strong><span id="assetBalance">0.0000</span> ETH</strong><small class="muted">Testnet asset</small></div></div></section>
     <section class="card"><div class="section-heading"><h2>Activity</h2><span class="muted small">This browser</span></div><div id="activity"><div class="empty"><span class="empty-icon">↗</span><h3>No activity yet</h3><p>Create your wallet, get test ETH, and make your first AA transfer.</p></div></div></section>
     <section id="settings" class="card" hidden><h1>Settings</h1><p class="muted">Manage your AA wallet and keep access to your account.</p><div class="details-content"><h2>Account details</h2><label>Smart account address</label><code id="fullAddress">Not created yet</code><label>Owner address</label><code id="ownerAddress">Not created yet</code><label>Network</label><p>AA PQ testnet · Chain 1337 · ERC-4337</p><h2>Wallet backup</h2><p class="muted small">Download your owner key and store it somewhere private. Anyone with this key can control your smart account.</p><button id="settingsBackup" class="primary">Download wallet backup</button><p class="notice">For testing only. The owner key is stored unencrypted in this browser; download a backup before clearing browser data. This site uses HTTP—never use a valuable key or real funds here.</p><p class="muted small">This wallet uses ECDSA signatures, not post-quantum cryptography. “AA PQ testnet” is the network name.</p></div></section>
-    <footer><span>AA PQ testnet <span class="separator">/</span> Chain 1337</span><a id="explorerLink" href="http://157.180.109.133:3001" target="_blank" rel="noopener">Open explorer ↗</a><span>Powered by ERC-4337</span></footer>
+    <footer><span>AA PQ testnet <span class="separator">/</span> Chain 1337</span><a href="https://nicetry.xyz/" target="_blank" rel="noopener noreferrer">Download NiceTry wallet ↗</a><a id="explorerLink" href="http://157.180.109.133:3001" target="_blank" rel="noopener">Open explorer ↗</a><span>Powered by ERC-4337</span></footer>
   </main>
   <dialog id="sendSuccess" aria-labelledby="successTitle" aria-describedby="successMessage">
     <span class="success-icon" aria-hidden="true">✓</span>

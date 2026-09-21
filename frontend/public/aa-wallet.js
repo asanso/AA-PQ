@@ -48,8 +48,6 @@ async function rpc(path, method, params) {
 function controls() {
   document.body.classList.toggle('onboarding', !deployed);
   $('welcome').hidden = deployed;
-  $('createAa').disabled = busy;
-  $('createAa').textContent = busy ? 'Creating your AA wallet…' : wallet && !deployed ? 'Finish creating AA wallet' : 'Create AA wallet';
   $('createAa').hidden = deployed;
   $('intro').hidden = deployed;
   $('backupAa').disabled = !wallet;
@@ -124,23 +122,6 @@ async function run(action) {
   try {await action();} catch (error) {status(error.message, true);}
   finally {busy = false; controls();}
 }
-$('createAa').onclick = () => run(async () => {
-  if (!wallet) {
-    const created = Wallet.createRandom();
-    localStorage.setItem(storageKey, created.privateKey);
-    wallet = created;
-  }
-  status('Preparing your smart account…');
-  let state = await refresh();
-  if (state.deployed) {status('Your AA wallet is ready.'); return;}
-  if (Number(state.balance) < 0.01) {status('Adding test ETH for deployment…'); await fund();}
-  state = await refresh();
-  const hash = await submit(state);
-  await refresh();
-  if (!deployed) throw new Error('Could not verify the wallet deployment.');
-  record('AA wallet created', hash);
-  status('Your AA wallet is ready. Back up your owner key to keep access.');
-});
 $('fundAa').onclick = () => run(async () => {
   status('Adding 1 test ETH to your AA wallet…');
   await fund(); await refresh(); status('Received 1 test ETH.');
@@ -218,7 +199,7 @@ try {
     try {const savedHistory = JSON.parse(localStorage.getItem(`aa-pq-activity-${wallet.address}`) || '[]'); if (Array.isArray(savedHistory)) history = savedHistory;} catch {}
     renderHistory();
     await refresh();
-    status(deployed ? 'Your AA wallet is ready.' : 'Wallet restored. Create AA wallet to finish deployment.');
+    status(deployed ? 'Your AA wallet is ready.' : 'This browser’s previous wallet was not deployed. Use NiceTry to create a new wallet.');
   } else {status('Ready when you are.');}
 } catch(error) {status(`Unable to restore wallet: ${error.message}`, true);}
 controls();
