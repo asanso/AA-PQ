@@ -1,0 +1,17 @@
+[Unit]
+Description=Daisugi staging portal
+
+[Service]
+Type=simple
+WorkingDirectory=%h/staging-testnet/current
+EnvironmentFile=%h/.config/daisugi/staging-portal.env
+ExecStart=/usr/bin/env HOST=127.0.0.1 PORT=3004 /usr/local/bin/node frontend/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

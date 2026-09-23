@@ -1,0 +1,24 @@
+{
+  "environment": "staging",
+  "root": "/home/DEPLOY_USER/staging-testnet",
+  "node": "/usr/local/bin/node",
+  "npm_cli": "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
+  "services": [
+    "daisugi-staging-portal.service",
+    "daisugi-staging-explorer.service"
+  ],
+  "health_checks": [
+    {
+      "kind": "release",
+      "url": "http://127.0.0.1:3004/release.json"
+    },
+    {
+      "kind": "chain",
+      "url": "http://127.0.0.1:3004/api/config"
+    },
+    {
+      "kind": "json",
+      "url": "http://127.0.0.1:3005/api/overview"
+    }
+  ]
+}

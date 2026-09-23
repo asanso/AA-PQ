@@ -1,0 +1,162 @@
+name: Portal pipeline
+
+on:
+  push:
+    branches: [dev, staging, main]
+  pull_request:
+    branches: [dev, staging, main]
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: "Full main commit SHA to publish"
+        required: true
+        type: string
+      reviewed_staging_sha:
+        description: "Full commit SHA successfully deployed and reviewed on staging"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Portal checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the proposed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "22.23.2"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            explorer/package-lock.json
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+          npm ci --prefix explorer --ignore-scripts --no-audit --no-fund
+      - name: Check source and run isolated tests
+        run: bash scripts/check-portal.sh
+
+  package:
+    name: Package approved source
+    needs: checks
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/staging' &&
+       vars.STAGING_DEPLOY_ENABLED == 'true') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      deployments: read
+    outputs:
+      environment: ${{ steps.release.outputs.environment }}
+      commit: ${{ steps.release.outputs.commit }}
+      checksum: ${{ steps.release.outputs.checksum }}
+    steps:
+      - name: Check out the exact tested commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate the release and build its package
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          REVIEWED_STAGING_SHA: ${{ inputs.reviewed_staging_sha }}
+          PRODUCTION_DEPLOY_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: python3 scripts/prepare-portal-release.py
+      - name: Preserve the verified package
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: portal-${{ github.sha }}
+          path: dist/portal.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy:
+    name: Deploy portal
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: ${{ needs.package.outputs.environment }}
+      url: ${{ vars.PORTAL_URL }}
+    concurrency:
+      group: portal-deploy-${{ needs.package.outputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_ENVIRONMENT: ${{ needs.package.outputs.environment }}
+      RELEASE_COMMIT: ${{ needs.package.outputs.commit }}
+      RELEASE_CHECKSUM: ${{ needs.package.outputs.checksum }}
+      DEPLOY_LOGIN: ${{ vars.DEPLOY_LOGIN }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      TELEPORT_PROXY_ADDRESS: ${{ vars.TELEPORT_PROXY }}
+      TELEPORT_TOKEN_NAME: ${{ vars.TELEPORT_JOIN_TOKEN }}
+      TELEPORT_CLIENT_VERSION: ${{ vars.TELEPORT_VERSION }}
+    steps:
+      - name: Validate deployment configuration and branch head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          env = os.environ
+          for name in ("DEPLOY_LOGIN", "DEPLOY_HOST", "TELEPORT_TOKEN_NAME"):
+              if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", env[name]):
+                  raise SystemExit("Missing or invalid deployment setting: " + name)
+          if not re.fullmatch(r"[A-Za-z0-9.-]+(?::[0-9]{1,5})?", env["TELEPORT_PROXY_ADDRESS"]):
+              raise SystemExit("Invalid Teleport proxy")
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", env["TELEPORT_CLIENT_VERSION"]):
+              raise SystemExit("Pin a compatible Teleport client version")
+          if not re.fullmatch(r"[0-9a-f]{40}", env["RELEASE_COMMIT"]):
+              raise SystemExit("Invalid release commit")
+          if not re.fullmatch(r"[0-9a-f]{64}", env["RELEASE_CHECKSUM"]):
+              raise SystemExit("Invalid package checksum")
+          branch = {"staging": "staging", "production": "main"}[env["RELEASE_ENVIRONMENT"]]
+          url = env["GITHUB_API_URL"] + "/repos/" + env["GITHUB_REPOSITORY"] + "/git/ref/heads/" + branch
+          request = urllib.request.Request(url, headers={"Authorization": "Bearer " + env["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+          with urllib.request.urlopen(request, timeout=15) as response:
+              head = json.load(response)["object"]["sha"]
+          if head != env["RELEASE_COMMIT"]:
+              raise SystemExit("Branch advanced after this run started; use the current release")
+          PY
+      - name: Download the package from this workflow run
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: portal-${{ needs.package.outputs.commit }}
+          path: dist
+      - name: Verify package checksum
+        run: |
+          printf '%s  %s\n' "$RELEASE_CHECKSUM" dist/portal.tar.gz | sha256sum --check --strict
+      - name: Install the pinned Teleport client
+        uses: teleport-actions/setup@b638ff596557cc3959eb6b5287d5e58e0c8ac6a6
+        with:
+          version: ${{ vars.TELEPORT_VERSION }}
+      - name: Obtain short-lived deployment credentials
+        uses: teleport-actions/auth@3b365df2b4f64891358392a444ff34929ba0d0b1
+        with:
+          proxy: ${{ vars.TELEPORT_PROXY }}
+          token: ${{ vars.TELEPORT_JOIN_TOKEN }}
+          certificate-ttl: 15m
+          anonymous-telemetry: "0"
+      - name: Transfer and activate the release
+        run: |
+          tsh scp dist/portal.tar.gz "$DEPLOY_LOGIN@$DEPLOY_HOST:portal-incoming/$RELEASE_COMMIT.tar.gz"
+          tsh ssh "$DEPLOY_LOGIN@$DEPLOY_HOST" \
+            "python3 .local/lib/daisugi/portal_release.py deploy $RELEASE_ENVIRONMENT $RELEASE_COMMIT $RELEASE_CHECKSUM"
+      - name: Record the deployed version
+        run: |
+          printf 'Environment: %s\n\nCommit: %s\n\nSHA-256: %s\n' \
+            "$RELEASE_ENVIRONMENT" "$RELEASE_COMMIT" "$RELEASE_CHECKSUM" >> "$GITHUB_STEP_SUMMARY"

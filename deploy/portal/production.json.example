@@ -1,0 +1,24 @@
+{
+  "environment": "production",
+  "root": "/home/DEPLOY_USER/production-testnet",
+  "node": "/usr/local/bin/node",
+  "npm_cli": "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
+  "services": [
+    "daisugi-production-portal.service",
+    "daisugi-production-explorer.service"
+  ],
+  "health_checks": [
+    {
+      "kind": "release",
+      "url": "http://127.0.0.1:3000/release.json"
+    },
+    {
+      "kind": "chain",
+      "url": "http://127.0.0.1:3000/api/config"
+    },
+    {
+      "kind": "json",
+      "url": "http://127.0.0.1:3001/api/overview"
+    }
+  ]
+}

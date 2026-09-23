@@ -1,0 +1,17 @@
+[Unit]
+Description=Daisugi production explorer
+
+[Service]
+Type=simple
+WorkingDirectory=%h/production-testnet/current
+EnvironmentFile=%h/.config/daisugi/production-explorer.env
+ExecStart=/usr/bin/env PORT=3001 /usr/local/bin/node explorer/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

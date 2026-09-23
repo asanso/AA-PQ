@@ -1,51 +1,308 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
+
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AA PQ testnet</title><link rel="stylesheet" href="/wallet.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="Daisugi testnet: network activity, test ETH faucet and a practical guide to post-quantum accounts.">
+  <title>Daisugi — Overview</title>
+  <link rel="icon" href="/ethereum.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <meta name="theme-color" content="#ffffff">
+  <script src="/site-config.js"></script>
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/portal.css">
 </head>
-<body class="onboarding">
-  <header><nav class="shell"><a class="brand" href="#"><span class="logo">AA</span>AA PQ testnet</a><div class="nav-links"><a class="active" href="#">Wallet</a><a href="#sendPanel" id="navSend">Send</a><a href="#settings" id="navSettings">Settings</a></div><span class="network"><i id="networkDot"></i><span id="networkStatus">Connecting</span></span></nav></header>
-  <main class="shell">
-    <section id="welcome" class="card welcome" aria-labelledby="welcomeTitle">
-      <span class="welcome-logo" aria-hidden="true">AA</span>
-      <p class="eyebrow">WELCOME TO AA PQ TESTNET</p>
-      <h1 id="welcomeTitle">Create a wallet with NiceTry</h1>
-      <p class="muted">Get started with NiceTry for the AA PQ testnet.</p>
-      <a id="createAa" class="primary" href="https://nicetry.xyz/" target="_blank" rel="noopener noreferrer">Create a wallet with NiceTry ↗</a>
-      <p class="intro">Opens the NiceTry website in a new tab.</p>
-      <div id="setupStatus" class="wallet-status" role="status" aria-live="polite">Checking for an existing AA wallet…</div>
+
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#overview" aria-label="Daisugi home"><img src="/ethereum.svg" width="22" height="35"
+          alt="Ethereum"><span>daisugi<span class="brand-dot">.</span></span></a>
+      <nav id="mainNav" aria-label="Main navigation"><a href="#overview" data-nav="overview">Overview</a><a
+          href="#explorer" data-nav="explorer">Explorer</a><a href="#faucet" data-nav="faucet">Faucet</a></nav>
+      <div class="header-actions">
+        <button id="themeToggle" class="theme-toggle" type="button" aria-label="Dark theme" aria-pressed="false" title="Switch to dark theme">
+          <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+          <svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.5 8.5 0 0 1 9.8 4a8.5 8.5 0 1 0 10.2 10.2Z"/></svg>
+          <span id="themeLabel">Light</span>
+        </button>
+      <button id="menuToggle" class="menu-toggle" type="button" aria-controls="mainNav" aria-expanded="false">Menu <span
+          aria-hidden="true">☰</span></button>
+      </div>
+    </div>
+  </header>
+  <main id="main" tabindex="-1">
+    <section class="container explorer-intro" data-page="explorer" aria-labelledby="explorerTitle" hidden>
+      <div class="explorer-intro-content">
+        <div class="explorer-heading">
+          <div>
+            <p class="eyebrow">DAISUGI / NETWORK EXPLORER</p>
+            <h1 id="explorerTitle">Daisugi Testnet</h1>
+            <p class="explorer-description">A network for account abstraction and post-quantum account research.</p>
+          </div><a class="explorer-guide" href="#overview/getting-started">Start building <span
+              aria-hidden="true">↗</span></a>
+        </div>
+        <form class="search-form" id="overviewSearch" role="search"><label class="sr-only" for="overviewQuery">Search
+            Daisugi</label><select aria-label="Search type" name="kind">
+            <option value="auto">All types</option>
+            <option value="address">Address</option>
+            <option value="tx">Transaction</option>
+            <option value="op">UserOperation</option>
+            <option value="block">Block</option>
+          </select><input id="overviewQuery" name="query" autocomplete="off" spellcheck="false"
+            placeholder="Search by address, transaction hash or block"><button type="submit"
+            aria-label="Search Daisugi"><svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="10.5" cy="10.5" r="6.5" />
+              <path d="m16 16 5 5" />
+            </svg></button></form>
+        <p id="overviewSearchStatus" class="search-status" role="status"></p>
+      </div>
     </section>
-    <div class="page-title"><div><p class="eyebrow">YOUR SMART ACCOUNT</p><h1>My wallet</h1><p class="muted">One wallet. Every transaction through account abstraction.</p></div><span class="pill">ERC-4337</span></div>
-    <section class="card balance-card" aria-label="AA wallet">
-      <div class="account-pill"><span class="avatar"></span><span>Account 1</span><span class="algorithm">Smart account</span></div>
-      <button id="copyAddress" class="address-button" disabled title="Copy smart account address"><span id="aaAddress">Create your first AA wallet</span><span aria-hidden="true">⧉</span></button>
-      <div class="balance"><span id="balance">0.0000</span> <span class="unit">ETH</span></div><p class="muted balance-note">Test ETH · No monetary value</p>
-      <p id="intro" class="intro">Your signing key is generated in this browser.<br>No extension or external wallet needed.</p>
-      <div id="aaStatus" class="wallet-status" role="status" aria-live="polite">Ready to create your smart account.</div>
+    <div class="container overview-body" data-page="explorer" hidden>
+      <section class="metrics" aria-label="Network metrics">
+        <div class="metric"><span class="metric-label">Latest block</span><a id="metricBlock" class="metric-value mono"
+            href="#explorer">—</a><small id="metricBlockAge">Reading network…</small></div>
+        <div class="metric"><span class="metric-label">Base fee</span><strong id="metricFee"
+            class="metric-value">—</strong><small id="metricFeeUnit">Current block · Wei</small></div>
+        <div class="metric"><span class="metric-label">Indexed UserOperations</span><strong id="metricOps"
+            class="metric-value">—</strong><small>ERC-4337 EntryPoint events</small></div>
+        <div class="metric"><span class="metric-label">Smart accounts</span><strong id="metricAccounts"
+            class="metric-value">—</strong><small>Indexed account deployments</small></div>
+      </section>
+      <div class="activity-heading">
+        <h2>Network activity</h2><span id="activityStatus" class="subtle" role="status">Connecting to Daisugi…</span>
+      </div>
+      <div id="overviewError" class="inline-notice error" role="status" hidden></div>
+      <div class="activity-grid">
+        <section class="panel">
+          <div class="panel-heading">
+            <h3>Latest blocks</h3><span class="panel-kicker">BLOCKS</span>
+          </div>
+          <div id="latestBlocks" class="activity-list">
+            <p class="empty-state">Loading blocks…</p>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading">
+            <h3>Latest UserOperations</h3><span class="panel-kicker">ERC-4337</span>
+          </div>
+          <div id="latestOperations" class="activity-list">
+            <p class="empty-state">Loading UserOperations…</p>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading">
+            <h3>Latest smart accounts</h3><span class="panel-kicker">ACCOUNTS</span>
+          </div>
+          <div id="latestAccounts" class="activity-list">
+            <p class="empty-state">Loading accounts…</p>
+          </div>
+        </section>
+      </div>
+      <section class="start-strip" aria-labelledby="startTitle">
+        <div>
+          <p class="eyebrow">BUILD ON DAISUGI</p>
+          <h2 id="startTitle">Your first transaction starts here.</h2>
+          <p>Connect to the testnet, fund an account and inspect the result.</p>
+        </div>
+        <div class="start-actions"><a class="button button-dark" href="#overview/getting-started">Connection guide <span
+              aria-hidden="true">↗</span></a><a class="button button-plain" href="#faucet">Get test ETH <span
+              aria-hidden="true">→</span></a></div>
+      </section>
+    </div>
+    <section class="container page" data-page="faucet" hidden>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">DEVELOPER TOOLS</p>
+          <h1>Testnet faucet</h1>
+          <p>Fund an address on Daisugi. No wallet connection required.</p>
+        </div><span class="network-label"><span class="tiny-mark"></span>Daisugi <span class="mono">1337</span></span>
+      </div>
+      <div class="form-layout">
+        <section class="panel form-panel">
+          <div class="panel-heading">
+            <h2>Request test ETH</h2><span class="tag">1 ETH / request</span>
+          </div>
+          <form id="faucetForm" novalidate><label for="faucetAddress">Recipient address</label>
+            <div class="field-help" id="faucetHint">Enter the Ethereum address you want to fund on Daisugi.</div><input
+              id="faucetAddress" name="address" type="text" placeholder="0x…" required autocomplete="off"
+              autocapitalize="none" spellcheck="false" aria-describedby="faucetHint faucetStatus">
+              <button id="faucetSend"
+              class="button button-primary" type="submit">Send 1 test ETH <span aria-hidden="true">→</span></button>
+            <div id="faucetStatus" class="wallet-status" role="status" aria-live="polite"></div>
+            <div id="faucetResult" class="result-box" hidden><span class="field-label">TRANSACTION HASH</span><code
+                id="faucetHash"></code><a id="faucetTxLink" href="#explorer">View transaction in explorer <span
+                  aria-hidden="true">↗</span></a></div>
+          </form>
+        </section>
+        <aside class="faucet-aside">
+          <p class="eyebrow">BEFORE YOU REQUEST</p>
+          <h2>Built for testing.</h2>
+          <p>The faucet sends ETH on Daisugi only. Test ETH has no monetary value.</p>
+          <dl class="compact-details">
+            <div>
+              <dt>Network</dt>
+              <dd>Daisugi Testnet</dd>
+            </div>
+            <div>
+              <dt>Chain ID</dt>
+              <dd class="mono">1337</dd>
+            </div>
+            <div>
+              <dt>Amount</dt>
+              <dd>1 test ETH</dd>
+            </div>
+            <div>
+              <dt>Cooldown</dt>
+              <dd>60 seconds per address</dd>
+            </div>
+          </dl>
+          <p class="subtle">After submitting, open the transaction in the explorer to check its confirmation.</p><a
+            class="text-link" href="#overview/getting-started">New to Daisugi? Start here <span
+              aria-hidden="true">→</span></a>
+        </aside>
+      </div>
     </section>
-    <section class="actions" aria-label="Wallet actions">
-      <button id="openSend" class="card action" disabled><span class="icon blue">↑</span><span><strong>Send ETH</strong><small>Send from your AA wallet</small></span><span class="arrow">↗</span></button>
-      <button id="fundAa" class="card action" disabled><span class="icon purple">↓</span><span><strong>Get test ETH</strong><small>Add 1 ETH to this account</small></span><span class="arrow">↗</span></button>
-      <button id="backupAa" class="card action" disabled><span class="icon neutral">⧉</span><span><strong>Back up wallet</strong><small>Download your owner key</small></span><span class="arrow">↗</span></button>
+    <section class="container page show-record" data-page="record" hidden>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">ON-CHAIN DATA</p>
+          <h1>Record details</h1>
+          <p>On-chain records from Daisugi.</p>
+        </div><button id="explorerRefresh" class="button button-outline" type="button">Refresh <span
+            aria-hidden="true">↻</span></button>
+      </div>
+      <form class="search-form explorer-search" id="explorerSearch" role="search"><label class="sr-only"
+          for="explorerQuery">Search explorer</label><select aria-label="Search type" name="kind">
+          <option value="auto">All types</option>
+          <option value="address">Address</option>
+          <option value="tx">Transaction</option>
+          <option value="op">UserOperation</option>
+          <option value="block">Block</option>
+        </select><input id="explorerQuery" name="query" autocomplete="off" spellcheck="false"
+          placeholder="Address, transaction / UserOperation hash or block"><button type="submit"
+          aria-label="Search explorer"><svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d="m16 16 5 5" />
+          </svg></button></form>
+      <p id="explorerSearchStatus" class="form-status" role="status"></p>
+      <div id="explorerContent" aria-live="polite">
+        <p class="empty-state">Loading explorer…</p>
+      </div>
+      <p id="explorerStatus" class="subtle explorer-caption" role="status"></p>
     </section>
-    <section id="sendPanel" class="card" hidden>
-      <div class="section-heading"><div><h2>Send ETH</h2><p class="muted">Signed locally. Submitted as an AA UserOperation.</p></div><button id="closeSend" class="text-button" aria-label="Close send form">✕</button></div>
-      <form id="sendForm"><label for="sendTo">Recipient address</label><input id="sendTo" placeholder="0x…" required autocomplete="off" spellcheck="false"><label for="sendAmount">Amount (ETH)</label><input id="sendAmount" placeholder="0.01" inputmode="decimal" required><p class="muted small">Keep a little ETH in your wallet for network fees.</p><button id="send" class="primary" type="submit" disabled>Send from AA wallet</button><div id="sendStatus" class="wallet-status" role="status" aria-live="polite"></div></form>
+    <section class="container page overview-page" data-page="overview" hidden>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">ABOUT THE TESTNET</p>
+          <h1>Overview</h1>
+          <p>Get to know Daisugi, set up your wallet and explore post-quantum accounts.</p>
+        </div>
+      </div>
+      <div class="faq-intro">
+        <div>
+          <h2>Frequently asked questions</h2>
+          <p>A practical starting point for using the network.</p>
+        </div><a class="text-link" href="#overview/wallet">Set up NiceTry <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="faq-list">
+        <details class="faq-item" id="faq-daisugi" data-faq="daisugi" open>
+          <summary><span class="faq-number">01</span><span>What is Daisugi?</span><span class="faq-toggle"
+              aria-hidden="true"></span></summary>
+          <div class="faq-answer">
+            <p>Daisugi is an Ethereum-compatible test network for experimenting with post-quantum signatures. It brings together a network explorer, a test ETH faucet and account-abstraction infrastructure.</p>
+            <p>Use the <a href="#explorer">Explorer</a> to follow network activity and inspect what is included in each
+              transaction. Test ETH has no monetary value.</p>
+          </div>
+        </details>
+        <details class="faq-item" id="faq-pq" data-faq="pq">
+          <summary><span class="faq-number">02</span><span>What are post-quantum transaction signatures?</span><span
+              class="faq-toggle" aria-hidden="true"></span></summary>
+          <div class="faq-answer">
+            <p>Daisugi lets you test SPHINCS-like hash-based signatures, part of an ongoing effort by the Ethereum community to prepare for leanSPHINCS. The network will soon support an experimental version of signature aggregation, which makes it a testing environment for Ethereum's post-quantum migration.</p>
+          </div>
+        </details>
+        <details class="faq-item" id="faq-wallet" data-faq="wallet">
+          <summary><span class="faq-number">03</span><span>What is the NiceTry wallet and why would I need it?</span><span
+              class="faq-toggle" aria-hidden="true"></span></summary>
+          <div class="faq-answer">
+            <p>NiceTry is an account abstraction (AA) wallet that supports the Daisugi testnet. Post-quantum transactions require AA, which many major wallets support only partially or not at all. NiceTry comes ready to use and connects directly to Daisugi's testnet and explorer. Any ERC-4337-compatible wallet will also work for testing. </p>
+            <p>To install NiceTry:</p>
+            <ol>
+              <li>Go to the <a href="https://nicetry.xyz/" target="_blank" rel="noopener noreferrer">official NiceTry
+                  website ↗</a> and follow the wallet installation instructions for a supported browser.</li>
+              <li>Open the extension and create your wallet through the setup flow.</li>
+              <li>Copy your account address and request test ETH from the <a href="#faucet">Faucet</a>.</li>
+            </ol>
+            <p>Account setup and transaction signing happen in the NiceTry extension. This portal does not connect to wallets.</p><a class="text-link" href="#overview/network">View Daisugi connection details
+              →</a>
+          </div>
+        </details>
+        <details class="faq-item" id="faq-network" data-faq="network">
+          <summary><span class="faq-number">04</span><span>How do I connect to the Daisugi network using another wallet?</span><span
+              class="faq-toggle" aria-hidden="true"></span></summary>
+          <div class="faq-answer">
+            <p>Select Daisugi in your wallet or configure the network with the following details.</p>
+            <dl class="faq-network">
+              <div>
+                <dt>Network name</dt>
+                <dd>Daisugi Testnet</dd>
+              </div>
+              <div>
+                <dt>Chain ID</dt>
+                <dd><code>1337</code></dd>
+              </div>
+              <div>
+                <dt>Currency</dt>
+                <dd>ETH <span class="subtle">(test ETH)</span></dd>
+              </div>
+              <div>
+                <dt>RPC endpoint</dt>
+                <dd><code class="subtle">https://daisugi.fyi/rpc</code></dd>
+              </div>
+              <div>
+                <dt>EntryPoint</dt>
+                <dd><code class="subtle">0x433709009B8330FDa32311DF1C2AFA402eD8D009</code></dd>
+              </div>
+              <div>
+                <dt>Bundler</dt>
+                  <dd><code class="subtle">https://daisugi.fyi/bundler</code></dd>
+              </div>
+            </dl>
+
+          </div>
+        </details>
+        <details class="faq-item" id="faq-faucet" data-faq="faucet">
+          <summary><span class="faq-number">05</span><span>How do I get test ETH?</span><span class="faq-toggle"
+              aria-hidden="true"></span></summary>
+          <div class="faq-answer">
+            <p>Open the <a href="#faucet">Faucet</a>, paste a valid recipient address and submit your request.</p>
+            <p>Each request sends 1 test ETH on Daisugi, with a 60-second cooldown per address. Open the returned
+              transaction hash in the Explorer to check its result. A balance on another network is separate from your
+              Daisugi balance.</p>
+          </div>
+        </details>
+        <details class="faq-item" id="faq-getting-started" data-faq="getting-started">
+          <summary><span class="faq-number">06</span><span>How do I send my first transaction?</span><span
+              class="faq-toggle" aria-hidden="true"></span></summary>
+          <div class="faq-answer">
+            <p>Set up NiceTry, select Daisugi and fund your account with test ETH. Submit a transaction from the wallet,
+              then search its transaction hash or UserOperation hash in the <a href="#explorer">Explorer</a>.</p>
+            <p>For account-abstraction operations, check both the UserOperation result and the enclosing transaction. A
+              transaction can be included even when an individual operation reports a failure.</p>
+          </div>
+        </details>
+      </div>
     </section>
-    <section class="card assets"><div class="section-heading"><h2>Assets</h2><span class="muted small">AA PQ testnet</span></div><div class="asset-row"><span class="eth-icon">Ξ</span><div><strong>Ethereum</strong><small class="muted">ETH</small></div><div class="asset-value"><strong><span id="assetBalance">0.0000</span> ETH</strong><small class="muted">Testnet asset</small></div></div></section>
-    <section class="card"><div class="section-heading"><h2>Activity</h2><span class="muted small">This browser</span></div><div id="activity"><div class="empty"><span class="empty-icon">↗</span><h3>No activity yet</h3><p>Create your wallet, get test ETH, and make your first AA transfer.</p></div></div></section>
-    <section id="settings" class="card" hidden><h1>Settings</h1><p class="muted">Manage your AA wallet and keep access to your account.</p><div class="details-content"><h2>Account details</h2><label>Smart account address</label><code id="fullAddress">Not created yet</code><label>Owner address</label><code id="ownerAddress">Not created yet</code><label>Network</label><p>AA PQ testnet · Chain 1337 · ERC-4337</p><h2>Wallet backup</h2><p class="muted small">Download your owner key and store it somewhere private. Anyone with this key can control your smart account.</p><button id="settingsBackup" class="primary">Download wallet backup</button><p class="notice">For testing only. The owner key is stored unencrypted in this browser; download a backup before clearing browser data. This site uses HTTP—never use a valuable key or real funds here.</p><p class="muted small">This wallet uses ECDSA signatures, not post-quantum cryptography. “AA PQ testnet” is the network name.</p></div></section>
-    <footer><span>AA PQ testnet <span class="separator">/</span> Chain 1337</span><a href="https://nicetry.xyz/" target="_blank" rel="noopener noreferrer">Download NiceTry wallet ↗</a><a id="explorerLink" href="http://157.180.109.133:3001" target="_blank" rel="noopener">Open explorer ↗</a><span>Powered by ERC-4337</span></footer>
   </main>
-  <dialog id="sendSuccess" aria-labelledby="successTitle" aria-describedby="successMessage">
-    <span class="success-icon" aria-hidden="true">✓</span>
-    <h2 id="successTitle">ETH sent successfully</h2>
-    <p id="successMessage"></p>
-    <p class="muted small">Confirmed on-chain through your AA wallet.</p>
-    <a id="successReceipt" target="_blank" rel="noopener">View transaction in explorer ↗</a>
-    <button id="closeSuccess" class="primary" autofocus>Back to wallet</button>
-  </dialog>
-  <script type="module" src="/aa-wallet.js"></script>
+  <noscript>
+    <p class="container inline-notice">Enable JavaScript to load live network data and use the faucet. The FAQ answers
+      are available in the page source.</p>
+  </noscript>
+  <script type="module" src="/portal.js"></script>
 </body>
+
 </html>
