@@ -8,3 +8,11 @@ account-abstraction/
 *-wallet.json
 deployments.local.json
 .DS_Store
+
+# Local review state and generated release artifacts
+.preview/
+README-PREVIEW.md
+preview.sh
+dist/
+__pycache__/
+*.pyc

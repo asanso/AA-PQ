@@ -3,15 +3,27 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
+import {createPortalApi, createFaucetLimiter} from "./portal-api.mjs";
+import {isPortalPage, publicSiteConfig, siteConfigScript} from "./site-config.mjs";
 
 const root = fileURLToPath(new URL("./public", import.meta.url));
 const port = Number(process.env.PORT || 3000);
+const siteSettings = publicSiteConfig();
 const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:18545";
 const bundlerUrl = process.env.BUNDLER_URL || "http://127.0.0.1:4337";
 const entryPoint = process.env.ENTRY_POINT || "";
-const faucetKey = process.env.FAUCET_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const provider = new ethers.JsonRpcProvider(rpcUrl);
-const faucet = new ethers.Wallet(faucetKey, provider);
+const faucetKey = process.env.FAUCET_PRIVATE_KEY;
+// Public RPC proxies may accept only one JSON-RPC request per HTTP call.
+const provider = new ethers.JsonRpcProvider(rpcUrl, undefined, {batchMaxCount:1});
+const faucetRpcUrl = process.env.FAUCET_RPC_URL || rpcUrl;
+// Faucet submissions need a fresh pending nonce, including back-to-back requests.
+const faucetProvider = new ethers.JsonRpcProvider(faucetRpcUrl, undefined, {batchMaxCount:1, cacheTimeout:-1});
+const publicRpcUrl = process.env.PUBLIC_RPC_URL || null;
+const publicBundlerUrl = process.env.PUBLIC_BUNDLER_URL || null;
+const portal = createPortalApi({provider, bundlerUrl, entryPoint, rpcUrl, explorerUrl:process.env.EXPLORER_URL || 'http://127.0.0.1:3001'});
+const claimFaucet = createFaucetLimiter();
+const faucet = new ethers.Wallet(faucetKey, faucetProvider);
+let pendingFaucetSubmission = Promise.resolve();
 const factoryAddress = process.env.FACTORY_ADDRESS || '0x610178dA211FEF7D417bC0e6FeD39F05609AD788';
 const factory = new ethers.Contract(factoryAddress, ['function getAddress(address,uint256) view returns(address)', 'function createAccount(address,uint256) returns(address)'], provider);
 const packedType = '(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)';
@@ -66,30 +78,63 @@ async function proxy(req, res, target) {
 async function faucetSend(req, res) {
   try {
     const payload = await body(req);
-    if (!ethers.isAddress(payload.address)) return json(res, 400, { error: "invalid Ethereum address" });
-    const amount = String(payload.amount || "1");
-    if (!/^([0-9]{1,3})(\.[0-9]{1,18})?$/.test(amount) || Number(amount) <= 0 || Number(amount) > 10) {
-      return json(res, 400, { error: "amount must be between 0 and 10 ETH" });
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+        !ethers.isAddress(payload.address) || payload.address.toLowerCase() === ethers.ZeroAddress) {
+      return json(res, 400, {error:'Enter a valid, non-zero Ethereum recipient address.'});
     }
-    const tx = await faucet.sendTransaction({ to: payload.address, value: ethers.parseEther(amount) });
-    json(res, 200, { hash: tx.hash, from: faucet.address, amount });
+    const requestedAmount = payload.amount === undefined ? '1' : payload.amount;
+    if (typeof requestedAmount !== 'string' && typeof requestedAmount !== 'number') {
+      return json(res, 400, {error:'The amount must be a decimal ETH value.'});
+    }
+    const amount = String(requestedAmount);
+    if (!/^([0-9]{1,3})(\.[0-9]{1,18})?$/.test(amount)) {
+      return json(res, 400, {error:'The amount must be greater than 0 and at most 10 ETH, with up to 18 decimal places.'});
+    }
+    const value = ethers.parseEther(amount);
+    if (value <= 0n || value > ethers.parseEther('10')) {
+      return json(res, 400, {error:'The amount must be greater than 0 and at most 10 ETH.'});
+    }
+    if (Number((await faucetProvider.getNetwork()).chainId) !== 1337) {
+      return json(res, 503, {error:'The faucet is only available on Daisugi (chain 1337).'});
+    }
+    const retryAfter = claimFaucet(payload.address);
+    if (retryAfter) {
+      res.setHeader('retry-after', String(retryAfter));
+      return json(res, 429, {error:`This address can request test ETH again in ${retryAfter} seconds.`, retryAfter});
+    }
+    // Serialize broadcasts from this signer. A failed request must not poison the queue.
+    const submission = pendingFaucetSubmission.then(() =>
+      faucet.sendTransaction({to:ethers.getAddress(payload.address), value}));
+    pendingFaucetSubmission = submission.then(() => undefined, () => undefined);
+    const tx = await submission;
+    json(res, 200, {hash:tx.hash, from:faucet.address, amount});
   } catch (error) {
-    json(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    json(res, 500, {error:error instanceof Error ? error.message : String(error)});
   }
 }
 
 async function config(res) {
   try {
     const network = await provider.getNetwork();
-    json(res, 200, { chainId: Number(network.chainId), rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address });
+    json(res, 200, { chainId: Number(network.chainId), rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address, networkName:'Daisugi', publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60 });
   } catch (error) {
     json(res, 503, { error: error instanceof Error ? error.message : String(error) });
   }
 }
 
-const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml" };
+const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8" };
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  if (req.method === 'GET' && url.pathname === '/site-config.js') {
+    res.writeHead(200, {'content-type':'text/javascript; charset=utf-8','cache-control':'no-store'});
+    return res.end(siteConfigScript(siteSettings));
+  }
+  if (req.method === 'GET' && (url.pathname === '/api/network' || url.pathname.startsWith('/api/explorer/'))) {
+    try {
+      const data = url.pathname === '/api/network' ? await portal.network() : await portal.explorer(url.pathname.slice('/api/explorer/'.length));
+      return json(res, 200, data);
+    } catch (error) {return json(res, 503, {error:error.shortMessage || error.message});}
+  }
   if(req.method === 'POST' && url.pathname === '/api/aa/prepare') return prepareWallet(req,res);
   if(req.method === 'GET' && url.pathname === '/ethers.js') {
     res.writeHead(200,{'content-type':'text/javascript'});
@@ -101,7 +146,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/api/config") return config(res);
   if (req.method !== "GET") return json(res, 405, { error: "method not allowed" });
 
-  const relative = url.pathname === "/" ? "/index.html" : url.pathname;
+  const relative = isPortalPage(url.pathname) ? "/index.html" : url.pathname;
   const file = normalize(join(root, relative));
   if (!file.startsWith(root)) return json(res, 404, { error: "not found" });
   try {
@@ -113,4 +158,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, "0.0.0.0", () => console.log(`AA devnet frontend listening on http://0.0.0.0:${port}`));
+const host = process.env.HOST || "0.0.0.0";
+server.listen(port, host, () => console.log(`AA devnet frontend listening on http://${host}:${port}`));

@@ -1,40 +1,143 @@
-# AA-PQ
+# AA-PQ / Daisugi
 
-An Ethereum account-abstraction devnet with a browser wallet and block explorer.
-The network runs Geth and Lighthouse through Kurtosis, with Alto handling
-ERC-4337 UserOperations through EntryPoint v0.9.
+An Ethereum-compatible testnet portal with a read-only explorer, a test ETH
+faucet and an Overview with network information. The portal does not connect to
+browser wallets or create or store wallet keys. Account setup and signing happen
+in a compatible external wallet such as NiceTry.
 
-The wallet creates a SimpleAccount, requests test ETH, and sends transfers
-through the bundler. The explorer indexes blocks, smart accounts, and
-EntryPoint events. Wallet keys are generated and stored in the browser.
+The explorer shows blocks, addresses, transactions and ERC-4337 UserOperations,
+including complete signatures, transaction input and decoded calldata when a
+supported ABI is available. Signature sizes describe encoded bytes and bits, not
+cryptographic security strength.
 
-The current implementation uses ECDSA signatures. Post-quantum signing is not
-implemented.
+The network recipe in this repository runs Geth and Lighthouse through Kurtosis,
+with Alto handling UserOperations through EntryPoint v0.9. The original
+contract-deployment recipe uses a pinned SimpleAccount baseline. Account and
+verifier implementations on a research network can differ; a portal update does
+not deploy or change those contracts.
 
-| Service | Port |
+| Service | Default port |
 | --- | --- |
-| Wallet | 3000 |
-| Explorer | 3001 |
+| Portal and faucet | 3000 |
+| Explorer indexer and optional shared portal UI | 3001 |
 | Alto bundler | 4337 |
 | Geth RPC | Assigned by Kurtosis |
 
 ## Requirements
 
-- Linux with Docker; the bundler uses host networking
-- Node.js 22 or later
-- Git
-- [Kurtosis](https://docs.kurtosis.com/install/) (tested with CLI 1.20.0)
-- Available ports 3000, 3001, and 4337
+- Node.js 22 or later and Git
+- An existing Daisugi-compatible network, RPC, EntryPoint and bundler
+- A funded test account configured for the faucet
+- For provisioning a new devnet: Linux, Docker and [Kurtosis](https://docs.kurtosis.com/install/) (tested with CLI 1.20.0)
+- Available ports for the services being started
 
-## Installation
+## Install and configure
 
 ```sh
-git clone https://github.com/Giulio2002/AA-PQ.git
+git clone https://github.com/asanso/AA-PQ.git
 cd AA-PQ
 npm ci --prefix frontend
 npm ci --prefix explorer
-cp .env.example .env
+test -f .env || cp .env.example .env
 ```
+
+For an existing network, configure its endpoints and addresses in `.env`. The
+example file contains deliberately public development keys for a disposable
+testnet. `FAUCET_PRIVATE_KEY` must be set; the frontend no longer supplies a
+fallback key in its source.
+
+| Setting | Purpose |
+| --- | --- |
+| `RPC_URL` | Backend RPC used for chain reads |
+| `BUNDLER_URL` | Bundler upstream |
+| `ENTRY_POINT` | EntryPoint deployed on this chain |
+| `FAUCET_PRIVATE_KEY` | Funded server-side test account used by the faucet |
+| `FAUCET_RPC_URL` | Optional separate RPC for faucet submission; defaults to `RPC_URL` |
+| `EXPLORER_URL` | Native indexer API; defaults to `http://127.0.0.1:3001` |
+| `FACTORY_ADDRESS` | Deployed factory used by the retained AA helper and original integration test |
+
+The faucet RPC must support transaction submission, nonce and fee queries. The
+restricted public read proxy is not a replacement for that connection. Public
+endpoint metadata and the two-domain configuration are documented in
+[docs/DUAL-DOMAIN.md](docs/DUAL-DOMAIN.md).
+
+## Run against an existing network
+
+Start the portal in one terminal:
+
+```sh
+set -a
+. ./.env
+set +a
+HOST=127.0.0.1 PORT=3000 node frontend/server.mjs
+```
+
+If an explorer indexer is already running, set `EXPLORER_URL` to it. Otherwise,
+start the indexer in a second terminal:
+
+```sh
+set -a
+. ./.env
+set +a
+HOST=127.0.0.1 PORT=3001 PORTAL_ORIGIN=http://127.0.0.1:3000 node explorer/server.mjs
+```
+
+Open [the local portal](http://localhost:3000). Loopback binding supports local
+access or an SSH port forward; an ingress on another machine needs a separately
+configured connection to the service.
+
+The legacy launcher names remain available: `scripts/run-wallet.sh` starts the
+portal on port 3000 and also requires `FACTORY_ADDRESS`; `scripts/run-explorer.sh`
+starts the indexer on port 3001. Both load `.env`. Set `PORTAL_ORIGIN` for the
+explorer process when it should serve the shared interface.
+
+## Navigation and usage
+
+| Page | Local / review preview | Configured public deployment |
+| --- | --- | --- |
+| Overview / FAQs | `/` | `https://daisugi.fyi/` |
+| Faucet | `/faucet` | `https://daisugi.fyi/faucet` |
+| Explorer | `/explorer` | `https://explorer.daisugi.fyi/` |
+| Transaction | `/explorer/tx/<hash>` | `https://explorer.daisugi.fyi/tx/<hash>` |
+
+Localhost, IP addresses and review tunnels remain self-contained: navigation does
+not send the user to the production domains. Old hash bookmarks are supported.
+The same header, fonts and styles are used on both public hosts, and the theme
+preference is shared between them.
+
+1. Read Overview for network information and wallet setup.
+2. Open Faucet, enter a recipient address and request 1 test ETH. No wallet
+   connection is required.
+3. Open the returned transaction link to inspect its inclusion and receipt.
+4. Use Explorer to search for a block, address, transaction or UserOperation.
+   A successful enclosing transaction does not by itself prove that every
+   UserOperation in the bundle succeeded.
+5. Inspect complete input bytes, decoded parameters, signature length and
+   available execution details. Missing data is labelled rather than inferred.
+
+The faucet serves chain 1337 only. Its API accepts up to 10 ETH per request;
+the interface requests 1 ETH. The per-address cooldown is 60 seconds and is local
+to the running process. Test ETH has no monetary value.
+
+See [docs/PORTAL.md](docs/PORTAL.md) for APIs, decoding, fee calculations and
+verification details. The prepared public routing requires deployment of the
+updated code and the settings in [docs/DUAL-DOMAIN.md](docs/DUAL-DOMAIN.md);
+a Git push alone does not configure the running services.
+
+## Development and release pipeline
+
+The prepared workflow uses dev, staging and main branches, with automated checks,
+staging deployment after an approved merge, and manual production deployment.
+It does not require another reviewer. Host provisioning, branch protection and
+deployment enablement are separate setup steps.
+
+See [docs/PIPELINE.md](docs/PIPELINE.md) for the release process, required access,
+configuration, verification and rollback behavior.
+
+## Provision a new devnet
+
+These steps create infrastructure and deploy the repository's baseline contracts.
+They are not needed when updating the portal on an already provisioned network.
 
 ### Start the network
 
@@ -96,80 +199,57 @@ The container is named `aa-devnet-alto`. The launcher uses a pinned image and
 mounts `SafeValidator.js` as a compatibility override. It does not replace an
 existing container with the same name.
 
-### Start the wallet and explorer
-
-Run each command in a separate terminal from the repository root:
-
-```sh
-sh scripts/run-wallet.sh
-```
-
-```sh
-sh scripts/run-explorer.sh
-```
-
-Open [the wallet](http://localhost:3000) and
-[the explorer](http://localhost:3001). For a remote deployment, use the host IP
-instead of `localhost`.
-
-## Usage
-
-1. Select **Create AA wallet** to generate a key and deploy the smart account.
-2. Download a key backup from **Settings**.
-3. Select **Get test ETH** to fund the account.
-4. Open **Send**, enter a recipient and amount, and submit the transfer.
-5. Follow the explorer link in the confirmation modal or activity list to view
-   the receipt.
-
-The explorer supports searches by address, block number, transaction hash, and
-UserOperation hash. Account pages show outgoing UserOperations; transaction
-pages show the associated EntryPoint events.
-
 ## Tests
 
-With the services running:
+Run the unit tests without creating accounts or sending transactions:
 
 ```sh
-WALLET_URL=http://localhost:3000 node tests/verify-aa.mjs
+node --test tests/*.test.mjs explorer/user-operation.test.mjs
 ```
 
-The test creates a disposable account and transfers 0.001 test ETH. It checks
-deployment, EntryPoint receipts, recipient balance changes, invalid-signature
-rejection, replay rejection, and the wallet RPC method restrictions.
+Browser checks should cover navigation, deep-link reloads, old bookmarks, search,
+calldata decoding, mobile layouts and theme persistence across the two public
+origins. Mock `POST /api/faucet` when exercising the form.
 
-Recorded results and test coverage are in [docs/VERIFICATION.md](docs/VERIFICATION.md).
+The retained `tests/verify-aa.mjs` script is a live-chain integration test for the
+original AA flow. It creates a disposable account and sends test ETH. Use it only
+on an appropriate test fixture whose deployed contracts match its assumptions;
+it is not a read-only UI check. Historical verification results are in
+[docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Operations
 
-Inspect the network and bundler:
+Inspect an existing Kurtosis network and bundler using their actual names:
 
 ```sh
 kurtosis enclave inspect aa-devnet
 docker logs --tail 50 aa-devnet-alto
 ```
 
-Systemd units are provided for `/opt/kurtosis-aa-devnet`. Update their paths,
-RPC URL, EntryPoint, and factory address before installing them on another host:
+The root systemd unit templates use `/opt/kurtosis-aa-devnet`. The dedicated-host
+templates in [deploy/ef](deploy/ef/README.md) use `/opt/aa-pq/app`. Reconcile paths,
+users, ports and existing environment settings before selecting a template.
+Enable the shared explorer UI with `PORTAL_ORIGIN` as described in
+[docs/DUAL-DOMAIN.md](docs/DUAL-DOMAIN.md).
 
-```sh
-sudo cp aa-devnet-frontend.service aa-devnet-explorer.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now aa-devnet-frontend aa-devnet-explorer
-```
+Keep an existing deployment's private environment configuration and reconcile
+local source changes before replacing files. Avoid running a second process on
+an occupied port. Restart the relevant service after backend or environment
+changes; static assets are read from disk on each request.
 
-Stop foreground instances before starting the systemd services on the same ports.
-Deployment troubleshooting and implementation notes are in
+Deployment troubleshooting and chain implementation notes are in
 [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Development notes
 
-Wallet creation and transfers use ERC-4337. Faucet funding and the bundler's
-outer transactions use standard Ethereum transactions. Geth remains unmodified;
-the UserOperation mempool is managed by Alto.
+Wallet signing and UserOperation submission happen outside the portal. Faucet
+funding and the bundler's enclosing transactions use standard Ethereum
+transactions. The UserOperation mempool is managed by Alto.
 
-This setup is for test ETH only. Funding keys are public, the faucet is
-unauthenticated, and browser keys are stored unencrypted. Backups contain the
-private key. Do not use real funds or production keys.
+The sample funding keys are public and intended for a disposable testnet. The
+portal does not hold a visitor's wallet keys. The faucet is unauthenticated; its
+process-local cooldown is not a distributed abuse-prevention system.
 
-The UI is inspired by [pq-eth-demo](https://github.com/Giulio2002/pq-eth-demo).
-Third-party source and license details are in [THIRD_PARTY.md](THIRD_PARTY.md).
+Inter is self-hosted with its included SIL Open Font License. Third-party
+attribution and network component licenses are listed in
+[THIRD_PARTY.md](THIRD_PARTY.md).

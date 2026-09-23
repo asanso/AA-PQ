@@ -2,8 +2,10 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {ethers} from 'ethers';
 import {operationSignature} from './user-operation.mjs';
+import {createPortalProxy} from './portal-proxy.mjs';
 
 const port = Number(process.env.PORT || 3001);
+const portalProxy = createPortalProxy({origin:process.env.PORTAL_ORIGIN});
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || 'http://127.0.0.1:8545');
 const entryPoint = process.env.ENTRY_POINT || '0x433709009B8330FDa32311DF1C2AFA402eD8D009';
 const iface = new ethers.Interface([
@@ -82,10 +84,11 @@ http.createServer(async (req,res) => {
   if (req.method !== 'GET') {res.writeHead(405);res.end('Read-only explorer');return;}
   const path = new URL(req.url, 'http://localhost').pathname;
   try {
+    if (await portalProxy(req,res,path)) return;
     if (path.startsWith('/api/')) {const data = await api(path); res.setHeader('content-type','application/json'); res.end(serialize(data));return;}
     if (!files[path]) {res.writeHead(404);res.end('Not found');return;}
     const data = await readFile(new URL(`./public/${files[path]}`, import.meta.url));
     res.setHeader('content-type', path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html');
     res.end(data);
   } catch(error) {res.writeHead(400, {'content-type':'application/json'});res.end(serialize({error:error.shortMessage || error.message}));}
-}).listen(port, '0.0.0.0', () => console.log(`AA PQ explorer on port ${port}`));
+}).listen(port, process.env.HOST || '0.0.0.0', () => console.log(`AA PQ explorer on port ${port}`));

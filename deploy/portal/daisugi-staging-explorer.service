@@ -1,0 +1,17 @@
+[Unit]
+Description=Daisugi staging explorer
+
+[Service]
+Type=simple
+WorkingDirectory=%h/staging-testnet/current
+EnvironmentFile=%h/.config/daisugi/staging-explorer.env
+ExecStart=/usr/bin/env HOST=127.0.0.1 PORT=3005 /usr/local/bin/node explorer/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

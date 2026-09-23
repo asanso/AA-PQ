@@ -1,0 +1,17 @@
+[Unit]
+Description=Daisugi production portal
+
+[Service]
+Type=simple
+WorkingDirectory=%h/production-testnet/current
+EnvironmentFile=%h/.config/daisugi/production-portal.env
+ExecStart=/usr/bin/env PORT=3000 /usr/local/bin/node frontend/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
