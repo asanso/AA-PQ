@@ -1,5 +1,9 @@
 # AA-PQ / Daisugi
 
+<!-- portal-version:start -->
+![version 0.1](docs/assets/portal-version.svg)
+<!-- portal-version:end -->
+
 An Ethereum-compatible testnet portal with a read-only explorer, a test ETH
 faucet and an Overview with network information. The portal does not connect to
 browser wallets or create or store wallet keys. Account setup and signing happen

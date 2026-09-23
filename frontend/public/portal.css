@@ -209,6 +209,22 @@ code {
 .brand:hover {
   text-decoration:none
 }
+.brand-text {
+  position:relative;
+  display:flex;
+  flex-direction:column
+}
+.brand-version {
+  position:absolute;
+  top:100%;
+  left:0;
+  font-size:11px;
+  line-height:14px;
+  font-weight:400;
+  letter-spacing:0;
+  color:var(--secondary);
+  white-space:nowrap
+}
 .brand-dot {
   color:var(--accent)
 }
