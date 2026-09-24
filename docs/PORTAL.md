@@ -55,6 +55,21 @@ read-only portal API requests to the frontend. Its native `/api/overview` and
 record endpoints continue to be handled by the indexer; they are not forwarded
 back to the frontend. See [DUAL-DOMAIN.md](DUAL-DOMAIN.md) for configuration.
 
+## Inclusion timestamps
+
+Transaction and UserOperation details show the date and time of their inclusion
+block, including seconds. UTC is the default; the detail view can display local
+time. Operations in one transaction share its block timestamp. This is not the
+time the wallet signed or submitted an operation.
+
+Recent UserOperations, address and transaction operation tables, and the block
+transaction table also show UTC timestamps. The indexer resolves operation
+timestamps by block hash, coalesces reads for the same block, and caches up to
+512 successful lookups. Each record list uses at most four concurrent block
+reads. Failed or missing reads remain retryable and display Unavailable; pending
+transactions display Pending inclusion. Missing values never become the Unix
+epoch or the current time.
+
 ## Configuration and previews
 
 Use Node 22 or later. Install both packages before testing both services:

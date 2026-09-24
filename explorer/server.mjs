@@ -2,11 +2,13 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {ethers} from 'ethers';
 import {operationSignature} from './user-operation.mjs';
+import {createBlockTimestampReader} from './block-timestamps.mjs';
 import {createPortalProxy} from './portal-proxy.mjs';
 
 const port = Number(process.env.PORT || 3001);
 const portalProxy = createPortalProxy({origin:process.env.PORTAL_ORIGIN});
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || 'http://127.0.0.1:8545');
+const addBlockTimestamps = createBlockTimestampReader(provider);
 const entryPoint = process.env.ENTRY_POINT || '0x433709009B8330FDa32311DF1C2AFA402eD8D009';
 const iface = new ethers.Interface([
   'event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)',
@@ -17,7 +19,7 @@ const serialize = value => JSON.stringify(value, (_, v) => typeof v === 'bigint'
 function event(log) {
   const parsed = iface.parseLog(log);
   if (!parsed) return null;
-  const result = {type:parsed.name, transactionHash:log.transactionHash, blockNumber:log.blockNumber, logIndex:log.index};
+  const result = {type:parsed.name, transactionHash:log.transactionHash, blockHash:log.blockHash, blockNumber:log.blockNumber, logIndex:log.index};
   parsed.fragment.inputs.forEach((input,i) => {result[input.name] = parsed.args[i];});
   return result;
 }
@@ -46,7 +48,7 @@ const blockSummary = block => ({number:block.number, hash:block.hash, timestamp:
 async function overview() {
   const head = await sync();
   const blocks = (await Promise.all(Array.from({length:Math.min(12, head+1)}, (_, i) => provider.getBlock(head-i)))).filter(Boolean).map(blockSummary);
-  return {chainId:Number((await provider.getNetwork()).chainId), entryPoint, indexedTo, operationCount:operations.length, walletCount:new Set(deployments.map(d => d.sender)).size, blocks, operations:operations.slice(-20).reverse(), wallets:deployments.slice(-100).reverse()};
+  return {chainId:Number((await provider.getNetwork()).chainId), entryPoint, indexedTo, operationCount:operations.length, walletCount:new Set(deployments.map(d => d.sender)).size, blocks, operations:await addBlockTimestamps(operations.slice(-20).reverse()), wallets:deployments.slice(-100).reverse()};
 }
 async function api(path) {
   if (path === '/api/overview') return overview();
@@ -60,20 +62,22 @@ async function api(path) {
     const [tx, receipt] = await Promise.all([provider.getTransaction(id), provider.getTransactionReceipt(id)]);
     if (!tx) throw new Error('Transaction not found');
     const events = receipt?.logs.filter(log => log.address.toLowerCase() === entryPoint.toLowerCase()).map(log => {try{return event(log);}catch{return null;}}).filter(Boolean) || [];
-    return {hash:tx.hash, from:tx.from, to:tx.to, value:ethers.formatEther(tx.value), blockNumber:tx.blockNumber, status:receipt ? receipt.status === 1 ? 'Confirmed' : 'Reverted' : 'Pending', gasUsed:receipt?.gasUsed, selector:tx.data.slice(0,10), entryPoint, isAaBundle:tx.to?.toLowerCase() === entryPoint.toLowerCase() && events.some(e => e.type === 'UserOperationEvent'), events};
+    const [record] = await addBlockTimestamps([{hash:tx.hash, from:tx.from, to:tx.to, value:ethers.formatEther(tx.value), blockHash:receipt?.blockHash ?? tx.blockHash, blockNumber:tx.blockNumber, status:receipt ? receipt.status === 1 ? 'Confirmed' : 'Reverted' : 'Pending', gasUsed:receipt?.gasUsed, selector:tx.data.slice(0,10), entryPoint, isAaBundle:tx.to?.toLowerCase() === entryPoint.toLowerCase() && events.some(e => e.type === 'UserOperationEvent')}]);
+    return {...record, events:await addBlockTimestamps(events)};
   }
   if (kind === 'op' && /^0x[0-9a-fA-F]{64}$/.test(id || '')) {
     await sync();
     const op = operations.find(op => op.userOpHash.toLowerCase() === id.toLowerCase());
     if (!op) throw new Error('Confirmed UserOperation not found');
     const tx = await provider.getTransaction(op.transactionHash);
-    return {...op, signature:operationSignature(tx, op, entryPoint)};
+    const [record] = await addBlockTimestamps([op]);
+    return {...record, signature:operationSignature(tx, op, entryPoint)};
   }
   if (kind === 'address' && ethers.isAddress(id || '')) {
     await sync();
     const [balance, code] = await Promise.all([provider.getBalance(id), provider.getCode(id)]);
     const deployment = deployments.find(d => d.sender.toLowerCase() === id.toLowerCase());
-    return {address:ethers.getAddress(id), balance:ethers.formatEther(balance), type:deployment ? 'AA smart account (EntryPoint deployment)' : code !== '0x' ? 'Contract' : 'Externally owned / unused address', deployment, operations:operations.filter(op => op.sender.toLowerCase() === id.toLowerCase()).slice(-100).reverse()};
+    return {address:ethers.getAddress(id), balance:ethers.formatEther(balance), type:deployment ? 'AA smart account (EntryPoint deployment)' : code !== '0x' ? 'Contract' : 'Externally owned / unused address', deployment, operations:await addBlockTimestamps(operations.filter(op => op.sender.toLowerCase() === id.toLowerCase()).slice(-100).reverse())};
   }
   throw new Error('Invalid explorer request');
 }

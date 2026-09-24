@@ -1,6 +1,7 @@
 import {site} from './routes.js';
 import { formatUnits } from '/ethers.js';
 import { renderInputPanel, inputSize } from './input-data.js';
+import {renderTimestamp, formatTimestamp} from './timestamp.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const int = value => value == null ? '—' : BigInt(value).toLocaleString('en-US');
 const short = value => String(value).slice(0, 10) + '…' + String(value).slice(-8);
@@ -12,12 +13,6 @@ const copy = value => `<button type="button" class="copy-value" data-copy-value=
 function address(value, compact = false) { return /^0x[0-9a-fA-F]{40}$/.test(value || '') ? `<span class="address-value"><a class="mono" href="${site.href({page:'explorer',kind:'address',id:value})}">${esc(compact ? short(value) : value)}</a>${copy(value)}</span>` : notAvailable; }
 const row = (name, value, help = '', extra = '') => `<div class="tx-row ${extra}"><dt><span class="tx-help" title="${esc(help || name)}" aria-label="${esc(help || name)}">?</span>${esc(name)}</dt><dd>${value}</dd></div>`;
 const section = content => `<section class="panel tx-panel"><dl class="tx-properties">${content}</dl></section>`;
-function timestamp(value) {
-  if (value == null) return notAvailable;
-  const date = new Date(value * 1000), seconds = Math.max(0, Math.floor(Date.now() / 1000) - value);
-  const relative = seconds < 60 ? seconds + ' seconds ago' : seconds < 3600 ? Math.floor(seconds / 60) + ' minutes ago' : seconds < 86400 ? Math.floor(seconds / 3600) + ' hours ago' : Math.floor(seconds / 86400) + ' days ago';
-  return `<div class="timestamp-value"><span>${esc(relative)}</span><time data-tx-time="${value}" datetime="${date.toISOString()}">${esc(date.toLocaleString('en-GB', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium' }))}</time><select data-tx-timezone aria-label="Timestamp timezone"><option value="utc">UTC</option><option value="local">Local time</option></select></div>`;
-}
 function internalTransfers(trace) {
   if (!trace || trace.status !== 'available') return `<div class="trace-unavailable"><span class="trace-state">Trace unavailable</span><p>${esc(trace?.message || 'Internal transfer data could not be retrieved from the node.')}</p></div>`;
   if (!trace.transfers.length) return `<span class="tx-unavailable">${trace.reverted ? 'No committed internal transfers: this transaction reverted.' : 'No internal ETH transfers recorded.'}</span>`;
@@ -47,7 +42,7 @@ export function renderTransactionDetails(data) {
     section(row('Transaction hash', `<span class="hash-value">${mono(data.hash)}${copy(data.hash)}</span>`, 'Unique identifier of this transaction.') +
       row('Status', `<span class="tx-status ${status === 'Success' ? 'success' : status === 'Failed' ? 'failed' : 'pending'}">${status === 'Success' ? '✓ ' : status === 'Failed' ? '× ' : ''}${esc(status)}</span>`, 'Receipt execution status; distinct from each UserOperation result.') +
       row('Block', blockValue, 'Confirmations include the containing block, using the latest observed chain height.') +
-      row('Timestamp', timestamp(d.timestamp), 'Timestamp of the block that included this transaction.') +
+      row('Timestamp', renderTimestamp(d.timestamp ?? data.timestamp, {pending}), 'Timestamp of the block that included this transaction.') +
       row('From', address(d.from ?? data.from), 'Account that submitted the enclosing Ethereum transaction.', 'tx-group-start') +
       row('To', destination, 'Destination of the outer transaction, or the contract created by it.') +
       row('Internal transactions', internalTransfers(d.internalTransfers), 'Committed internal ETH transfers reconstructed from a call trace; excludes the outer transaction value.', 'tx-group-start') +
@@ -76,6 +71,6 @@ export function attachTransactionDetailEvents(container) {
   container.addEventListener('change', event => {
     if (!event.target.matches('[data-tx-timezone]')) return;
     const time = event.target.closest('.timestamp-value').querySelector('[data-tx-time]');
-    time.textContent = new Date(Number(time.dataset.txTime) * 1000).toLocaleString('en-GB', { ...(event.target.value === 'utc' ? { timeZone: 'UTC' } : {}), dateStyle: 'medium', timeStyle: 'medium' });
+    time.textContent = formatTimestamp(time.dataset.txTime, {local: event.target.value === 'local'});
   });
 }
