@@ -60,7 +60,7 @@ test('explorer serves shared UI/API while native indexing routes remain independ
   const proxy=createPortalProxy({origin:'http://127.0.0.1:3000',fetchImpl:async(url)=>{
     calls.push(url.href);return new Response('shared content',{headers:{'content-type':'text/html'}});
   }});
-  for(const path of ['/','/tx/'+tx,'/portal.css','/site-config.js','/api/explorer/overview']){
+  for(const path of ['/','/tx/'+tx,'/portal.css','/timestamp.js','/site-config.js','/api/explorer/overview']){
     const res=responseMock();
     assert.equal(await proxy({method:'GET'},res,path),true);
     assert.equal(res.status,200);

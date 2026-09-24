@@ -2,6 +2,7 @@ import {site} from '/routes.js';
 import {formatUnits, isAddress} from '/ethers.js';
 import './faucet.js';
 import {renderTransactionDetails,attachTransactionDetailEvents} from './transaction-view.js';
+import {renderTimestamp} from './timestamp.js';
 import {renderInputPanel as dataPanel,clearInputPanels,attachInputPanelEvents} from './input-data.js';
 
 const $ = id => document.getElementById(id);
@@ -60,7 +61,7 @@ function showOverview() {
   $('overviewError').textContent = [networkError && 'Network: ' + networkError, explorerError && 'Explorer: ' + explorerError].filter(Boolean).join(' ');
   $('activityStatus').textContent = overview ? 'Indexed through block ' + integer(overview.indexedTo) : 'Explorer unavailable';
   $('latestBlocks').innerHTML = overview?.blocks?.slice(0,5).map(block => row('Bk',link('block',block.number),esc(age(block.timestamp)),`${integer(block.transactionCount)} txns`)).join('') || empty(overview ? 'No blocks indexed yet.' : 'Block data is unavailable.');
-  $('latestOperations').innerHTML = overview?.operations?.slice(0,5).map(op => row('Op',link('op',op.userOpHash),'From ' + link('address',op.sender,short(op.sender,5)),outcome(op.success))).join('') || empty(overview ? 'No UserOperations indexed yet.' : 'UserOperation data is unavailable.');
+  $('latestOperations').innerHTML = overview?.operations?.slice(0,5).map(op => row('Op',link('op',op.userOpHash),'From ' + link('address',op.sender,short(op.sender,5)) + '<br>' + renderTimestamp(op.timestamp,{compact:true}),outcome(op.success))).join('') || empty(overview ? 'No UserOperations indexed yet.' : 'UserOperation data is unavailable.');
   $('latestAccounts').innerHTML = overview?.wallets?.slice(0,5).map(account => row('Ac',link('address',account.sender),'Deployed in block ' + link('block',account.blockNumber),'<span class="tag">ERC-4337</span>')).join('') || empty(overview ? 'No account deployments indexed yet.' : 'Account data is unavailable.');
 }
 async function refresh() {
@@ -82,7 +83,7 @@ function detail(title, fields, extra='') {
   return `<a class="back-link" href="${esc(site.href({page:'explorer'}))}">← Back to explorer</a><section class="panel detail-panel"><div class="panel-heading"><h2>${esc(title)}</h2><span class="tag">Daisugi · 1337</span></div><dl class="definition-list">${fields.map(([key,value])=>'<dt>'+esc(key)+'</dt><dd>'+value+'</dd>').join('')}</dl>${extra}</section>`;
 }
 function operationRows(operations) {
-  return table('UserOperations','Events associated with this record',['Hash','Sender','Block','Result'],operations.map(o=>[link('op',o.userOpHash),link('address',o.sender),link('block',o.blockNumber),outcome(o.success)]),'No UserOperation events indexed for this record.');
+  return table('UserOperations','Events associated with this record',['Hash','Sender','Block','Timestamp (UTC)','Result'],operations.map(o=>[link('op',o.userOpHash),link('address',o.sender),link('block',o.blockNumber),renderTimestamp(o.timestamp,{compact:true}),outcome(o.success)]),'No UserOperation events indexed for this record.');
 }
 const isHexData = value => typeof value === 'string' && /^0x(?:[0-9a-fA-F]{2})*$/.test(value);
 function dataSize(value) {
@@ -97,10 +98,10 @@ function renderDetail(kind, data) {
   const section=document.querySelector('[data-page="record"]');section.classList.add('show-record');
   section.querySelector('.page-heading h1').textContent=kind==='tx'?'Transaction details':kind==='op'?'UserOperation details':kind==='address'?'Address details':'Block details';
   section.querySelector('.page-heading p:not(.eyebrow)').textContent='On-chain records from Daisugi.';
-  if (kind === 'block') return detail('Block ' + integer(data.number),[['Block number',mono(integer(data.number))],['Block hash',mono(data.hash)],['Timestamp',esc(new Date(data.timestamp*1000).toUTCString())],['Transactions',integer(data.transactionCount)],['Gas used',mono(integer(data.gasUsed))],['Gas limit',mono(integer(data.gasLimit))]]) + table('Transactions','Included in this block',['Transaction hash'],(data.transactions || []).map(tx=>[link('tx',typeof tx === 'string' ? tx : tx.hash,typeof tx === 'string' ? tx : tx.hash)]),'This block contains no transactions.');
+  if (kind === 'block') return detail('Block ' + integer(data.number),[['Block number',mono(integer(data.number))],['Block hash',mono(data.hash)],['Timestamp',renderTimestamp(data.timestamp)],['Transactions',integer(data.transactionCount)],['Gas used',mono(integer(data.gasUsed))],['Gas limit',mono(integer(data.gasLimit))]]) + table('Transactions','Included in this block',['Transaction hash','Timestamp (UTC)'],(data.transactions || []).map(tx=>[link('tx',typeof tx === 'string' ? tx : tx.hash,typeof tx === 'string' ? tx : tx.hash),renderTimestamp(data.timestamp,{compact:true})]),'This block contains no transactions.');
   if (kind === 'address') return detail('Address', [['Address',mono(data.address)],['Balance',esc(data.balance) + ' ETH'],['Account type',esc(data.type)],['Deployment',data.deployment ? link('tx',data.deployment.transactionHash) : '<span class="subtle">No indexed deployment</span>']]) + operationRows(data.operations || []);
   if (kind === 'op') {
-    return detail('UserOperation', [['UserOperation hash',mono(data.userOpHash)],['Sender',link('address',data.sender,data.sender)],['Transaction',link('tx',data.transactionHash,data.transactionHash)],['Block',link('block',data.blockNumber)],['Result',outcome(data.success)],['Nonce',mono(data.nonce)],['Actual gas used',mono(integer(data.actualGasUsed))],['Actual gas cost',esc(units(data.actualGasCost)) + ' ETH'],['Paymaster',link('address',data.paymaster,data.paymaster)],['Signature size',dataSize(data.signature)],['Call data size',dataSize(data.operationCallData)]])
+    return detail('UserOperation', [['UserOperation hash',mono(data.userOpHash)],['Sender',link('address',data.sender,data.sender)],['Transaction',link('tx',data.transactionHash,data.transactionHash)],['Block',link('block',data.blockNumber)],['Timestamp',renderTimestamp(data.timestamp ?? data.transactionDetails?.timestamp)],['Result',outcome(data.success)],['Nonce',mono(data.nonce)],['Actual gas used',mono(integer(data.actualGasUsed))],['Actual gas cost',esc(units(data.actualGasCost)) + ' ETH'],['Paymaster',link('address',data.paymaster,data.paymaster)],['Signature size',dataSize(data.signature)],['Call data size',dataSize(data.operationCallData)]])
       + dataPanel({id:'operationSignature',title:'Signature data',value:data.signature,description:'Signature submitted for this UserOperation. Byte and bit counts describe its encoded length, not its security strength.'})
       + dataPanel({id:'operationCallData',title:'UserOperation call data',value:data.operationCallData,decoded:data.operationCallDecoded,selector:true,description:'The exact callData field passed to the smart account for this operation, extracted from the EntryPoint bundle.',error:data.inputDataError || 'The operation could not be uniquely decoded from a supported EntryPoint call. Its enclosing transaction input is shown below when available.'})
       + transactionInputPanel(data,true);

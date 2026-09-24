@@ -1,7 +1,7 @@
 import {isPortalPage} from '../frontend/site-config.mjs';
 
 const assets = new Set(['/index.html','/site-config.js','/theme.js','/portal.css','/portal.js','/routes.js',
-  '/faucet.js','/transaction-view.js','/input-data.js','/ethers.js','/ethereum.svg','/fonts/InterVariable.woff2']);
+  '/faucet.js','/timestamp.js','/transaction-view.js','/input-data.js','/ethers.js','/ethereum.svg','/fonts/InterVariable.woff2']);
 const portalApi = /^\/api\/(?:config|network|explorer\/(?:overview|block\/\d{1,12}|(?:tx|op)\/0x[0-9a-fA-F]{64}|address\/0x[0-9a-fA-F]{40}))$/;
 
 // Leave native /api/overview, /api/block, /api/tx, /api/op and /api/address with the indexer.
