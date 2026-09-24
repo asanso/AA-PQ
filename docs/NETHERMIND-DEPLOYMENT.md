@@ -52,10 +52,39 @@ These are disposable testnet accounts, not a test of every external PQ wallet.
 After migration and post-handoff finality, installed a config adding only
 `eip8141PrototypeTime = 1790274781`: **18:33:01 UTC / 20:33:01 Zurich**.
 Pre-activation signed frame submission was rejected both before and after
-installing the scheduled config. Post-activation verification is recorded below
-when completed.
+installing the scheduled config. Activation was observed at block **519324**.
+
+The live frame test passed and finalized:
+
+- Transaction: `0x48e7f41c88c49370268cb2708fd4fcdc8e7ac4e0bca4c70fde6c1fd6df61ad2c`.
+- Inclusion block: **519326**,
+  `0xfc9abb6739064b31ac9ffafcf536b2ef70eac16b43a05a383e2eef7ed0f913b9`.
+- Type `0x6`, enclosing status `0x1`, both frame statuses `1`.
+- Recipient `0xbbABF5A253e85D3577D00fCED5b8835E328206da` received exactly 123 wei.
+- Duplicate submission and nonce modification without resigning were rejected.
+- Canonical block hash and finality were verified by the test.
+
+The full AA test passed again after activation, creating account
+`0x2caC18Ce522638F3a7c71029fc6928801Cb9bbeF` and sending through EntryPoint:
+
+- Creation: `0xb982b826b4e53c189d6f4d7af69605502ee0c5988dfdc9880bf3c4a618df49ca`.
+- Transfer: `0x7ab23179de7d59a031e0d25513eb4f74c750e6b91bb59369c8433c642c7ef9b1`.
+
+Portal and explorer returned HTTP 200 after activation; the explorer continued
+indexing the same chain. Native frame-specific UI/decoding is not claimed.
 
 ## Preserved data and operational boundaries
+
+One pre-fork container run was OOM-killed at **18:28:58 UTC**, after a memory
+limit had been applied to an already-running, initially uncapped process. It
+restarted automatically with the limit in place and recovered the existing
+chain. Subsequent checks showed no additional restart, low CPU and approximately
+2.5 GiB memory use. The launcher now sets 2.5 CPUs, 12 GiB RAM and no additional
+swap allowance at container creation. The restart and recovery are recorded
+explicitly; this short observation window is not a long-term soak test.
+
+Do not infer process health solely from the latest `OOMKilled` flag: it resets
+after a successful restart. Inspect Docker events and restart counts as well.
 
 Deployment files: `/opt/aa-pq/migration-nethermind-20260924`.
 Live container: `aa-pq-nethermind`.

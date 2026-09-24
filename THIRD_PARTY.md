@@ -21,7 +21,7 @@
   tracer and associated tests at commit
   `c9ad4b5dc3b6db053c3a770ead8130594eb51152` (Demerzel Solutions Limited,
   LGPL-3.0-only). The build script fetches upstream source separately, retaining
-  its copyright notices and [license](https://github.com/NethermindEth/nethermind/blob/c9ad4b5dc3b6db053c3a770ead8130594eb51152/LICENSE).
+  its copyright notices and [license](https://github.com/NethermindEth/nethermind/blob/c9ad4b5dc3b6db053c3a770ead8130594eb51152/LICENSE-LGPL).
 
 No browser owner keys, credentials, chain databases, or installed dependencies
 are included in this repository. The explicit devnet funding/executor keys
