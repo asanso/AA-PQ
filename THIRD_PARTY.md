@@ -17,6 +17,11 @@
   from eth-infinitism/account-abstraction (ISC) and hardhat-deploy (MIT).
   Contract source is fetched separately at the pinned revision in README.
 - ethers is installed from npm, with its own MIT license in the package.
+- `deploy/nethermind/tohex-prefix.patch` modifies Nethermind's JavaScript
+  tracer and associated tests at commit
+  `c9ad4b5dc3b6db053c3a770ead8130594eb51152` (Demerzel Solutions Limited,
+  LGPL-3.0-only). The build script fetches upstream source separately, retaining
+  its copyright notices and [license](https://github.com/NethermindEth/nethermind/blob/c9ad4b5dc3b6db053c3a770ead8130594eb51152/LICENSE).
 
 No browser owner keys, credentials, chain databases, or installed dependencies
 are included in this repository. The explicit devnet funding/executor keys

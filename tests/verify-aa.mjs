@@ -15,6 +15,7 @@ const funding=await post('/api/faucet',{address:state.sender,amount:'1'});assert
 assert.equal((await wait('eth_getTransactionReceipt',funding.hash)).status,'0x1');
 const bad={...state.userOperation,signature:Wallet.createRandom().signingKey.sign(state.hash).serialized};
 const invalid=await post('/bundler',{jsonrpc:'2.0',id:1,method:'eth_sendUserOperation',params:[bad,cfg.entryPoint]});assert.ok(invalid.error,'Wrong-owner signature must be rejected');
+assert.equal((await prepare()).hash,state.hash,'Rejected signature must leave the operation nonce/state unchanged');
 const eventAbi=new Interface(['event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)']);
 async function submit(s) {
   s.userOperation.signature=owner.signingKey.sign(s.hash).serialized;
@@ -35,5 +36,6 @@ const before=BigInt(await rpc('/rpc','eth_getBalance',[recipient,'latest']));
 const transfer=await submit(state);
 const after=BigInt(await rpc('/rpc','eth_getBalance',[recipient,'latest']));assert.equal(after-before,parseEther('0.001'));
 const replay=await post('/bundler',{jsonrpc:'2.0',id:1,method:'eth_sendUserOperation',params:[state.userOperation,cfg.entryPoint]});assert.ok(replay.error,'Used nonce must not execute again');
+assert.equal(BigInt(await rpc('/rpc','eth_getBalance',[recipient,'latest'])),after,'Rejected replay must not transfer value again');
 const blocked=await post('/rpc',{jsonrpc:'2.0',id:1,method:'eth_sendRawTransaction',params:['0x']});assert.ok(blocked.error,'Ordinary transaction submission must be blocked by wallet RPC proxy');
 console.log(JSON.stringify({passed:true,account:state.sender,creation,transfer,wrongSignatureRejected:true,replayRejected:true,ordinaryRpcSendBlocked:true},null,2));
