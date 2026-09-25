@@ -2,7 +2,7 @@ import {site} from './routes.js';
 import { formatUnits } from '/ethers.js';
 import { renderInputPanel, inputSize } from './input-data.js';
 import {renderTimestamp, formatTimestamp} from './timestamp.js';
-import {renderNativeFrames} from './native-frame-view.js';
+import {renderNativeFrames,renderNativeWitnesses,renderNativeMetadata} from './native-frame-view.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const int = value => value == null ? '—' : BigInt(value).toLocaleString('en-US');
 const short = value => String(value).slice(0, 10) + '…' + String(value).slice(-8);
@@ -41,6 +41,31 @@ export function renderTransactionDetails(data) {
   const attributes = [d.type != null ? badge('Tx type', d.type + ' (' + txType(d.type) + ')') : '', d.nonce != null ? badge('Nonce', int(d.nonce)) : '', d.transactionIndex != null ? badge('Position in block', int(d.transactionIndex)) : ''].join('');
   const input = renderInputPanel({ id: 'transactionInput', title: 'Transaction input data', value: data.inputData, decoded: data.inputDecoded, error: data.inputDataError, selector: true, creation: data.inputIsContractCreation, embedded: true, description: 'Complete transaction input.' });
   const feeExtras = (d.blobGasUsed != null ? row('Blob gas', int(d.blobGasUsed) + ' used · ' + eth(d.blobFeeWei), 'Blob gas and blob fee are separate from execution gas.') : '');
+  if (native) {
+    const included = block != null;
+    const inclusion = included ? 'Included in block' : pending ? 'Pending inclusion' : 'Inclusion unavailable';
+    return `<div class="tx-record native-tx-record"><div class="native-record-nav"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><span class="network-label">Daisugi Testnet · Type 0x06</span></div>${errors}
+      <section class="panel native-overview"><dl class="native-overview-grid">
+      ${row('Transaction hash',`<span class="hash-value">${mono(data.hash)}${copy(data.hash)}</span>`,'Unique identifier of this native frame transaction.','native-wide')}
+      ${row('Inclusion',`<span class="tx-status ${included?'success':'pending'}">${inclusion}</span>`,'Block inclusion is separate from the execution result of each frame.')}
+      ${row('Block',blockValue,'Containing block and confirmations at the latest observed height.')}
+      ${row('Sender',address(d.from ?? data.from),'Native transaction sender; execution targets appear in the frame sequence.')}
+      ${row('Timestamp',renderTimestamp(d.timestamp ?? data.timestamp,{pending:!included && pending}),'Timestamp of the containing block.')}
+      ${row('Total gas used',d.gasUsed != null ? int(d.gasUsed) : pending ? '<span class="tx-unavailable">Pending</span>' : notAvailable,'Total gas consumed according to the transaction receipt, including transaction overhead; distinct from the gas limit.')}
+      </dl></section>
+      ${renderNativeFrames(data.nativeFrame,{included})}
+      <div class="native-extra-grid"><details class="panel native-disclosure"><summary><span>Fees and transaction details</span><span class="disclosure-meta">${fee}</span><span class="disclosure-chevron" aria-hidden="true">›</span></summary><dl class="tx-properties">
+      ${row('Transaction fee',fee,'Actual receipt gas used × effective gas price, plus blob fees if applicable.')}
+      ${row('Gas price',price,'Effective price paid per unit of gas.')}${feeExtras}
+      ${row('Gas limit & usage',`${int(d.gasLimit)}<span class="fee-divider">|</span>${gasUsed}`,'Transaction gas limit and actual receipt gas usage.')}
+      ${row('Gas fees',`<div class="fee-parts">${caps}</div>`,'Block base fee and transaction fee caps.')}
+      ${row('Burnt & savings',`<div class="fee-parts"><span class="fee-badge burnt">Burnt: ${eth(d.burntExecutionFeeWei)}</span><span class="fee-badge saving">Fee savings: ${eth(d.feeSavingWei)}</span></div>`,'Burned fee and unused fee-cap allowance; savings are not an additional refund.')}
+      ${row('Other attributes',`<div class="attribute-list">${attributes || notAvailable}</div>`,'Envelope type, native nonce and transaction position in the block.')}
+      ${row('Internal transactions',internalTransfers(d.internalTransfers),'Internal transfer tracing is separate from individual frame execution results.')}
+      </dl><div class="native-body">${renderNativeMetadata(data.nativeFrame)}</div></details>
+      ${renderNativeWitnesses(data.nativeFrame)}</div>
+      <p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet · Test ETH has no monetary value.</p></div>`;
+  }
   return `<div class="tx-record"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><div class="tx-record-top"><span class="record-tab">Overview</span><span class="network-label">Daisugi Testnet <span class="mono">1337</span></span></div>${errors}` +
     section(row('Transaction hash', `<span class="hash-value">${mono(data.hash)}${copy(data.hash)}</span>`, 'Unique identifier of this transaction.') +
       row('Status', `<span class="tx-status ${status === 'Success' ? 'success' : status === 'Failed' ? 'failed' : 'pending'}">${status === 'Success' ? '✓ ' : status === 'Failed' ? '× ' : ''}${esc(status)}</span>`, 'Receipt execution status; distinct from each UserOperation result.') +
@@ -58,7 +83,7 @@ export function renderTransactionDetails(data) {
       row('Other attributes', `<div class="attribute-list">${attributes || notAvailable}</div>`, 'Transaction envelope type, sender nonce and zero-based position in the block.', 'tx-group-start') +
       (native ? '' : row('Input data', `<div class="inline-input-size">${esc(inputSize(data.inputData))}</div>${input}`, 'Complete transaction input, with supported ABI decoding and original byte access.', 'tx-input-row')) +
       row('More details', `<button type="button" class="tx-details-toggle" aria-expanded="true" data-advanced-toggle>− Click to show less</button>`, 'Collapse or expand the additional gas and input details.')) +
-    (native ? renderNativeFrames(data.nativeFrame) : '') + `<p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet transaction. Test ETH has no monetary value.</p></div>`;
+    `<p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet transaction. Test ETH has no monetary value.</p></div>`;
 }
 export function attachTransactionDetailEvents(container) {
   container.addEventListener('click', async event => {

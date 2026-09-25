@@ -77,11 +77,6 @@
         <h2>Network activity</h2><span id="activityStatus" class="subtle" role="status">Connecting to Daisugi…</span>
       </div>
       <div id="overviewError" class="inline-notice error" role="status" hidden></div>
-      <section class="panel frame-activity">
-        <div class="panel-heading"><h3>Latest native frame transactions</h3><span class="panel-kicker">EIP-8141 PROTOTYPE</span></div>
-        <p id="frameCoverage" class="frame-coverage" role="status">Reading index coverage…</p>
-        <div id="latestFrames" class="activity-list"><p class="empty-state">Loading frame transactions…</p></div>
-      </section>
       <div class="activity-grid">
         <section class="panel">
           <div class="panel-heading">
@@ -99,13 +94,14 @@
             <p class="empty-state">Loading UserOperations…</p>
           </div>
         </section>
-        <section class="panel">
+        <section class="panel frame-activity">
           <div class="panel-heading">
-            <h3>Latest ERC-4337 accounts</h3><span id="metricAccounts" class="panel-kicker">—</span>
+            <h3>Latest native frame transactions</h3><span class="panel-kicker">0x06</span>
           </div>
-          <div id="latestAccounts" class="activity-list">
-            <p class="empty-state">Loading accounts…</p>
+          <div id="latestFrames" class="activity-list">
+            <p class="empty-state">Loading frame transactions…</p>
           </div>
+          <details class="frame-coverage"><summary>Index coverage</summary><p id="frameCoverage" role="status">Reading index coverage…</p></details>
         </section>
       </div>
       <section class="start-strip" aria-labelledby="startTitle">

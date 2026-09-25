@@ -63,19 +63,17 @@ function showOverview() {
   $('metricFee').textContent = fee != null ? feeInWei ? integer(fee) : units(fee,9) : '—';
   $('metricFeeUnit').textContent = 'Current block · ' + (feeInWei || fee == null ? 'Wei' : 'Gwei');
   $('metricOps').textContent = overview ? integer(overview.operationCount) : '—';
-  $('metricAccounts').textContent = overview ? integer(overview.walletCount) : '—';
   const frames = overview?.nativeFrames;
   $('metricFrames').textContent = frames?.count == null ? '—' : integer(frames.count);
   $('frameIndexStatus').textContent = frames?.status === 'complete' ? 'Type 0x06 · native transactions' : 'Partial index · see coverage below';
   $('frameCoverage').textContent = frameCoverage(frames);
-  $('latestFrames').innerHTML = frames?.transactions?.slice(0,10).map(tx=>row('Fr',link('tx',tx.hash),'From '+link('address',tx.from)+' · '+renderTimestamp(tx.timestamp,{compact:true}),`${integer(tx.frameCount)} frames<br>${frameOutcome(tx)}`)).join('') || empty(frames?.count != null ? 'No native frame transactions in the indexed range.' : 'Native frame data is unavailable.');
+  $('latestFrames').innerHTML = frames?.transactions?.slice(0,5).map(tx=>row('Fr',link('tx',tx.hash),'From '+link('address',tx.from,short(tx.from,5))+'<br>'+renderTimestamp(tx.timestamp,{compact:true}),`${integer(tx.frameCount)} frames<br>${frameOutcome(tx)}`)).join('') || empty(frames?.count != null ? 'No native frame transactions in the indexed range.' : 'Native frame data is unavailable.');
   $('overviewError').hidden = !explorerError && !networkError;
   $('overviewError').textContent = [networkError && 'Network: ' + networkError, explorerError && 'Explorer: ' + explorerError].filter(Boolean).join(' ');
   $('activityStatus').textContent = !overview ? 'Explorer unavailable' : overview.entryPointIndex?.message ||
     (overview.indexedTo < 0 ? 'ERC-4337 index is warming up…' : 'ERC-4337 indexed through block ' + integer(overview.indexedTo));
   $('latestBlocks').innerHTML = overview?.blocks?.slice(0,5).map(block => row('Bk',link('block',block.number),esc(age(block.timestamp)),`${integer(block.transactionCount)} txns`)).join('') || empty(overview ? 'No blocks indexed yet.' : 'Block data is unavailable.');
   $('latestOperations').innerHTML = overview?.operations?.slice(0,5).map(op => row('Op',link('op',op.userOpHash),'From ' + link('address',op.sender,short(op.sender,5)) + '<br>' + renderTimestamp(op.timestamp,{compact:true}),outcome(op.success))).join('') || empty(overview ? 'No UserOperations indexed yet.' : 'UserOperation data is unavailable.');
-  $('latestAccounts').innerHTML = overview?.wallets?.slice(0,5).map(account => row('Ac',link('address',account.sender),'Deployed in block ' + link('block',account.blockNumber),'<span class="tag">ERC-4337</span>')).join('') || empty(overview ? 'No account deployments indexed yet.' : 'Account data is unavailable.');
 }
 async function refresh() {
   if (refreshing) return;
@@ -112,6 +110,7 @@ function transactionInputPanel(data, enclosing = false) {
 function renderDetail(kind, data) {
   clearInputPanels();
   const section=document.querySelector('[data-page="record"]');section.classList.add('show-record');
+  section.classList.toggle('show-native-record',kind==='tx' && (Number(data.transactionDetails?.type ?? data.type)===6 || !!data.nativeFrame));
   section.querySelector('.page-heading h1').textContent=kind==='tx'?'Transaction details':kind==='op'?'UserOperation details':kind==='address'?'Address details':'Block details';
   section.querySelector('.page-heading p:not(.eyebrow)').textContent='On-chain records from Daisugi.';
   if (kind === 'block') return detail('Block ' + integer(data.number),[['Block number',mono(integer(data.number))],['Block hash',mono(data.hash)],['Timestamp',renderTimestamp(data.timestamp)],['Transactions',integer(data.transactionCount)],['Gas used',mono(integer(data.gasUsed))],['Gas limit',mono(integer(data.gasLimit))]]) + table('Transactions','Included in this block',['Transaction hash','Timestamp (UTC)'],(data.transactions || []).map(tx=>[link('tx',typeof tx === 'string' ? tx : tx.hash,typeof tx === 'string' ? tx : tx.hash),renderTimestamp(data.timestamp,{compact:true})]),'This block contains no transactions.');
@@ -138,7 +137,8 @@ async function loadDetail(kind, id) {
     } else data = await api('/api/explorer/' + kind + '/' + id);
     if (version !== routeVersion) return;
     $('explorerContent').innerHTML = renderDetail(actualKind,data);
-    $('explorerStatus').textContent = 'Read from Daisugi. Transaction inclusion, individual frame execution and UserOperation execution are separate results.';
+    $('explorerStatus').textContent = actualKind==='tx' && (Number(data.transactionDetails?.type ?? data.type)===6 || data.nativeFrame)
+      ? '' : 'Read from Daisugi. Transaction inclusion, individual frame execution and UserOperation execution are separate results.';
   } catch(error) {
     if (version !== routeVersion) return;
     $('explorerContent').innerHTML = '<div class="inline-notice error" role="status">' + esc(error.message) + ' Check the identifier and try again.</div>';
