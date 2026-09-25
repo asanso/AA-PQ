@@ -24,6 +24,11 @@ contract-deployment recipe uses a pinned SimpleAccount baseline. Account and
 verifier implementations on a research network can differ; a portal update does
 not deploy or change those contracts.
 
+The Daisugi deployment has been migrated from Geth to a pinned Nethermind frame-tx
+prototype without resetting chain history. Build, migration and fork instructions
+are in [deploy/nethermind](deploy/nethermind/README.md); the original Kurtosis
+recipe below still provisions Geth. ERC-4337 remains available through Alto.
+
 | Service | Default port |
 | --- | --- |
 | Portal and faucet | 3000 |
@@ -261,3 +266,8 @@ process-local cooldown is not a distributed abuse-prevention system.
 Inter is self-hosted with its included SIL Open Font License. Third-party
 attribution and network component licenses are listed in
 [THIRD_PARTY.md](THIRD_PARTY.md).
+
+## Native frame integration
+
+See [native frame integration](docs/NATIVE-FRAMES.md) for the account, original
+NiceTry wallet, HTTPS gateway, client budget and staging acceptance workflow.

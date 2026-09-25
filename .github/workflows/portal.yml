@@ -37,12 +37,26 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             explorer/package-lock.json
+            frame-account/package-lock.json
+            native-wallet-original/package-lock.json
       - name: Install locked dependencies
         run: |
           npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
           npm ci --prefix explorer --ignore-scripts --no-audit --no-fund
+          npm ci --prefix frame-account --ignore-scripts --no-audit --no-fund
+          npm ci --prefix native-wallet-original --ignore-scripts --no-audit --no-fund
       - name: Check source and run isolated tests
         run: bash scripts/check-portal.sh
+      - name: Check the native account and wallet
+        run: |
+          npm test --prefix frame-account
+          node --test frame-account/tests/dev-rpc.test.mjs
+          npm run test:frames --prefix native-wallet-original
+      - name: Build the wallet with non-routable test endpoints
+        env:
+          NICETRY_RPC_URL: https://staging.invalid/rpc
+          NICETRY_EXPLORER_URL: https://staging.invalid/explorer
+        run: npm run build --prefix native-wallet-original -- --outDir nicetry-daisugi-ci
 
   package:
     name: Package approved source

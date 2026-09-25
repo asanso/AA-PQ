@@ -1,0 +1,128 @@
+    [Test]
+    public void DaisugiSphincsFactory_ValidFrame([Values] bool deploy, [Values] bool simulate)
+    {
+        Transaction tx = PrepareDaisugiFrame(deploy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.LessThanOrEqualTo(500_000UL));
+            Assert.That(FrameTxValidation.ValidationWorkStateGas(tx), Is.LessThanOrEqualTo(500_000UL));
+        }
+        Address sender = tx.SenderAddress!;
+        Address receiver = tx.Frames![^1].Target!;
+        ulong initialNonce = deploy ? 0UL : 1UL;
+        if (simulate)
+        {
+            (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+                Assert.That(tracer.Violated, Is.False, tracer.ViolationReason);
+                Assert.That(tracer.Payer, Is.EqualTo(sender));
+                Assert.That(_stateProvider.GetNonce(sender), Is.EqualTo(initialNonce));
+                Assert.That(_stateProvider.GetBalance(receiver), Is.EqualTo(UInt256.Zero));
+            }
+        }
+        else
+        {
+            TransactionResult result = Execute(tx);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+                Assert.That(_stateProvider.GetBalance(receiver), Is.EqualTo((UInt256)123));
+                Assert.That(_stateProvider.GetNonce(sender), Is.GreaterThan(initialNonce));
+            }
+            ulong nonceAfter = _stateProvider.GetNonce(sender);
+            TransactionResult replay = Execute(tx);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(replay.TransactionExecuted, Is.False, "A consumed native nonce must reject replay");
+                Assert.That(_stateProvider.GetNonce(sender), Is.EqualTo(nonceAfter));
+                Assert.That(_stateProvider.GetBalance(receiver), Is.EqualTo((UInt256)123));
+            }
+        }
+    }
+
+    [Test]
+    public void DaisugiSphincsFactory_RejectsUnauthorizedFrame(
+        [Values("signature", "short-signature", "long-signature", "custom-message", "duplicate-signature",
+            "recipient", "value", "calldata", "nonce", "chain", "fee", "suffix", "verifier-false", "verifier-revert")] string mutation)
+    {
+        Transaction tx = PrepareDaisugiFrame(false);
+        TxFrameSignature witness = tx.FrameSignatures![0];
+        byte[] signature = witness.Signature.ToArray();
+        TxFrame execution = tx.Frames![^1];
+        switch (mutation)
+        {
+            case "signature": signature[0] ^= 1; break;
+            case "short-signature": signature = signature[..^1]; break;
+            case "long-signature": signature = [.. signature, 0]; break;
+            case "custom-message":
+                tx.FrameSignatures[0] = new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, new byte[32], signature);
+                break;
+            case "duplicate-signature": tx.FrameSignatures = [witness, witness]; break;
+            case "recipient":
+                tx.Frames[^1] = new TxFrame(execution.Mode, execution.Flags, TestItem.AddressC,
+                    execution.ExecutionGasLimit, execution.StateGasLimit, execution.Value, execution.Data);
+                break;
+            case "value":
+                tx.Frames[^1] = new TxFrame(execution.Mode, execution.Flags, execution.Target,
+                    execution.ExecutionGasLimit, execution.StateGasLimit, (UInt256)124, execution.Data);
+                break;
+            case "calldata":
+                tx.Frames[^1] = new TxFrame(execution.Mode, execution.Flags, execution.Target,
+                    execution.ExecutionGasLimit, execution.StateGasLimit, execution.Value, new byte[] { 1 });
+                break;
+            case "nonce": tx.Nonce++; break;
+            case "chain": tx.ChainId++; break;
+            case "fee": tx.DecodedMaxFeePerGas++; break;
+            case "suffix":
+                TxFrame verify = tx.Frames[0];
+                tx.Frames[0] = new TxFrame(verify.Mode, verify.Flags, verify.Target,
+                    verify.ExecutionGasLimit, verify.StateGasLimit, verify.Value, new byte[40]);
+                break;
+            case "verifier-false":
+                _stateProvider.InsertCode(DaisugiVerifier, Bytes.FromHexString("0x600060005260206000f3"), Spec);
+                _stateProvider.Commit(Spec);
+                break;
+            case "verifier-revert":
+                _stateProvider.InsertCode(DaisugiVerifier, Bytes.FromHexString("0x60006000fd"), Spec);
+                _stateProvider.Commit(Spec);
+                break;
+        }
+        if (mutation is "signature" or "short-signature" or "long-signature")
+        {
+            tx.FrameSignatures[0] = new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, signature);
+        }
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False, mutation);
+            Assert.That(tracer.Payer, Is.Null, mutation);
+            Assert.That(_stateProvider.GetNonce(tx.SenderAddress!), Is.EqualTo(1UL));
+        }
+    }
+
+    private static readonly Address DaisugiVerifier = new("0xf505AD2Cff58b84E145D637d99Fae0617B5685BE");
+
+    private Transaction PrepareDaisugiFrame(bool deploy)
+    {
+        string path = Environment.GetEnvironmentVariable("DAISUGI_FRAME_FIXTURE")
+            ?? throw new InvalidOperationException("DAISUGI_FRAME_FIXTURE is required");
+        using System.Text.Json.JsonDocument fixture = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(path));
+        System.Text.Json.JsonElement root = fixture.RootElement;
+        string raw = root.GetProperty("cases")[deploy ? 1 : 0].GetProperty("raw").GetString()!;
+        RlpReader reader = new(Bytes.FromHexString(raw));
+        Transaction tx = TxDecoder.Instance.Decode(ref reader, RlpBehaviors.SkipTypedWrapping)!;
+        DeployContract(DaisugiVerifier, Bytes.FromHexString(root.GetProperty("verifierCode").GetString()!));
+        DeployContract(new Address(root.GetProperty("factory").GetString()!),
+            Bytes.FromHexString(root.GetProperty("factoryCode").GetString()!));
+        DeployContract(new Address(root.GetProperty("implementation").GetString()!),
+            Bytes.FromHexString(root.GetProperty("implementationCode").GetString()!));
+        DeployContract(tx.SenderAddress!, deploy ? [] : Bytes.FromHexString(root.GetProperty("accountCode").GetString()!), 1.Ether);
+        if (!deploy)
+        {
+            _stateProvider.IncrementNonce(tx.SenderAddress!);
+            _stateProvider.Commit(Spec);
+        }
+        return tx;
+    }

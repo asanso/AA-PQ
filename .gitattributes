@@ -2,3 +2,5 @@
 .github/workflows/*.yml text eol=lf
 *.js text eol=lf
 *.mjs text eol=lf
+# Unified-diff context markers include a space on otherwise empty lines.
+deploy/nethermind/*.patch whitespace=-blank-at-eol
