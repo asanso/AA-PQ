@@ -28,6 +28,13 @@ function link(type, value, label) {
   return `<a class="mono" href="${esc(site.href({page:'explorer',kind:type,id:value}))}" title="${esc(value)}">${esc(label ?? (type === 'block' ? integer(value) : short(value)))}</a>`;
 }
 const outcome = success => typeof success === 'boolean' ? `<span class="status-text${success ? '' : ' fail'}">${success ? 'Success' : 'Reverted'}</span>` : '<span class="subtle">Unknown</span>';
+const frameOutcome = tx => tx.status !== 'Success' ? esc(tx.status) : !tx.resultsComplete ? 'Results incomplete' :
+  tx.frameStatuses.every(status=>status==='Success') ? '<span class="status-text">All frames succeeded</span>' : '<span class="status-text fail">Frame failure / skip</span>';
+function frameCoverage(index) {
+  if (!index || index.count == null) return index?.message || 'Native frame index is unavailable.';
+  return `Coverage: blocks ${integer(index.indexedFrom)}–${integer(index.indexedTo)}. ` +
+    (index.status === 'complete' ? 'Indexed from frame activation.' : 'Historical indexing or tip synchronization is in progress; this count is partial.') + (index.message ? ' '+index.message : '');
+}
 let page = 'explorer', sub = '', routeVersion = 0, refreshing = false;
 let overview = null, network = null, explorerError = '', networkError = '';
 
@@ -57,9 +64,15 @@ function showOverview() {
   $('metricFeeUnit').textContent = 'Current block · ' + (feeInWei || fee == null ? 'Wei' : 'Gwei');
   $('metricOps').textContent = overview ? integer(overview.operationCount) : '—';
   $('metricAccounts').textContent = overview ? integer(overview.walletCount) : '—';
+  const frames = overview?.nativeFrames;
+  $('metricFrames').textContent = frames?.count == null ? '—' : integer(frames.count);
+  $('frameIndexStatus').textContent = frames?.status === 'complete' ? 'Type 0x06 · native transactions' : 'Partial index · see coverage below';
+  $('frameCoverage').textContent = frameCoverage(frames);
+  $('latestFrames').innerHTML = frames?.transactions?.slice(0,10).map(tx=>row('Fr',link('tx',tx.hash),'From '+link('address',tx.from)+' · '+renderTimestamp(tx.timestamp,{compact:true}),`${integer(tx.frameCount)} frames<br>${frameOutcome(tx)}`)).join('') || empty(frames?.count != null ? 'No native frame transactions in the indexed range.' : 'Native frame data is unavailable.');
   $('overviewError').hidden = !explorerError && !networkError;
   $('overviewError').textContent = [networkError && 'Network: ' + networkError, explorerError && 'Explorer: ' + explorerError].filter(Boolean).join(' ');
-  $('activityStatus').textContent = overview ? 'Indexed through block ' + integer(overview.indexedTo) : 'Explorer unavailable';
+  $('activityStatus').textContent = !overview ? 'Explorer unavailable' : overview.entryPointIndex?.message ||
+    (overview.indexedTo < 0 ? 'ERC-4337 index is warming up…' : 'ERC-4337 indexed through block ' + integer(overview.indexedTo));
   $('latestBlocks').innerHTML = overview?.blocks?.slice(0,5).map(block => row('Bk',link('block',block.number),esc(age(block.timestamp)),`${integer(block.transactionCount)} txns`)).join('') || empty(overview ? 'No blocks indexed yet.' : 'Block data is unavailable.');
   $('latestOperations').innerHTML = overview?.operations?.slice(0,5).map(op => row('Op',link('op',op.userOpHash),'From ' + link('address',op.sender,short(op.sender,5)) + '<br>' + renderTimestamp(op.timestamp,{compact:true}),outcome(op.success))).join('') || empty(overview ? 'No UserOperations indexed yet.' : 'UserOperation data is unavailable.');
   $('latestAccounts').innerHTML = overview?.wallets?.slice(0,5).map(account => row('Ac',link('address',account.sender),'Deployed in block ' + link('block',account.blockNumber),'<span class="tag">ERC-4337</span>')).join('') || empty(overview ? 'No account deployments indexed yet.' : 'Account data is unavailable.');
@@ -85,6 +98,9 @@ function detail(title, fields, extra='') {
 function operationRows(operations) {
   return table('UserOperations','Events associated with this record',['Hash','Sender','Block','Timestamp (UTC)','Result'],operations.map(o=>[link('op',o.userOpHash),link('address',o.sender),link('block',o.blockNumber),renderTimestamp(o.timestamp,{compact:true}),outcome(o.success)]),'No UserOperation events indexed for this record.');
 }
+function frameRows(index) {
+  return table('Native frame transactions',frameCoverage(index),['Hash','Sender','Block','Timestamp (UTC)','Frame execution'],(index?.transactions || []).map(tx=>[link('tx',tx.hash),link('address',tx.from),link('block',tx.blockNumber),renderTimestamp(tx.timestamp,{compact:true}),frameOutcome(tx)]),'No matching transactions in the indexed range.');
+}
 const isHexData = value => typeof value === 'string' && /^0x(?:[0-9a-fA-F]{2})*$/.test(value);
 function dataSize(value) {
   return isHexData(value) ? `${integer((value.length-2)/2)} bytes · ${integer((value.length-2)*4)} bits` : 'Unavailable';
@@ -99,7 +115,7 @@ function renderDetail(kind, data) {
   section.querySelector('.page-heading h1').textContent=kind==='tx'?'Transaction details':kind==='op'?'UserOperation details':kind==='address'?'Address details':'Block details';
   section.querySelector('.page-heading p:not(.eyebrow)').textContent='On-chain records from Daisugi.';
   if (kind === 'block') return detail('Block ' + integer(data.number),[['Block number',mono(integer(data.number))],['Block hash',mono(data.hash)],['Timestamp',renderTimestamp(data.timestamp)],['Transactions',integer(data.transactionCount)],['Gas used',mono(integer(data.gasUsed))],['Gas limit',mono(integer(data.gasLimit))]]) + table('Transactions','Included in this block',['Transaction hash','Timestamp (UTC)'],(data.transactions || []).map(tx=>[link('tx',typeof tx === 'string' ? tx : tx.hash,typeof tx === 'string' ? tx : tx.hash),renderTimestamp(data.timestamp,{compact:true})]),'This block contains no transactions.');
-  if (kind === 'address') return detail('Address', [['Address',mono(data.address)],['Balance',esc(data.balance) + ' ETH'],['Account type',esc(data.type)],['Deployment',data.deployment ? link('tx',data.deployment.transactionHash) : '<span class="subtle">No indexed deployment</span>']]) + operationRows(data.operations || []);
+  if (kind === 'address') return detail('Address', [['Address',mono(data.address)],['Balance',esc(data.balance) + ' ETH'],['Account type',esc(data.type)],['ERC-4337 deployment',data.deployment ? link('tx',data.deployment.transactionHash) : '<span class="subtle">No indexed EntryPoint deployment</span>']]) + frameRows(data.nativeFrames) + operationRows(data.operations || []);
   if (kind === 'op') {
     return detail('UserOperation', [['UserOperation hash',mono(data.userOpHash)],['Sender',link('address',data.sender,data.sender)],['Transaction',link('tx',data.transactionHash,data.transactionHash)],['Block',link('block',data.blockNumber)],['Timestamp',renderTimestamp(data.timestamp ?? data.transactionDetails?.timestamp)],['Result',outcome(data.success)],['Nonce',mono(data.nonce)],['Actual gas used',mono(integer(data.actualGasUsed))],['Actual gas cost',esc(units(data.actualGasCost)) + ' ETH'],['Paymaster',link('address',data.paymaster,data.paymaster)],['Signature size',dataSize(data.signature)],['Call data size',dataSize(data.operationCallData)]])
       + dataPanel({id:'operationSignature',title:'Signature data',value:data.signature,description:'Signature submitted for this UserOperation. Byte and bit counts describe its encoded length, not its security strength.'})
@@ -122,7 +138,7 @@ async function loadDetail(kind, id) {
     } else data = await api('/api/explorer/' + kind + '/' + id);
     if (version !== routeVersion) return;
     $('explorerContent').innerHTML = renderDetail(actualKind,data);
-    $('explorerStatus').textContent = 'Read from Daisugi. Transaction inclusion and UserOperation execution are separate results.';
+    $('explorerStatus').textContent = 'Read from Daisugi. Transaction inclusion, individual frame execution and UserOperation execution are separate results.';
   } catch(error) {
     if (version !== routeVersion) return;
     $('explorerContent').innerHTML = '<div class="inline-notice error" role="status">' + esc(error.message) + ' Check the identifier and try again.</div>';

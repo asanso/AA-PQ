@@ -1,7 +1,10 @@
 import {Interface} from 'ethers';
 import {decodeInputData} from './input-decoder.mjs';
+import {isFrameTransaction} from '../explorer/native-frame.mjs';
+import {nativeAccountProfile} from './native-profile.mjs';
 
 const packed = '(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)';
+const nativeFactoryInput = new Interface(['function createAccount(bytes32 pkSeed,bytes32 pkRoot,bytes32 salt)']);
 export const entryPointInput = new Interface([
   `function handleOps(${packed}[] ops,address beneficiary)`,
   `function handleAggregatedOps((${packed}[] userOps,address aggregator,bytes signature)[] opsPerAggregator,address beneficiary)`,
@@ -34,6 +37,11 @@ export async function addTransactionInput({provider, data, kind, id, entryPoint,
     if (!isHexData(transaction.data)) throw new Error('The RPC returned invalid transaction input.');
     const innerCallData = kind === 'op' ? operationCallData(transaction,data,entryPoint) : null;
     const inputIsEntryPoint = entryPoint && transaction.to?.toLowerCase() === entryPoint.toLowerCase();
+    const creation = transaction.to == null && !isFrameTransaction(transaction);
+    const nativeFrame = data.nativeFrame ? {...data.nativeFrame,accountProfile:await nativeAccountProfile(provider,transaction),frames:data.nativeFrame.frames?.map(frame=>({
+      ...frame, inputDecoded:decodeInputData(frame.data,frame.target?.toLowerCase() === '0xd07fcbdca6dea83b523faf95386cea236e32d989'
+        ? {abi:nativeFactoryInput,abiSource:'Daisugi native factory ABI template'} : {})
+    }))} : null;
     let transactionDetails = null;
     if (loadTransactionDetails) {
       try { transactionDetails = await loadTransactionDetails(transaction); }
@@ -43,10 +51,10 @@ export async function addTransactionInput({provider, data, kind, id, entryPoint,
     }
     return {
       ...data, ...(transactionDetails?{transactionDetails}:{}), inputData:transaction.data, inputDataError:null,
-      inputIsContractCreation:transaction.to == null,
+      ...(nativeFrame ? {nativeFrame} : {}), inputIsContractCreation:creation,
       inputDecoded:decodeInputData(transaction.data, {
         ...(inputIsEntryPoint ? {abi:entryPointInput,abiSource:'Packed EntryPoint ABI'} : {}),
-        creation:transaction.to == null
+        creation
       }),
       ...(kind === 'op' ? {operationCallData:innerCallData,operationCallDecoded:decodeInputData(innerCallData)} : {})
     };

@@ -14,6 +14,10 @@ including complete signatures, transaction input and decoded calldata when a
 supported ABI is available. Signature sizes describe encoded bytes and bits, not
 cryptographic security strength.
 
+Native type-`0x06` frame transactions have a separate counter, per-frame results,
+calldata and complete signature witnesses. See [Native frame transactions](docs/NATIVE_FRAMES.md)
+for prototype scope, index coverage and the separately enabled public RPC gateway.
+
 The network recipe in this repository runs Geth and Lighthouse through Kurtosis,
 with Alto handling UserOperations through EntryPoint v0.9. The original
 contract-deployment recipe uses a pinned SimpleAccount baseline. Account and

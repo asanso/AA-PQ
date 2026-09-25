@@ -1433,3 +1433,26 @@ main {padding-bottom:40px;}
   .explorer-description {font-size:12px;margin-bottom:14px;}
   .explorer-guide {display:inline-block;margin-bottom:20px;}
 }
+
+/* Native frame records share the portal's existing light and dark tokens. */
+.frame-activity { margin-bottom:18px }
+.frame-coverage { padding:12px 20px; margin:0; color:var(--muted); font-size:11px; border-bottom:1px solid var(--line) }
+.frame-activity .activity-list { min-height:0; max-height:390px; overflow:auto }
+.native-summary,.native-frame { margin-top:16px }
+.native-body { padding:18px 22px; min-width:0; font-size:12px }
+.native-body>p { margin:0 0 16px; line-height:1.65 }
+.native-fields { margin:0 0 18px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 30px }
+.native-fields>div:first-child { grid-column:1/-1 }
+.native-fields dt { color:var(--muted); font-size:11px; margin-bottom:6px }
+.native-fields dd { margin:0; overflow-wrap:anywhere }
+.native-mode { color:var(--muted); font-weight:400; margin-left:12px; font-size:11px }
+.native-frame .embedded-input { margin-top:16px }
+.native-raw { margin-top:16px }
+.native-raw summary { cursor:pointer; color:var(--accent); font-size:11px }
+.native-raw pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:340px; overflow:auto; font-size:11px; line-height:1.7; padding:12px; background:var(--paper); border:1px solid var(--line); border-radius:4px }
+@media(max-width:760px) {
+  .native-body { padding:16px }
+  .native-fields { grid-template-columns:1fr }
+  .frame-activity .activity-row { align-items:flex-start }
+  .frame-activity .row-meta { max-width:115px; white-space:normal }
+}

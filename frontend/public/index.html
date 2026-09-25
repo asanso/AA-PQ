@@ -70,13 +70,18 @@
             class="metric-value">—</strong><small id="metricFeeUnit">Current block · Wei</small></div>
         <div class="metric"><span class="metric-label">Indexed UserOperations</span><strong id="metricOps"
             class="metric-value">—</strong><small>ERC-4337 EntryPoint events</small></div>
-        <div class="metric"><span class="metric-label">Smart accounts</span><strong id="metricAccounts"
-            class="metric-value">—</strong><small>Indexed account deployments</small></div>
+        <div class="metric"><span class="metric-label">Indexed frame transactions</span><strong id="metricFrames"
+            class="metric-value">—</strong><small id="frameIndexStatus">Reading native frame index…</small></div>
       </section>
       <div class="activity-heading">
         <h2>Network activity</h2><span id="activityStatus" class="subtle" role="status">Connecting to Daisugi…</span>
       </div>
       <div id="overviewError" class="inline-notice error" role="status" hidden></div>
+      <section class="panel frame-activity">
+        <div class="panel-heading"><h3>Latest native frame transactions</h3><span class="panel-kicker">EIP-8141 PROTOTYPE</span></div>
+        <p id="frameCoverage" class="frame-coverage" role="status">Reading index coverage…</p>
+        <div id="latestFrames" class="activity-list"><p class="empty-state">Loading frame transactions…</p></div>
+      </section>
       <div class="activity-grid">
         <section class="panel">
           <div class="panel-heading">
@@ -96,7 +101,7 @@
         </section>
         <section class="panel">
           <div class="panel-heading">
-            <h3>Latest smart accounts</h3><span class="panel-kicker">ACCOUNTS</span>
+            <h3>Latest ERC-4337 accounts</h3><span id="metricAccounts" class="panel-kicker">—</span>
           </div>
           <div id="latestAccounts" class="activity-list">
             <p class="empty-state">Loading accounts…</p>

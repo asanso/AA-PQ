@@ -15,7 +15,7 @@ export function transactionMetrics(tx,receipt,block,head) {
   const execution=used!=null&&price!=null?used*price:null;
   const blobUsed=quantity(receipt?.blobGasUsed),blobPrice=quantity(receipt?.blobGasPrice);
   const blobFee=blobUsed!=null&&blobPrice!=null?blobUsed*blobPrice:null;
-  const isBlob=Number(tx.type)===3;
+  const isBlob=Number(tx.type)===3 || (Array.isArray(tx.blobVersionedHashes) && tx.blobVersionedHashes.length>0);
   const fee=execution!=null&&(!isBlob||blobFee!=null)?execution+(blobFee||0n):null;
   const burnt=used!=null&&base!=null?used*base:null;
   const saving=used!=null&&price!=null&&cap!=null?(cap>price?cap-price:0n)*used:null;
@@ -62,6 +62,7 @@ export function summarizeCallTrace(root) {
 export function createTransactionDetails({provider,rpcUrl,fetchImpl=fetch,now=Date.now}) {
   const traces=new Map(),pending=new Map();let active=0;
   async function trace(tx,receipt) {
+    if (Number(tx.type) === 6) return {status:'unavailable',message:'Frame execution results are shown below. Internal ETH transfers are not reconstructed for native frame transactions; a frame status alone does not establish committed transfers after batch rollback.'};
     if(!receipt)return {status:'unavailable',message:tx.blockNumber==null?'Internal transfers are available after the transaction is mined.':'A receipt is required to inspect internal transfers.'};
     if(!rpcUrl)return {status:'unavailable',message:'Transaction tracing is not configured for this environment.'};
     const key=tx.hash+':'+receipt.blockHash;

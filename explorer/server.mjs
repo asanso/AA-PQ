@@ -4,17 +4,29 @@ import {ethers} from 'ethers';
 import {operationSignature} from './user-operation.mjs';
 import {createBlockTimestampReader} from './block-timestamps.mjs';
 import {createPortalProxy} from './portal-proxy.mjs';
+import {homedir} from 'node:os';
+import {join} from 'node:path';
+import {createFrameIndex} from './frame-index.mjs';
+import {isFrameTransaction, nativeFrameDetails} from './native-frame.mjs';
 
 const port = Number(process.env.PORT || 3001);
 const portalProxy = createPortalProxy({origin:process.env.PORTAL_ORIGIN});
-const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || 'http://127.0.0.1:8545');
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || 'http://127.0.0.1:8545',undefined,{batchMaxCount:1});
+const frameIndex = createFrameIndex({rpc:(method,params)=>provider.send(method,params),
+  cacheFile:process.env.FRAME_INDEX_CACHE || join(homedir(),'.cache','daisugi-frame-index',`${port}.json`)});
+// Native indexing never blocks a page request or the existing EntryPoint index.
+async function indexFrames() {
+  await frameIndex.update();
+  setTimeout(indexFrames,frameIndex.snapshot().status === 'indexing' ? 250 : 4000).unref();
+}
+void indexFrames();
 const addBlockTimestamps = createBlockTimestampReader(provider);
 const entryPoint = process.env.ENTRY_POINT || '0x433709009B8330FDa32311DF1C2AFA402eD8D009';
 const iface = new ethers.Interface([
   'event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)',
   'event AccountDeployed(bytes32 indexed userOpHash,address indexed sender,address factory,address paymaster)',
 ]);
-let indexedTo = -1, operations = [], deployments = [], syncing;
+let indexedTo = -1, operations = [], deployments = [], syncing, entryPointIndexError = null;
 const serialize = value => JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v);
 function event(log) {
   const parsed = iface.parseLog(log);
@@ -39,16 +51,19 @@ async function sync() {
         else if (item?.type === 'AccountDeployed') nextDeployments.push(item);
       }
     }
-    operations = nextOps; deployments = nextDeployments; indexedTo = head;
+    operations = nextOps; deployments = nextDeployments; indexedTo = head; entryPointIndexError = null;
     return head;
   })().finally(() => {syncing = null;});
   return syncing;
 }
 const blockSummary = block => ({number:block.number, hash:block.hash, timestamp:block.timestamp, gasUsed:block.gasUsed, gasLimit:block.gasLimit, transactionCount:block.transactions.length, transactions:block.transactions});
 async function overview() {
-  const head = await sync();
+  const head = await provider.getBlockNumber();
+  void sync().catch(()=>{entryPointIndexError = 'EntryPoint indexing is unavailable. Previously indexed records are retained.';});
   const blocks = (await Promise.all(Array.from({length:Math.min(12, head+1)}, (_, i) => provider.getBlock(head-i)))).filter(Boolean).map(blockSummary);
-  return {chainId:Number((await provider.getNetwork()).chainId), entryPoint, indexedTo, operationCount:operations.length, walletCount:new Set(deployments.map(d => d.sender)).size, blocks, operations:await addBlockTimestamps(operations.slice(-20).reverse()), wallets:deployments.slice(-100).reverse()};
+  return {chainId:Number((await provider.getNetwork()).chainId), entryPoint, indexedTo,
+    entryPointIndex:{status:entryPointIndexError ? 'degraded' : indexedTo < 0 ? 'initializing' : indexedTo === head ? 'complete' : 'indexing',message:entryPointIndexError},
+    operationCount:indexedTo < 0 ? null : operations.length, walletCount:indexedTo < 0 ? null : new Set(deployments.map(d => d.sender)).size, blocks, operations:await addBlockTimestamps(operations.slice(-20).reverse()), wallets:deployments.slice(-100).reverse(), nativeFrames:frameIndex.snapshot()};
 }
 async function api(path) {
   if (path === '/api/overview') return overview();
@@ -61,9 +76,15 @@ async function api(path) {
   if (kind === 'tx' && /^0x[0-9a-fA-F]{64}$/.test(id || '')) {
     const [tx, receipt] = await Promise.all([provider.getTransaction(id), provider.getTransactionReceipt(id)]);
     if (!tx) throw new Error('Transaction not found');
+    let nativeFrame = null;
+    if (isFrameTransaction(tx)) {
+      const [rawTx,rawReceipt] = await Promise.all([provider.send('eth_getTransactionByHash',[id]),provider.send('eth_getTransactionReceipt',[id])]);
+      if (!rawTx || rawTx.hash !== tx.hash || rawTx.blockHash !== tx.blockHash) throw new Error('Transaction changed during retrieval; refresh this record.');
+      nativeFrame = nativeFrameDetails(rawTx,rawReceipt);
+    }
     const events = receipt?.logs.filter(log => log.address.toLowerCase() === entryPoint.toLowerCase()).map(log => {try{return event(log);}catch{return null;}}).filter(Boolean) || [];
     const [record] = await addBlockTimestamps([{hash:tx.hash, from:tx.from, to:tx.to, value:ethers.formatEther(tx.value), blockHash:receipt?.blockHash ?? tx.blockHash, blockNumber:tx.blockNumber, status:receipt ? receipt.status === 1 ? 'Confirmed' : 'Reverted' : 'Pending', gasUsed:receipt?.gasUsed, selector:tx.data.slice(0,10), entryPoint, isAaBundle:tx.to?.toLowerCase() === entryPoint.toLowerCase() && events.some(e => e.type === 'UserOperationEvent')}]);
-    return {...record, events:await addBlockTimestamps(events)};
+    return {...record, type:tx.type, nativeFrame, events:await addBlockTimestamps(events)};
   }
   if (kind === 'op' && /^0x[0-9a-fA-F]{64}$/.test(id || '')) {
     await sync();
@@ -77,7 +98,7 @@ async function api(path) {
     await sync();
     const [balance, code] = await Promise.all([provider.getBalance(id), provider.getCode(id)]);
     const deployment = deployments.find(d => d.sender.toLowerCase() === id.toLowerCase());
-    return {address:ethers.getAddress(id), balance:ethers.formatEther(balance), type:deployment ? 'AA smart account (EntryPoint deployment)' : code !== '0x' ? 'Contract' : 'Externally owned / unused address', deployment, operations:await addBlockTimestamps(operations.filter(op => op.sender.toLowerCase() === id.toLowerCase()).slice(-100).reverse())};
+    return {address:ethers.getAddress(id), balance:ethers.formatEther(balance), type:deployment ? 'AA smart account (EntryPoint deployment)' : code !== '0x' ? 'Contract' : 'Externally owned / unused address', deployment, operations:await addBlockTimestamps(operations.filter(op => op.sender.toLowerCase() === id.toLowerCase()).slice(-100).reverse()), nativeFrames:frameIndex.snapshot(id)};
   }
   throw new Error('Invalid explorer request');
 }

@@ -5,11 +5,14 @@ import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 import {createPortalApi, createFaucetLimiter} from "./portal-api.mjs";
 import {isPortalPage, publicSiteConfig, siteConfigScript} from "./site-config.mjs";
+import {createRpcProxy, RPC_BODY_LIMIT} from './rpc-policy.mjs';
 
 const root = fileURLToPath(new URL("./public", import.meta.url));
 const port = Number(process.env.PORT || 3000);
 const siteSettings = publicSiteConfig();
 const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:18545";
+const nativeFramesEnabled = process.env.NATIVE_FRAME_RPC_ENABLED === 'true';
+const publicRpc = createRpcProxy({url:rpcUrl,nativeFramesEnabled});
 const bundlerUrl = process.env.BUNDLER_URL || "http://127.0.0.1:4337";
 const entryPoint = process.env.ENTRY_POINT || "";
 const faucetKey = process.env.FAUCET_PRIVATE_KEY;
@@ -52,20 +55,31 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-async function body(req) {
+async function body(req, limit = 2_000_000) {
   let data = "";
-  for await (const chunk of req) data += chunk;
-  if (data.length > 2_000_000) throw new Error("request too large");
+  let bytes = 0;
+  for await (const chunk of req) {bytes += chunk.length; if (bytes <= limit) data += chunk;}
+  if (bytes > limit) throw new Error("request too large");
   return data ? JSON.parse(data) : {};
+}
+
+async function rpcProxy(req,res) {
+  let payload;
+  try {
+    payload = await body(req,RPC_BODY_LIMIT);
+    json(res,200,await publicRpc(payload));
+  } catch(error) {
+    const oversized = error.message === 'request too large';
+    const parseError = error instanceof SyntaxError;
+    json(res,oversized ? 413 : parseError ? 400 : error.status || 502,{jsonrpc:'2.0',id:payload?.id ?? null,error:{code:oversized ? -32600 : parseError ? -32700 : error.rpcCode || -32000,message:error.message}});
+  }
 }
 
 async function proxy(req, res, target) {
   try {
     const payload = await body(req);
-    const allowed = target === bundlerUrl
-      ? ['eth_sendUserOperation','eth_estimateUserOperationGas','eth_getUserOperationReceipt','eth_getUserOperationByHash','eth_supportedEntryPoints','eth_chainId']
-      : ['eth_chainId','eth_blockNumber','eth_getBalance','eth_getCode','eth_getTransactionReceipt','eth_getTransactionByHash','eth_getBlockByNumber','eth_getLogs','eth_call'];
-    if (Array.isArray(payload) || !allowed.includes(payload.method)) return json(res,403,{error:'Method not allowed. Wallet transactions must use eth_sendUserOperation through the bundler.'});
+    const allowed = ['eth_sendUserOperation','eth_estimateUserOperationGas','eth_getUserOperationReceipt','eth_getUserOperationByHash','eth_supportedEntryPoints','eth_chainId'];
+    if (Array.isArray(payload) || !allowed.includes(payload.method)) return json(res,403,{error:'Method is not enabled on the bundler endpoint.'});
     const upstream = await fetch(target, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
     const text = await upstream.text();
     res.writeHead(upstream.status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -116,7 +130,7 @@ async function faucetSend(req, res) {
 async function config(res) {
   try {
     const network = await provider.getNetwork();
-    json(res, 200, { chainId: Number(network.chainId), rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address, networkName:'Daisugi', publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60 });
+    json(res, 200, { chainId: Number(network.chainId), rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address, networkName:'Daisugi', publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60, nativeFrameSubmissionEnabled:nativeFramesEnabled });
   } catch (error) {
     json(res, 503, { error: error instanceof Error ? error.message : String(error) });
   }
@@ -140,7 +154,14 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200,{'content-type':'text/javascript'});
     return res.end(await readFile(new URL('./node_modules/ethers/dist/ethers.min.js',import.meta.url)));
   }
-  if (req.method === "POST" && url.pathname === "/rpc") return proxy(req, res, rpcUrl);
+  if (url.pathname === '/rpc') {
+    res.setHeader('access-control-allow-origin','*');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204,{'access-control-allow-methods':'POST, OPTIONS','access-control-allow-headers':'content-type','access-control-max-age':'600'});
+      return res.end();
+    }
+    if (req.method === 'POST') return rpcProxy(req,res);
+  }
   if (req.method === "POST" && url.pathname === "/bundler") return proxy(req, res, bundlerUrl);
   if (req.method === "POST" && url.pathname === "/api/faucet") return faucetSend(req, res);
   if (req.method === "GET" && url.pathname === "/api/config") return config(res);

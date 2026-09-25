@@ -2,6 +2,7 @@ import {site} from './routes.js';
 import { formatUnits } from '/ethers.js';
 import { renderInputPanel, inputSize } from './input-data.js';
 import {renderTimestamp, formatTimestamp} from './timestamp.js';
+import {renderNativeFrames} from './native-frame-view.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const int = value => value == null ? '—' : BigInt(value).toLocaleString('en-US');
 const short = value => String(value).slice(0, 10) + '…' + String(value).slice(-8);
@@ -18,16 +19,18 @@ function internalTransfers(trace) {
   if (!trace.transfers.length) return `<span class="tx-unavailable">${trace.reverted ? 'No committed internal transfers: this transaction reverted.' : 'No internal ETH transfers recorded.'}</span>`;
   return `<div class="transfer-tabs" role="group" aria-label="Internal transfer view"><button type="button" data-transfer-view="all" aria-pressed="true">All transfers</button><button type="button" data-transfer-view="net" aria-pressed="false">Net transfers</button></div><div data-transfer-list="all">${trace.transfers.map(t => `<div class="transfer-line"><span class="transfer-chevron" aria-hidden="true">›</span><span>Transfer ${eth(t.valueWei)} <span class="tx-muted">From</span> ${address(t.from, true)} <span class="tx-muted">To</span> ${address(t.to, true)} <span class="transfer-type">${esc(t.type)}</span></span></div>`).join('')}</div><div data-transfer-list="net" hidden>${trace.netTransfers.length ? trace.netTransfers.map(t => `<div class="transfer-line">${address(t.address, true)}<span class="net-value ${BigInt(t.valueWei) > 0n ? 'positive' : 'negative'}">${BigInt(t.valueWei) > 0n ? '+' : ''}${esc(amount(t.valueWei))} ETH</span></div>`).join('') : '<p class="tx-muted">Net internal value change is zero for every address.</p>'}<p class="tx-muted transfer-note">Net changes from internal ETH transfers only; excludes transaction value and gas fees.</p></div>`;
 }
-const txType = type => ({ 0: 'Legacy', 1: 'EIP-2930', 2: 'EIP-1559', 3: 'EIP-4844', 4: 'EIP-7702' })[type] || 'Typed transaction';
+const txType = type => ({ 0: 'Legacy', 1: 'EIP-2930', 2: 'EIP-1559', 3: 'EIP-4844', 4: 'EIP-7702', 6:'EIP-8141 prototype' })[type] || 'Typed transaction';
 function badge(label, value) { return `<span class="attribute-badge"><span>${esc(label)}:</span> ${esc(value)}</span>`; }
 export function renderTransactionDetails(data) {
   const d = data.transactionDetails || {};
+  const native = Number(d.type ?? data.type) === 6 || !!data.nativeFrame;
   const pending = d.status === 'Pending' || (!d.status && data.status === 'Pending');
   const status = d.status || (data.status === 'Confirmed' ? 'Success' : data.status === 'Reverted' ? 'Failed' : data.status || 'Unknown');
   const block = d.blockNumber ?? data.blockNumber;
   const blockValue = block == null ? '<span class="tx-unavailable">Pending inclusion</span>' : `<a href="${site.href({page:'explorer',kind:'block',id:block})}">${int(block)}</a>${d.confirmations != null ? `<span class="attribute-badge confirmations">${int(d.confirmations)} block confirmations</span>` : ''}`;
   const to = d.to ?? data.to;
   let destination = to ? address(to) : '<span class="tx-muted">Contract creation</span>';
+  if (native) destination = '<span class="tx-muted">Per-frame targets · shown below</span>';
   const creations = [...(d.contractAddress ? [{ address: d.contractAddress }] : []), ...(d.internalTransfers?.createdContracts || [])];
   for (const created of creations) destination += `<div class="created-contract">${address(created.address)} <span class="created-label">Created</span></div>`;
   const errors = (d.errors || []).length ? `<div class="inline-notice">${esc(d.errors.join(' '))}</div>` : !data.transactionDetails ? '<div class="inline-notice">Extended RPC details are unavailable. Indexed transaction data is shown below.</div>' : '';
@@ -46,16 +49,16 @@ export function renderTransactionDetails(data) {
       row('From', address(d.from ?? data.from), 'Account that submitted the enclosing Ethereum transaction.', 'tx-group-start') +
       row('To', destination, 'Destination of the outer transaction, or the contract created by it.') +
       row('Internal transactions', internalTransfers(d.internalTransfers), 'Committed internal ETH transfers reconstructed from a call trace; excludes the outer transaction value.', 'tx-group-start') +
-      row('Value', d.valueWei != null ? eth(d.valueWei) : `${esc(data.value ?? '—')} ETH`, 'ETH sent by the outer transaction.', 'tx-group-start') +
+      row('Value', native ? '<span class="tx-muted">Specified separately in each frame</span>' : d.valueWei != null ? eth(d.valueWei) : `${esc(data.value ?? '—')} ETH`, 'Native transactions specify value per frame; other transactions have one outer value.', 'tx-group-start') +
       row('Transaction fee', fee, 'Actual execution gas used × effective gas price, plus blob fees if applicable.') +
       row('Gas price', price, 'Actual price paid per unit of execution gas, from the receipt.') + feeExtras) +
     section(row('Gas limit & usage', `<span>${d.gasLimit != null ? int(d.gasLimit) : '—'}</span><span class="fee-divider">|</span>${gasUsed}`, 'Execution gas limit, actual gas consumed and percentage of the limit.') +
       row('Gas fees', `<div class="fee-parts">${caps}</div>`, 'Block base fee, transaction fee cap and priority fee cap per gas.') +
       row('Burnt & savings', `<div class="fee-parts"><span class="fee-badge burnt">Burnt: ${eth(d.burntExecutionFeeWei)}</span><span class="fee-badge saving">Fee savings: ${eth(d.feeSavingWei)}</span></div>`, 'Execution fee burned = gas used × block base fee. Savings = gas used × (max fee cap − effective gas price); not a separate refund.') +
       row('Other attributes', `<div class="attribute-list">${attributes || notAvailable}</div>`, 'Transaction envelope type, sender nonce and zero-based position in the block.', 'tx-group-start') +
-      row('Input data', `<div class="inline-input-size">${esc(inputSize(data.inputData))}</div>${input}`, 'Complete transaction input, with supported ABI decoding and original byte access.', 'tx-input-row') +
+      (native ? '' : row('Input data', `<div class="inline-input-size">${esc(inputSize(data.inputData))}</div>${input}`, 'Complete transaction input, with supported ABI decoding and original byte access.', 'tx-input-row')) +
       row('More details', `<button type="button" class="tx-details-toggle" aria-expanded="true" data-advanced-toggle>− Click to show less</button>`, 'Collapse or expand the additional gas and input details.')) +
-    `<p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet transaction. Test ETH has no monetary value.</p></div>`;
+    (native ? renderNativeFrames(data.nativeFrame) : '') + `<p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet transaction. Test ETH has no monetary value.</p></div>`;
 }
 export function attachTransactionDetailEvents(container) {
   container.addEventListener('click', async event => {
