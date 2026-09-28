@@ -1,0 +1,100 @@
+{
+  "version": "2.1.3.1",
+  "purpose": "Original NiceTry interface with native SPHINCS-G frame transactions",
+  "interfaceSource": {
+    "file": "NiceTry-Daisugi-2.1.3-mozilla-sources.zip",
+    "sha256": "64c5b99c580b10b39ebe67ab20f24bae616bc2260ac861df8b356a268604de77"
+  },
+  "authorizedWalletReference": {
+    "file": "NiceTry-Daisugi-2.1.3-https.zip",
+    "sha256": "82b542ac527757833d81bdc9ecae17060ef60aafd06461357fc446d66f4b6bf6",
+    "signerModuleSha256": "117d793ce26f1a7fe152ce23884a03cd07663758b044d397f72eff5b901584ce"
+  },
+  "signatureProfile": "sphincs-g",
+  "signatureBytes": 6176,
+  "cryptoSourceFilesUnchanged": [
+    {
+      "path": "src/crypto/sphincs.js",
+      "sha256": "f6a23c846fa2fe92319a0752bcc661dd31e06c69bdd4ebda0f36b4288570c013"
+    },
+    {
+      "path": "src/crypto/sphincs-params.js",
+      "sha256": "00254753a9882ef0103d791385b8d3a6f2202c26a59d6b8c7afcd08e246ad566"
+    },
+    {
+      "path": "src/crypto/sphincs-pool.js",
+      "sha256": "8262eac4639283a3b3c778ebbde9578aff41f5cf6aa866b544541b27cf1a3fea"
+    },
+    {
+      "path": "src/crypto/sphincs-fors.worker.js",
+      "sha256": "b5aa311f9259ec39dee0493f1880190dbb0c9624e8aa403168b1634b20382fbc"
+    },
+    {
+      "path": "src/crypto/keccak.js",
+      "sha256": "7bc9142f4f12233bcc2860cad461e3c4da9be911869641637694304680495e76"
+    },
+    {
+      "path": "src/crypto/keccak-batch.js",
+      "sha256": "8acd342d0ea3b87c7f4e7e2c74dfec1192f3c82a00a82652453d7d30dfd2784d"
+    },
+    {
+      "path": "src/crypto/keccak-batch-wasm.js",
+      "sha256": "2729123b9e60603544f4969c2fd8bfb4ee0bb7713ce532f684c46abb5fd342b7"
+    },
+    {
+      "path": "src/crypto/encryption.js",
+      "sha256": "c415ec6e01a4f8061ce39f90654ad46c76cdb50d0651434cd191673e2960bbab"
+    }
+  ],
+  "originalPublicAssetsUnchanged": [
+    "background_grid.png",
+    "fonts.css",
+    "gridCard.png",
+    "logo.svg",
+    "NiceTryBig.svg",
+    "NiceTryText.svg",
+    "nicetry_logo_.png",
+    "nicetry_logo_outline.svg",
+    "Vector 3.svg",
+    "Vector 4.svg",
+    "Vector5.png",
+    "fonts/barlow-semicondensed-600-latin.woff2",
+    "fonts/barlow-semicondensed-700-latin.woff2",
+    "fonts/inter-latin-ext.woff2",
+    "fonts/inter-latin.woff2",
+    "fonts/jetbrains-mono-400-latin.woff2",
+    "fonts/poppins-400-latin-ext.woff2",
+    "fonts/poppins-400-latin.woff2",
+    "fonts/poppins-500-latin-ext.woff2",
+    "fonts/poppins-500-latin.woff2",
+    "fonts/poppins-600-latin-ext.woff2",
+    "fonts/poppins-600-latin.woff2",
+    "fonts/poppins-700-latin-ext.woff2",
+    "fonts/poppins-700-latin.woff2",
+    "icons/icon128.png",
+    "icons/icon16.png",
+    "icons/icon48.png"
+  ],
+  "dependencyVersionsChanged": false,
+  "network": {
+    "version": "0.1.0",
+    "chainId": 1337,
+    "genesisHash": "0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55",
+    "factory": "0xd07fcbdca6dea83b523faf95386cea236e32d989",
+    "factoryCodeHash": "0xa1fbdfabb5e2efddf5fe08a1006550085fd4f3b26d7c2f4ec9d99e4251f54e6e",
+    "implementation": "0xFec328C1725F6Ef48160053E14379865aEc07568",
+    "implementationCodeHash": "0xc8117616be026fd5b351f98470a35e46a1932816f04733e6d23ba51c8b93be30",
+    "verifier": "0xf505AD2Cff58b84E145D637d99Fae0617B5685BE",
+    "verifierCodeHash": "0x7ab53ba1ae0d906f2d144cb673fb481e04d58b22ec72a8a0ec37cc66079f3417",
+    "deploymentHash": "0x5433d25448efc15e51a7b274164d28053ceb3dc6a36a476257d19f693c3afbca",
+    "deploymentBlock": "0x81906",
+    "signatureProfile": "sphincs-g",
+    "signatureBytes": 6176,
+    "clientRevision": "c9ad4b5dc3b6db053c3a770ead8130594eb51152",
+    "maxVerifyGas": 500000,
+    "maxVerifyStateGas": 500000
+  },
+  "earlierLiveTestTransaction": "0xf12148e731572b6b80bd41dd0a59c52306817bf39ba474f19f702e55190ebde9",
+  "newLiveTransactionSubmittedForThisBuild": false,
+  "transport": "Explicit HTTPS build-time RPC and explorer URLs; no bundled loopback endpoint."
+}

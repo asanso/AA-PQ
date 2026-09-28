@@ -70,8 +70,8 @@
             class="metric-value">—</strong><small id="metricFeeUnit">Current block · Wei</small></div>
         <div class="metric"><span class="metric-label">Indexed UserOperations</span><strong id="metricOps"
             class="metric-value">—</strong><small>ERC-4337 EntryPoint events</small></div>
-        <div class="metric"><span class="metric-label">Smart accounts</span><strong id="metricAccounts"
-            class="metric-value">—</strong><small>Indexed account deployments</small></div>
+        <div class="metric"><span class="metric-label">Indexed frame transactions</span><strong id="metricFrames"
+            class="metric-value">—</strong><small id="frameIndexStatus">Reading native frame index…</small></div>
       </section>
       <div class="activity-heading">
         <h2>Network activity</h2><span id="activityStatus" class="subtle" role="status">Connecting to Daisugi…</span>
@@ -94,13 +94,14 @@
             <p class="empty-state">Loading UserOperations…</p>
           </div>
         </section>
-        <section class="panel">
+        <section class="panel frame-activity">
           <div class="panel-heading">
-            <h3>Latest smart accounts</h3><span class="panel-kicker">ACCOUNTS</span>
+            <h3>Latest native frame transactions</h3><span class="panel-kicker">0x06</span>
           </div>
-          <div id="latestAccounts" class="activity-list">
-            <p class="empty-state">Loading accounts…</p>
+          <div id="latestFrames" class="activity-list">
+            <p class="empty-state">Loading frame transactions…</p>
           </div>
+          <details class="frame-coverage"><summary>Index coverage</summary><p id="frameCoverage" role="status">Reading index coverage…</p></details>
         </section>
       </div>
       <section class="start-strip" aria-labelledby="startTitle">

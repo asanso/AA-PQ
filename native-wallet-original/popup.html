@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=420, initial-scale=1.0">
+  <title>Nice Try</title>
+  <link href="/fonts.css" rel="stylesheet">
+  <!-- Pre-paint theme: set data-theme from the localStorage mirror before
+       the stylesheet paints so a slate user never flashes the stone
+       default. Canonical store is chrome.storage (see src/ui/theme.js);
+       this is just the synchronous fast-path. -->
+  <script>try{var t=localStorage.getItem('nt_theme');document.documentElement.dataset.theme=(t==='slate'||t==='stone')?t:'stone';}catch(e){document.documentElement.dataset.theme='stone';}</script>
+</head>
+<body class="bg-bg-primary text-text-primary font-sans text-sm antialiased">
+  <div id="app"></div>
+  <script type="module" src="/src/popup/main.jsx"></script>
+</body>
+</html>

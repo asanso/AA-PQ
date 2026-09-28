@@ -23,6 +23,7 @@ test('blob transaction totals include blob fee, or remain unknown when that comp
  const d=transactionMetrics({...tx,type:3},{...receipt,blobGasUsed:100n,blobGasPrice:2n},block,20);
  assert.equal(d.executionFeeWei,'252000');assert.equal(d.blobFeeWei,'200');assert.equal(d.transactionFeeWei,'252200');
  assert.equal(transactionMetrics({...tx,type:3},receipt,block,20).transactionFeeWei,null);
+ assert.equal(transactionMetrics({...tx,type:6,blobVersionedHashes:[H]},receipt,block,20).transactionFeeWei,null);
 });
 test('receipt status and root contract creation are independent of execution value',()=>{
  const d=transactionMetrics({...tx,to:null},{...receipt,status:0,contractAddress:null},block,20);assert.equal(d.status,'Failed');assert.equal(d.valueWei,'0');
