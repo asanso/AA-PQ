@@ -1435,9 +1435,6 @@ main {padding-bottom:40px;}
 }
 
 /* Native frame records share the portal's existing light and dark tokens. */
-.frame-coverage { padding:12px 20px; margin:0; color:var(--muted); font-size:11px; border-top:1px solid var(--line) }
-.frame-coverage summary { cursor:pointer; color:var(--accent) }
-.frame-coverage p { margin:10px 0 0; line-height:1.6 }
 .frame-activity .row-meta { max-width:100px; white-space:normal }
 .native-summary,.native-frame { margin-top:16px }
 .native-body { padding:18px 22px; min-width:0; font-size:12px }

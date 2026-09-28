@@ -22,15 +22,20 @@ async function indexFrames() {
 void indexFrames();
 const addBlockTimestamps = createBlockTimestampReader(provider);
 const entryPoint = process.env.ENTRY_POINT || '0x433709009B8330FDa32311DF1C2AFA402eD8D009';
+// Count native deployments from the same immutable factory used by NiceTry.
+const nativeFactory = '0xd07fcbdca6dea83b523faf95386cea236e32d989';
 const iface = new ethers.Interface([
   'event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)',
   'event AccountDeployed(bytes32 indexed userOpHash,address indexed sender,address factory,address paymaster)',
+  'event AccountCreated(address indexed account,bytes32 indexed salt,bytes32 pkSeed,bytes32 pkRoot)',
 ]);
-let indexedTo = -1, operations = [], deployments = [], syncing, entryPointIndexError = null;
+let indexedTo = -1, operations = [], deployments = [], nativeDeployments = [], syncing, entryPointIndexError = null;
 const serialize = value => JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v);
 function event(log) {
   const parsed = iface.parseLog(log);
   if (!parsed) return null;
+  const expectedEmitter = parsed.name === 'AccountCreated' ? nativeFactory : entryPoint;
+  if (log.address.toLowerCase() !== expectedEmitter.toLowerCase()) return null;
   const result = {type:parsed.name, transactionHash:log.transactionHash, blockHash:log.blockHash, blockNumber:log.blockNumber, logIndex:log.index};
   parsed.fragment.inputs.forEach((input,i) => {result[input.name] = parsed.args[i];});
   return result;
@@ -43,15 +48,17 @@ async function sync() {
     const from = Math.max(0, Math.min(indexedTo - 11, head - 11));
     const nextOps = operations.filter(op => op.blockNumber < from);
     const nextDeployments = deployments.filter(op => op.blockNumber < from);
+    const nextNativeDeployments = nativeDeployments.filter(op => op.blockNumber < from);
     for (let start = from; start <= head; start += 1000) {
-      const logs = await provider.getLogs({address:entryPoint, fromBlock:start, toBlock:Math.min(head, start+999), topics:[[iface.getEvent('UserOperationEvent').topicHash, iface.getEvent('AccountDeployed').topicHash]]});
+      const logs = await provider.getLogs({address:[entryPoint,nativeFactory], fromBlock:start, toBlock:Math.min(head, start+999), topics:[[iface.getEvent('UserOperationEvent').topicHash, iface.getEvent('AccountDeployed').topicHash, iface.getEvent('AccountCreated').topicHash]]});
       for (const log of logs) {
         const item = event(log);
         if (item?.type === 'UserOperationEvent') nextOps.push(item);
         else if (item?.type === 'AccountDeployed') nextDeployments.push(item);
+        else if (item?.type === 'AccountCreated') nextNativeDeployments.push(item);
       }
     }
-    operations = nextOps; deployments = nextDeployments; indexedTo = head; entryPointIndexError = null;
+    operations = nextOps; deployments = nextDeployments; nativeDeployments = nextNativeDeployments; indexedTo = head; entryPointIndexError = null;
     return head;
   })().finally(() => {syncing = null;});
   return syncing;
@@ -59,10 +66,13 @@ async function sync() {
 const blockSummary = block => ({number:block.number, hash:block.hash, timestamp:block.timestamp, gasUsed:block.gasUsed, gasLimit:block.gasLimit, transactionCount:block.transactions.length, transactions:block.transactions});
 async function overview() {
   const head = await provider.getBlockNumber();
-  void sync().catch(()=>{entryPointIndexError = 'EntryPoint indexing is unavailable. Previously indexed records are retained.';});
+  void sync().catch(()=>{entryPointIndexError = 'Account and EntryPoint indexing is unavailable. Previously indexed records are retained.';});
   const blocks = (await Promise.all(Array.from({length:Math.min(12, head+1)}, (_, i) => provider.getBlock(head-i)))).filter(Boolean).map(blockSummary);
   return {chainId:Number((await provider.getNetwork()).chainId), entryPoint, indexedTo,
     entryPointIndex:{status:entryPointIndexError ? 'degraded' : indexedTo < 0 ? 'initializing' : indexedTo === head ? 'complete' : 'indexing',message:entryPointIndexError},
+    // Deduplicate addresses across deployment paths; never count predicted addresses.
+    smartAccountCount:indexedTo < 0 ? null : new Set([...deployments.map(d => d.sender.toLowerCase()), ...nativeDeployments.map(d => d.account.toLowerCase())]).size,
+    nativeWalletCount:indexedTo < 0 ? null : new Set(nativeDeployments.map(d => d.account.toLowerCase())).size,
     operationCount:indexedTo < 0 ? null : operations.length, walletCount:indexedTo < 0 ? null : new Set(deployments.map(d => d.sender)).size, blocks, operations:await addBlockTimestamps(operations.slice(-20).reverse()), wallets:deployments.slice(-100).reverse(), nativeFrames:frameIndex.snapshot()};
 }
 async function api(path) {

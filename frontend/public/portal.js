@@ -58,15 +58,13 @@ function showOverview() {
   $('metricBlock').textContent = network ? integer(network.blockNumber) : '—';
   $('metricBlock').href = site.href(network ? {page:'explorer',kind:'block',id:network.blockNumber} : {page:'explorer'});
   $('metricBlockAge').textContent = network ? age(network.blockTimestamp) : 'RPC unavailable';
-  const fee = network?.baseFeePerGas;
-  const feeInWei = fee != null && /^\d+$/.test(fee) && BigInt(fee) < 1000000000n;
-  $('metricFee').textContent = fee != null ? feeInWei ? integer(fee) : units(fee,9) : '—';
-  $('metricFeeUnit').textContent = 'Current block · ' + (feeInWei || fee == null ? 'Wei' : 'Gwei');
+  $('metricAccounts').textContent = integer(overview?.smartAccountCount);
+  $('accountIndexStatus').textContent = !overview || overview.entryPointIndex?.status === 'degraded' ? 'Account index unavailable' :
+    overview.smartAccountCount == null ? 'Reading account deployments…' : 'ERC-4337 + native factory';
   $('metricOps').textContent = overview ? integer(overview.operationCount) : '—';
   const frames = overview?.nativeFrames;
   $('metricFrames').textContent = frames?.count == null ? '—' : integer(frames.count);
-  $('frameIndexStatus').textContent = frames?.status === 'complete' ? 'Type 0x06 · native transactions' : 'Partial index · see coverage below';
-  $('frameCoverage').textContent = frameCoverage(frames);
+  $('frameIndexStatus').textContent = frames?.count == null ? 'Native frame index unavailable' : frames.status === 'complete' ? 'Type 0x06 · native transactions' : 'Native frame index · partial';
   $('latestFrames').innerHTML = frames?.transactions?.slice(0,5).map(tx=>row('Fr',link('tx',tx.hash),'From '+link('address',tx.from,short(tx.from,5))+'<br>'+renderTimestamp(tx.timestamp,{compact:true}),`${integer(tx.frameCount)} frames<br>${frameOutcome(tx)}`)).join('') || empty(frames?.count != null ? 'No native frame transactions in the indexed range.' : 'Native frame data is unavailable.');
   $('overviewError').hidden = !explorerError && !networkError;
   $('overviewError').textContent = [networkError && 'Network: ' + networkError, explorerError && 'Explorer: ' + explorerError].filter(Boolean).join(' ');
