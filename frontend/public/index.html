@@ -66,8 +66,8 @@
       <section class="metrics" aria-label="Network metrics">
         <div class="metric"><span class="metric-label">Latest block</span><a id="metricBlock" class="metric-value mono"
             href="#explorer">—</a><small id="metricBlockAge">Reading network…</small></div>
-        <div class="metric"><span class="metric-label">Base fee</span><strong id="metricFee"
-            class="metric-value">—</strong><small id="metricFeeUnit">Current block · Wei</small></div>
+        <div class="metric" title="Unique deployed addresses recorded by the EntryPoint and Daisugi native factory."><span class="metric-label">Deployed smart accounts</span><strong id="metricAccounts"
+            class="metric-value">—</strong><small id="accountIndexStatus">Reading account deployments…</small></div>
         <div class="metric"><span class="metric-label">Indexed UserOperations</span><strong id="metricOps"
             class="metric-value">—</strong><small>ERC-4337 EntryPoint events</small></div>
         <div class="metric"><span class="metric-label">Indexed frame transactions</span><strong id="metricFrames"
@@ -101,7 +101,6 @@
           <div id="latestFrames" class="activity-list">
             <p class="empty-state">Loading frame transactions…</p>
           </div>
-          <details class="frame-coverage"><summary>Index coverage</summary><p id="frameCoverage" role="status">Reading index coverage…</p></details>
         </section>
       </div>
       <section class="start-strip" aria-labelledby="startTitle">
