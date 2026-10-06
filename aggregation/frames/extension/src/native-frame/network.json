@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "chainId": 1337,
+  "genesisHash": "0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55",
+  "factory": "0xd07fcbdca6dea83b523faf95386cea236e32d989",
+  "factoryCodeHash": "0xa1fbdfabb5e2efddf5fe08a1006550085fd4f3b26d7c2f4ec9d99e4251f54e6e",
+  "implementation": "0xFec328C1725F6Ef48160053E14379865aEc07568",
+  "implementationCodeHash": "0xc8117616be026fd5b351f98470a35e46a1932816f04733e6d23ba51c8b93be30",
+  "verifier": "0xf505AD2Cff58b84E145D637d99Fae0617B5685BE",
+  "verifierCodeHash": "0x7ab53ba1ae0d906f2d144cb673fb481e04d58b22ec72a8a0ec37cc66079f3417",
+  "deploymentHash": "0x5433d25448efc15e51a7b274164d28053ceb3dc6a36a476257d19f693c3afbca",
+  "deploymentBlock": "0x81906",
+  "signatureProfile": "sphincs-g",
+  "signatureBytes": 6176,
+  "clientRevision": "c9ad4b5dc3b6db053c3a770ead8130594eb51152",
+  "maxVerifyGas": 500000,
+  "maxVerifyStateGas": 500000
+}

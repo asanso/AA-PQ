@@ -1,3 +1,5 @@
+import {dependencyClaims} from './aggregation-proof.mjs';
+
 export const DAISUGI_GENESIS = '0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55';
 export const FRAME_ACTIVATION_BLOCK = 519324;
 export const isFrameTransaction = tx => tx?.type != null && Number(tx.type) === 6;
@@ -20,13 +22,13 @@ export function nativeFrameDetails(tx, receipt) {
   const frames = Array.isArray(tx.frames) ? tx.frames.map((frame, index) => {
     const result = receipt?.frameReceipts?.[index];
     return {
-      index, mode:number(frame.mode), modeName:frame.mode == null ? 'Unavailable' : ({0:'DEFAULT',1:'VERIFY',2:'SENDER',3:'POST_TX'})[Number(frame.mode)] || 'Unknown',
+      index, mode:number(frame.mode), modeName:frame.mode == null ? 'Unavailable' : ({0:'DEFAULT',1:'VERIFY',2:'SENDER',3:'POST_TX',4:'DEP_VERIFY'})[Number(frame.mode)] || 'Unknown',
       flags:number(frame.flags), target:frame.target ?? null, valueWei:quantity(frame.value), data:frame.data ?? null,
       effectiveTarget:Object.hasOwn(frame,'target') ? frame.target ?? tx.from : null,
-      executionGasLimit:quantity(frame.executionGasLimit), stateGasLimit:quantity(frame.stateGasLimit),
+      executionGasLimit:quantity(frame.executionGas ?? frame.executionGasLimit), stateGasLimit:quantity(frame.stateGas ?? frame.stateGasLimit),
       status:receipt ? frameStatus(result?.status) : tx.blockNumber == null ? 'Pending' : 'Unavailable',
       executionGasUsed:quantity(result?.executionGasUsed), stateGasUsed:quantity(result?.stateGasUsed),
-      logs:result?.logs ?? null
+      logs:result?.logs ?? null, dependencies:Number(frame.mode) === 4 ? dependencyClaims(frame.data) : null
     };
   }) : null;
   const witnesses = Array.isArray(tx.signatures) ? tx.signatures.map((witness, index) => ({
@@ -34,6 +36,7 @@ export function nativeFrameDetails(tx, receipt) {
     signer:witness.signer ?? null, message:witness.msg ?? null, signature:witness.signature ?? null
   })) : null;
   return {
+    nonceKeys:Array.isArray(tx.nonceKeys) ? tx.nonceKeys.map(quantity) : null,
     type:6, standard:'EIP-8141 prototype', payer:receipt?.payer ?? null, frames, witnesses,
     resultsComplete:!!receipt && !!frames && Array.isArray(receipt.frameReceipts) &&
       receipt.frameReceipts.length === frames.length && frames.every(frame => ['Success','Failed','Skipped'].includes(frame.status)),
@@ -48,6 +51,7 @@ export function nativeFrameSummary(tx, receipt, block) {
     timestamp:number(block.timestamp), transactionIndex:number(tx.transactionIndex), type:6,
     status:receipt?.status == null ? 'Unavailable' : Number(receipt.status) === 1 ? 'Success' : 'Failed',
     frameCount:details.frames?.length ?? null,
+    hasAggregationDependency:details.frames ? details.frames.some(frame=>frame.mode===4) : null,
     frameStatuses:details.frames?.map(frame => frame.status) ?? null,
     targets:details.frames?.map(frame => frame.effectiveTarget).filter(Boolean) ?? [],
     resultsComplete:details.resultsComplete

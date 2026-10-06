@@ -1,0 +1,200 @@
+/* ───────────────────────────────────────────────────────────────────
+   typography.css — type system for Nice Try
+   ───────────────────────────────────────────────────────────────────
+   Source of truth: the Figma "Typography" style guide
+   (NiceTry-Wallet, node 55:10864). Three font families, five groups:
+
+     · display  — Barlow Semi Condensed   (hero / title)
+     · heading  — Inter Semi Bold         (h1 / h2 / h3)
+     · body     — Inter Regular           (lg / md / sm)
+     · label    — Barlow + Inter mix      (button / md / sm / caption / …)
+     · mono     — JetBrains Mono          (amount / address / code)
+
+   Two layers, mirroring theme.css:
+
+   1. @theme — font-FAMILY tokens only (`--font-display`, `--font-body`,
+      `--font-mono`). Each becomes a utility (`font-display`, `font-body`,
+      `font-mono`). NOTE: `--font-sans` (Poppins) is intentionally NOT
+      touched here, so nothing in the app changes until you opt in. Apply
+      the type system by adding a `.type-*` class (or the family utility)
+      to an element.
+
+   2. @layer components — one `.type-*` class per Figma text style, each
+      bundling family + weight + size + line-height + letter-spacing +
+      text-transform. These are the things a plain Tailwind `text-*`
+      utility can't express in one token, so they live as components:
+
+        <h1 class="type-heading-h1 text-text-primary">…</h1>
+        <button class="type-label-button">Send</button>
+        <span class="type-mono-amount tabular-nums">0.42 ETH</span>
+
+   FONTS: Inter is self-hosted (public/fonts.css) and works now. Barlow
+   Semi Condensed and JetBrains Mono are NOT yet shipped — see the
+   commented @font-face block in public/fonts.css. Until those .woff2
+   files are added, the display/label/mono classes fall back to the
+   stacks below (a condensed sans and the system monospace): layout and
+   metrics are correct, only the exact faces differ.
+
+   Sizes are px (the popup is a fixed-px surface); letter-spacing is em
+   (Figma's % tracking → em, e.g. 2% = 0.02em) so it scales with size.
+   line-height is unitless.
+   ─────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* ── Font families (utilities: font-display / font-body / font-mono) ── */
+  --font-display: "Barlow Semi Condensed", "Saira Semi Condensed",
+    "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular",
+    "Cascadia Code", Consolas, "Liberation Mono", monospace;
+}
+
+@layer components {
+  /* ═══════════════ display — Barlow Semi Condensed ═══════════════ */
+  .type-display-hero {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 42px;
+    line-height: 1.2;
+    letter-spacing: 0;
+  }
+  .type-display-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 24px;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  /* ═══════════════ heading — Inter Semi Bold ═══════════════ */
+  .type-heading-h1 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 1.2;
+  }
+  .type-heading-h2 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 18px;
+    line-height: 1.2;
+  }
+  .type-heading-h3 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 1.2;
+  }
+
+  /* ═══════════════ body — Inter Regular (160% leading) ═══════════════ */
+  .type-body-lg {
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .type-body-md {
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .type-body-sm {
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 10px;
+    line-height: 1.6;
+  }
+
+  /* ═══════════════ label ═══════════════ */
+  /* button / button-sm — Barlow SemiBold, uppercase, tight leading */
+  .type-label-button {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .type-label-button-sm {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  /* md / sm — Inter */
+  .type-label-md {
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 1.2;
+  }
+  .type-label-sm {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+  }
+  /* special — Barlow Bold, very wide tracking, uppercase (badges) */
+  .type-label-special {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 12px;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  /* caption — Inter Regular */
+  .type-label-caption {
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  /* overline — Inter SemiBold, widest tracking, uppercase */
+  .type-label-overline {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 10px;
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ═══════════════ mono — JetBrains Mono ═══════════════ */
+  .type-mono-amount {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 1.2;
+  }
+  .type-mono-amount-sm {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .type-mono-address {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .type-mono-code {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .type-mono-code-sm {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+}

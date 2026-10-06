@@ -10,7 +10,8 @@ import {fileURLToPath} from 'node:url';
 import {DAISUGI_GENESIS} from '../explorer/native-frame.mjs';
 import {Interface,ZeroHash,ZeroAddress} from '../frontend/node_modules/ethers/lib.esm/index.js';
 
-test('overview counts unique deployed accounts, preserves startup and failed-index states, and reconciles replaced logs',async t=>{
+for (const aggregateFactory of [null,'0x'+'7'.repeat(40)]) {
+test('overview preserves account counts and index states; aggregation factory '+(aggregateFactory?'enabled':'disabled'),async t=>{
   const directory=await mkdtemp(join(tmpdir(),'daisugi-startup-'));t.after(()=>rm(directory,{recursive:true,force:true}));
   let releaseLogs;const gate=new Promise(resolve=>{releaseLogs=resolve;});t.after(releaseLogs);
   const entryPoint='0x433709009B8330FDa32311DF1C2AFA402eD8D009',factory='0xd07fcbdca6dea83b523faf95386cea236e32d989';
@@ -31,7 +32,7 @@ test('overview counts unique deployed accounts, preserves startup and failed-ind
     else if(call.method==='eth_blockNumber')result='0x2';
     else if(call.method==='eth_getLogs'){
       await gate;
-      assert.deepEqual(call.params[0].address.map(a=>a.toLowerCase()).sort(),[entryPoint,factory].map(a=>a.toLowerCase()).sort());
+      assert.deepEqual(call.params[0].address.map(a=>a.toLowerCase()).sort(),[entryPoint,factory,...(aggregateFactory?[aggregateFactory]:[])].map(a=>a.toLowerCase()).sort());
       if(logsFail){res.setHeader('content-type','application/json');res.end(JSON.stringify({jsonrpc:'2.0',id:call.id,error:{code:-32000,message:'Log history unavailable'}}));return;}
       result=logs;
     }
@@ -45,7 +46,7 @@ test('overview counts unique deployed accounts, preserves startup and failed-ind
   t.after(()=>{upstream.closeAllConnections();upstream.close();});
   const probe=http.createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
   const child=spawn(process.execPath,['explorer/server.mjs'],{cwd:fileURLToPath(new URL('../',import.meta.url)),windowsHide:true,
-    env:{PATH:process.env.PATH,HOST:'127.0.0.1',PORT:String(port),RPC_URL:'http://127.0.0.1:'+upstream.address().port,FRAME_INDEX_CACHE:join(directory,'index.json')},stdio:['ignore','pipe','pipe']});
+    env:{PATH:process.env.PATH,HOST:'127.0.0.1',PORT:String(port),RPC_URL:'http://127.0.0.1:'+upstream.address().port,FRAME_INDEX_CACHE:join(directory,'index.json'),...(aggregateFactory?{NATIVE_AGGREGATION_FACTORY:aggregateFactory}:{})},stdio:['ignore','pipe','pipe']});
   t.after(async()=>{releaseLogs();if(child.exitCode==null&&child.signalCode==null){const stopped=once(child,'exit');child.kill();await stopped;}});
   await once(child.stdout,'data');
   const origin='http://127.0.0.1:'+port;
@@ -67,8 +68,14 @@ test('overview counts unique deployed accounts, preserves startup and failed-ind
   logs=[log('AccountDeployed',entryPoint,firstAccount,0),log('AccountCreated',factory,firstAccount,1),
     log('AccountCreated',factory,secondAccount,2),log('AccountCreated',factory,secondAccount,3),
     log('AccountCreated',entryPoint,'0x'+'3'.repeat(40),4),log('AccountDeployed',factory,'0x'+'4'.repeat(40),5)];
-  const combined=await waitFor(record=>record.smartAccountCount===2);
-  assert.equal(combined.walletCount,1);assert.equal(combined.nativeWalletCount,2);assert.equal(combined.operationCount,0);
+  if(aggregateFactory) {
+    const aggregateAbi=new Interface(['event AccountCreated(address indexed account,bytes32 indexed salt,bytes32 keyHash)']);
+    const record={...log('AccountCreated',aggregateFactory,firstAccount,6),
+      ...aggregateAbi.encodeEventLog(aggregateAbi.getEvent('AccountCreated'),['0x'+'5'.repeat(40),ZeroHash,ZeroHash])};
+    logs.push(record,{...record,logIndex:'0x7'},{...record,address:entryPoint,logIndex:'0x8'});
+  }
+  const combined=await waitFor(record=>record.smartAccountCount===(aggregateFactory?3:2));
+  assert.equal(combined.walletCount,1);assert.equal(combined.nativeWalletCount,aggregateFactory?3:2);assert.equal(combined.operationCount,0);
   logs=[logs[0]];
   const replaced=await waitFor(record=>record.smartAccountCount===1);
   assert.equal(replaced.nativeWalletCount,0);
@@ -79,3 +86,4 @@ test('overview counts unique deployed accounts, preserves startup and failed-ind
   const recovered=await waitFor(record=>record.smartAccountCount===0 && record.entryPointIndex.status==='complete');
   assert.equal(recovered.nativeWalletCount,0);
 });
+}

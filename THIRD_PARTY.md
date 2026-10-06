@@ -26,3 +26,15 @@
 No browser owner keys, credentials, chain databases, or installed dependencies
 are included in this repository. The explicit devnet funding/executor keys
 are intentionally public test keys, not secrets.
+
+## Native aggregation client overlays
+
+`aggregation/frames/consensus/fork/overlays` contains modified upstream source
+files for Nethermind and Lighthouse at the revisions recorded in its
+`sources.lock.json`. Original file copyright and license notices are retained.
+The exact upstream license texts are included under `aggregation/frames/licenses`:
+Nethermind's LGPL and GPL texts and Lighthouse's Apache 2.0 text. Overlay manifests
+record original and replacement hashes; apply them only to the pinned sources.
+Build dependencies, including leanVM, are fetched separately at pinned revisions
+and retain their own licenses. The wallet retains the original NiceTry assets
+and cryptographic modules documented in its `PROVENANCE.json`.

@@ -12,7 +12,8 @@ const port = Number(process.env.PORT || 3000);
 const siteSettings = publicSiteConfig();
 const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:18545";
 const nativeFramesEnabled = process.env.NATIVE_FRAME_RPC_ENABLED === 'true';
-const publicRpc = createRpcProxy({url:rpcUrl,nativeFramesEnabled});
+const aggregationEnabled = process.env.NATIVE_AGGREGATION_RPC_ENABLED === 'true';
+const publicRpc = createRpcProxy({url:rpcUrl,nativeFramesEnabled,aggregationEnabled});
 const bundlerUrl = process.env.BUNDLER_URL || "http://127.0.0.1:4337";
 const entryPoint = process.env.ENTRY_POINT || "";
 const faucetKey = process.env.FAUCET_PRIVATE_KEY;
@@ -130,7 +131,7 @@ async function faucetSend(req, res) {
 async function config(res) {
   try {
     const network = await provider.getNetwork();
-    json(res, 200, { chainId: Number(network.chainId), rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address, networkName:'Daisugi', publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60, nativeFrameSubmissionEnabled:nativeFramesEnabled });
+    json(res, 200, { chainId: Number(network.chainId), rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address, networkName:'Daisugi', publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60, nativeFrameSubmissionEnabled:nativeFramesEnabled, nativeAggregationSubmissionEnabled:aggregationEnabled });
   } catch (error) {
     json(res, 503, { error: error instanceof Error ? error.message : String(error) });
   }

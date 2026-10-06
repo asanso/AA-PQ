@@ -1,0 +1,418 @@
+/* ───────────────────────────────────────────────────────────────────
+   theme.css — Tailwind v4 design tokens for Nice Try
+   ───────────────────────────────────────────────────────────────────
+   Source of truth: the Figma "Style Guide" color library
+   (NiceTry-Wallet, node 55:11184). Three layers live here:
+
+   1. RAW PALETTE (@theme): the full numbered Figma scales —
+      primary / slate / stone / success / warning / error (50…950) plus
+      the shared `background`. Every entry becomes a utility class:
+      `bg-primary-500`, `text-error-600`, `border-slate-800`, … These
+      are THEME-INDEPENDENT — the same hex on both themes.
+
+   2. SEMANTIC TOKENS (@theme): role-based names the UI actually uses
+      (`bg-card`, `text-primary`, `border`, …). The NEUTRAL ones do not
+      hold a hex directly — they point at `--nt-*` runtime variables, so
+      flipping `[data-theme]` on <html> re-skins the whole app. The
+      ACCENT ones (blue/red/amber/green) are shared and pulled from the
+      library scales.
+
+   3. THEME MAPS (@layer base): `--nt-*` neutral variables resolved per
+      theme. `stone` is the default (warm grey — matches the wallet's
+      historical look); `slate` is the cool blue-grey alternative. The
+      Settings toggle swaps `document.documentElement.dataset.theme`
+      between the two; see src/ui/theme.js.
+
+   To add a NEW theme: add a `html[data-theme="x"]` block in §3 mapping
+   every `--nt-*` to a neutral scale. Nothing else changes.
+
+   The legacy :root mirror (no `--color-` prefix) is kept so popup.css
+   and inline `style="color: var(--brand)"` keep rendering; it now
+   references the semantic tokens so it switches too. Drop it once
+   popup.css is gone.
+   ─────────────────────────────────────────────────────────────────── */
+
+@import "tailwindcss";
+
+/* Type system (Figma Typography 55:10864): font-family tokens +
+   `.type-*` text-style classes. Kept in its own file; imported here so
+   both popup and onboarding entries pick it up. */
+@import "./typography.css";
+
+/* Opt-in per-theme variants so components can special-case a theme:
+   `class="slate:border-slate-700 stone:border-stone-700"`. Rarely
+   needed — semantic tokens cover the common case — but available. */
+@custom-variant slate (&:where([data-theme="slate"], [data-theme="slate"] *));
+@custom-variant stone (&:where([data-theme="stone"], [data-theme="stone"] *));
+
+/* `static` forces ALL of these variables into :root even when no
+   utility references them yet — so the full Figma library is always
+   available, both as utilities (`bg-error-600`) and as raw
+   `var(--color-error-600)` in hand-written CSS / inline styles. The
+   semantic + accent block below stays a normal @theme (tree-shaken). */
+@theme static {
+  /* ═══════════════════════════════════════════════════════════════
+     1. RAW PALETTE — Figma color library (theme-independent)
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* ── Background (shared deepest backdrop) ── */
+  --color-background: #080710;
+
+  /* ── Primary (blue) ── */
+  --color-primary-50:  #F0F3FE;
+  --color-primary-100: #DEE3FB;
+  --color-primary-200: #C5D0F8;
+  --color-primary-300: #9DB1F3;
+  --color-primary-400: #6E88EC;
+  --color-primary-500: #3F56E3;
+  --color-primary-600: #3743D9;
+  --color-primary-700: #2E31C7;
+  --color-primary-800: #2B2BA2;
+  --color-primary-900: #282A80;
+  --color-primary-950: #1E1D4E;
+
+  /* ── Neutral · Slate (cool blue-grey) ── */
+  --color-slate-50:  #F9FBFB;
+  --color-slate-100: #F1F3F3;
+  --color-slate-200: #E3E7E8;
+  --color-slate-300: #CED8DA;
+  --color-slate-400: #9EA9AB;
+  --color-slate-500: #67787C;
+  --color-slate-600: #364F63;
+  --color-slate-700: #293C4C;
+  --color-slate-800: #212F3B;
+  --color-slate-900: #1D2730;
+  --color-slate-950: #131920;
+
+  /* ── Neutral · Stone (warm grey) ── */
+  --color-stone-50:  #FAFAFA;
+  --color-stone-100: #F8F6F4;
+  --color-stone-200: #E6E6E6;
+  --color-stone-300: #D6D6D6;
+  --color-stone-400: #A5A5A5;
+  --color-stone-500: #767676;
+  --color-stone-600: #636363;
+  --color-stone-700: #575757;
+  --color-stone-800: #434343;
+  --color-stone-900: #383838;
+  --color-stone-950: #292929;
+
+  /* ── Success (green) ── */
+  --color-success-50:  #F0FDF5;
+  --color-success-100: #DBFDEA;
+  --color-success-200: #BAFBD5;
+  --color-success-300: #94F1B3;
+  --color-success-400: #47E18B;
+  --color-success-500: #24DD76;
+  --color-success-600: #13A654;
+  --color-success-700: #138245;
+  --color-success-800: #15663A;
+  --color-success-900: #135432;
+  --color-success-950: #042F19;
+
+  /* ── Warning (amber) ── */
+  --color-warning-50:  #FFFCEB;
+  --color-warning-100: #FDF6C8;
+  --color-warning-200: #FCEB8B;
+  --color-warning-300: #FADB4F;
+  --color-warning-400: #FBC926;
+  --color-warning-500: #F3AB12;
+  --color-warning-600: #D78208;
+  --color-warning-700: #B25C0B;
+  --color-warning-800: #91470F;
+  --color-warning-900: #773A10;
+  --color-warning-950: #441D04;
+
+  /* ── Error (red) ── */
+  --color-error-50:  #FEF2F2;
+  --color-error-100: #FDE3E4;
+  --color-error-200: #FCCCCE;
+  --color-error-300: #F9A8AB;
+  --color-error-400: #F3767B;
+  --color-error-500: #EB4F55;
+  --color-error-600: #D52D34;
+  --color-error-700: #B32228;
+  --color-error-800: #942025;
+  --color-error-900: #7B2125;
+  --color-error-950: #430C0E;
+}
+
+@theme {
+  /* ═══════════════════════════════════════════════════════════════
+     2. SEMANTIC TOKENS — role names the UI consumes
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* ── Surfaces (NEUTRAL → switch via --nt-*; see §3) ── */
+  --color-bg-primary: var(--nt-bg-primary);
+  --color-bg-card:    var(--nt-bg-card);
+  --color-bg-input:   var(--nt-bg-input);
+  --color-bg-hover:   var(--nt-bg-hover);
+  --color-backdrop:   var(--nt-backdrop); /* behind the side-panel */
+
+  --color-border:       var(--nt-border);
+  --color-border-light: var(--nt-border-light);
+
+  /* ── Text (NEUTRAL → switch via --nt-*) ── */
+  --color-text-primary:   var(--nt-text-primary);
+  --color-text-secondary: var(--nt-text-secondary);
+  --color-text-muted:     var(--nt-text-muted);
+  --color-text-dim:       var(--nt-text-dim);
+
+  /* ── Accent: blue (primary) — shared from library ── */
+  --color-blue:       var(--color-primary-500);
+  --color-blue-hover: var(--color-primary-400);
+  --color-blue-text:  var(--color-primary-300);
+  --color-blue-dim:   color-mix(in srgb, var(--color-primary-500) 10%, transparent);
+
+  /* ── Semantic accents — shared from library ── */
+  --color-red:     var(--color-error-400);
+  --color-red-dim: color-mix(in srgb, var(--color-error-500) 10%, transparent);
+  --color-amber:   var(--color-warning-400);
+  --color-amber-dim: color-mix(in srgb, var(--color-warning-400) 15%, transparent);
+  --color-green:   var(--color-success-500);
+  --color-green-dim: color-mix(in srgb, var(--color-success-500) 12%, transparent);
+
+  /* ── Brand (teal/mint) — wallet identity, not part of the Figma
+     library; kept so the logo / brand accents are unchanged. ── */
+  --color-brand:       #00D1A0;
+  --color-brand-hover: #34D399;
+  --color-brand-dim:   rgba(0, 209, 160, 0.15);
+
+  /* ── Legacy accents kept for compat ── */
+  --color-cyan:       #22D3EE;
+  --color-purple:     #A78BFA;
+  --color-purple-dim: rgba(167, 139, 250, 0.15);
+
+  /* ── Cards: "active" / "fresh" green card ── */
+  --color-green-card:   #134134;
+  --color-green-border: #00D1A0;
+
+  /* ── Typography ── */
+  --font-sans: Poppins, system-ui, -apple-system, sans-serif;
+  /* --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; */
+
+  /* ── Radii ── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   3. THEME MAPS — neutral variables resolved per theme
+   ───────────────────────────────────────────────────────────────────
+   `stone` is the default and also the no-attribute fallback (matches
+   the wallet's historical warm-grey look). `slate` wins when set
+   because `html[data-theme="slate"]` (0,1,1) out-specifies `:root`
+   (0,1,0). Each map only assigns `--nt-*`; the @theme semantic tokens
+   reference these, so utilities like `bg-bg-card` and the <body>
+   classes follow the active theme automatically.
+   ═══════════════════════════════════════════════════════════════════ */
+@layer base {
+  :root,
+  html[data-theme="stone"] {
+    --nt-bg-primary:    var(--color-stone-950); /* #292929 app background */
+    --nt-bg-card:       var(--color-stone-900); /* #383838 elevated card  */
+    --nt-bg-input:      var(--color-stone-900);
+    --nt-bg-hover:      var(--color-stone-800); /* #434343 */
+    --nt-backdrop:      #35363A;                /* side-panel backdrop */
+    --nt-border:        var(--color-stone-800);
+    --nt-border-light:  var(--color-stone-700); /* #575757 */
+    --nt-text-primary:   var(--color-stone-50);  /* #FAFAFA */
+    --nt-text-secondary: var(--color-stone-300); /* #D6D6D6 */
+    --nt-text-muted:     var(--color-stone-400); /* #A5A5A5 */
+    --nt-text-dim:       var(--color-stone-500); /* #767676 */
+  }
+
+  html[data-theme="slate"] {
+    --nt-bg-primary:    var(--color-slate-950); /* #131920 */
+    --nt-bg-card:       var(--color-slate-900); /* #1D2730 */
+    --nt-bg-input:      var(--color-slate-900);
+    --nt-bg-hover:      var(--color-slate-800); /* #212F3B */
+    --nt-backdrop:      var(--color-background); /* #080710 deepest backdrop */
+    --nt-border:        var(--color-slate-800);
+    --nt-border-light:  var(--color-slate-700); /* #293C4C */
+    --nt-text-primary:   var(--color-slate-50);  /* #F9FBFB */
+    --nt-text-secondary: var(--color-slate-300); /* #CED8DA */
+    --nt-text-muted:     var(--color-slate-400); /* #9EA9AB */
+    --nt-text-dim:       var(--color-slate-500); /* #67787C */
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   Popup dimensions — set directly on html/body because Chrome decides
+   the popup window size by measuring the <body> element's rendered
+   size BEFORE most Tailwind utility classes take effect. Setting
+   width/height on .w-popup or .w-[400px] works but only after the
+   first paint, producing a flash of wide-popup-then-shrunk layout.
+
+   The onboarding page overrides this in its own <body> class (it
+   wants full-screen), so keep these at html level and let the
+   onboarding-specific body styles win via specificity.
+
+   `overflow: hidden` on both axes is intentional: any internal screen
+   that needs to scroll provides its own scrollable region. Without
+   this, a wrapper using `min-h-screen` plus a few pixels of internal
+   padding pushes the body above 620px and the popup grows a vertical
+   scrollbar over the dark page background — visible as empty space
+   below the actual content.
+   ─────────────────────────────────────────────────────────────────── */
+html {
+  width: 420px;
+  height: 600px;
+  overflow: hidden;
+}
+
+html, body {
+  margin: 0;
+}
+
+/* Onboarding surface opts out: its body class carries `min-h-screen`
+   and gets the full viewport. Chrome only constrains the popup,
+   not the onboarding tab, so this works cleanly. */
+html:has(body.onboarding-surface) {
+  width: 100%;
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+/* Side-panel surface: the <html> spans the full (user-resizable) panel
+   so the dark background fills the whole sidebar, but the wallet UI
+   itself stays pinned at the popup-native 420px and centered inside
+   the panel — widening the panel adds empty bg-primary gutters left
+   and right rather than stretching the layout, which would have to
+   be re-tuned for arbitrary widths. If the user narrows the panel
+   below 420px we shrink to fit (`min(420px, 100%)`) so the wallet
+   never clips horizontally.
+   The `sidebar-surface` class is set on <body> by applyUiSurfaceLayout()
+   in src/ui/utils/ui-mode.js.
+
+   Backdrop colour: <html> carries the theme-aware backdrop
+   (`--color-backdrop`, Figma 37:16967) while the wallet <body> keeps
+   `--color-bg-primary`. So the empty gutters behind the centered panel
+   read as a distinct surface instead of blending into the wallet
+   background. Per theme: stone → #35363A, slate → #080710 (see §3).
+   This unlayered rule out-specifies the layered
+   `html, body { background: ... }` default below. */
+html:has(body.sidebar-surface) {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+  background: var(--color-backdrop);
+}
+
+body.sidebar-surface {
+  width: min(420px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  background: var(--color-bg-primary);
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   Scroll containers — no layout shift when the scrollbar appears
+   ───────────────────────────────────────────────────────────────────
+   <html> is overflow:hidden in popup mode, so the page never scrolls:
+   every scrollable region is an inner container (SubPageShell, the
+   Dashboard overlays, the Approval body…). When its content grows past
+   the available height the scrollbar materialises, claims its width out
+   of the content box, and everything jumps left.
+
+   `stable both-edges` reserves the gutter on BOTH sides at all times, so
+   the content keeps its centre whether or not the scrollbar is showing.
+   The gutter is exactly as wide as the scrollbar, so the 4px bar below
+   costs 4px per side — a fraction of Chrome's native ~15px.
+
+   Scoped to the overflow utilities rather than `*` on purpose — the
+   codebase leans on `overflow-hidden` for rounded/clipping wrappers, and
+   those must not reserve anything.
+   ─────────────────────────────────────────────────────────────────── */
+.overflow-auto,
+.overflow-scroll,
+.overflow-y-auto,
+.overflow-y-scroll {
+  scrollbar-gutter: stable both-edges;
+}
+
+/* A 4px hairline in the theme's own border colour, on a transparent track.
+   Uses ::-webkit-scrollbar rather than `scrollbar-width: thin` because
+   `thin` is ~8px and not tunable; the webkit pseudo-elements take an
+   explicit width. Declaring either one makes Chrome ignore the other, so
+   these rules are the single source of truth for scrollbar geometry —
+   which is also what `scrollbar-gutter` above measures. */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   Legacy CSS variables: keep popup.css and inline style="" working
+   verbatim during the migration. They now reference the SEMANTIC
+   tokens (not raw hex) so they switch with the active theme too.
+
+   REMOVE this block once popup.css is dropped and no `var(--brand)`
+   remains in the tree.
+   ─────────────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    --bg-primary: var(--color-bg-primary);
+    --bg-card: var(--color-bg-card);
+    --bg-input: var(--color-bg-input);
+    --bg-hover: var(--color-bg-hover);
+    --border: var(--color-border);
+    --border-light: var(--color-border-light);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --text-muted: var(--color-text-muted);
+    --text-dim: var(--color-text-dim);
+    --brand: var(--color-brand);
+    --brand-hover: var(--color-brand-hover);
+    --brand-dim: var(--color-brand-dim);
+    --blue: var(--color-blue);
+    --blue-hover: var(--color-blue-hover);
+    --blue-dim: var(--color-blue-dim);
+    --blue-text: var(--color-blue-text);
+    --red: var(--color-red);
+    --red-dim: var(--color-red-dim);
+    --amber: var(--color-amber);
+    --amber-dim: var(--color-amber-dim);
+    --cyan: var(--color-cyan);
+    --purple: var(--color-purple);
+    --purple-dim: var(--color-purple-dim);
+    --green-card: var(--color-green-card);
+    --green-border: var(--color-green-border);
+  }
+
+  html, body {
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Send "Executing..." animated dots — three spans fade in/out in
+   sequence so the trailing ellipsis pulses while a UserOp is in
+   flight. Used by Send.jsx footer pill. */
+@keyframes nt-dot-blink {
+  0%, 20%   { opacity: 0; }
+  50%       { opacity: 1; }
+  100%      { opacity: 0; }
+}
+.nt-dot {
+  animation: nt-dot-blink 1.4s infinite both;
+}
+.nt-dot-1 { animation-delay: 0s; }
+.nt-dot-2 { animation-delay: 0.2s; }
+.nt-dot-3 { animation-delay: 0.4s; }

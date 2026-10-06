@@ -1,0 +1,5 @@
+node_modules/
+prover/target/
+artifacts/
+runs/
+.env

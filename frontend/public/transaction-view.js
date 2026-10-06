@@ -2,7 +2,7 @@ import {site} from './routes.js';
 import { formatUnits } from '/ethers.js';
 import { renderInputPanel, inputSize } from './input-data.js';
 import {renderTimestamp, formatTimestamp} from './timestamp.js';
-import {renderNativeFrames,renderNativeWitnesses,renderNativeMetadata} from './native-frame-view.js';
+import {renderNativeFrames,renderNativeWitnesses,renderNativeMetadata,renderNativeAggregation} from './native-frame-view.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const int = value => value == null ? '—' : BigInt(value).toLocaleString('en-US');
 const short = value => String(value).slice(0, 10) + '…' + String(value).slice(-8);
@@ -54,6 +54,7 @@ export function renderTransactionDetails(data) {
       ${row('Total gas used',d.gasUsed != null ? int(d.gasUsed) : pending ? '<span class="tx-unavailable">Pending</span>' : notAvailable,'Total gas consumed according to the transaction receipt, including transaction overhead; distinct from the gas limit.')}
       </dl></section>
       ${renderNativeFrames(data.nativeFrame,{included})}
+      ${renderNativeAggregation(data.nativeFrame)}
       <div class="native-extra-grid"><details class="panel native-disclosure"><summary><span>Fees and transaction details</span><span class="disclosure-meta">${fee}</span><span class="disclosure-chevron" aria-hidden="true">›</span></summary><dl class="tx-properties">
       ${row('Transaction fee',fee,'Actual receipt gas used × effective gas price, plus blob fees if applicable.')}
       ${row('Gas price',price,'Effective price paid per unit of gas.')}${feeExtras}

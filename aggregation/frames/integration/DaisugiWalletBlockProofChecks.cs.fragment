@@ -1,0 +1,85 @@
+    [TestCase(0)]
+    [TestCase(1)]
+    public void Daisugi_legacy_frame_encoding_and_digest_remain_compatible(int index)
+    {
+        string root = System.Environment.GetEnvironmentVariable("DAISUGI_PROOF_DIR")
+            ?? throw new System.InvalidOperationException("DAISUGI_PROOF_DIR is required");
+        using System.Text.Json.JsonDocument input = System.Text.Json.JsonDocument.Parse(
+            System.IO.File.ReadAllText(System.IO.Path.Combine(root, "fixtures", "legacy-transactions.json")));
+        System.Text.Json.JsonElement item = input.RootElement[index];
+        byte[] raw = System.Convert.FromHexString(item.GetProperty("raw").GetString()![2..]);
+        Nethermind.Serialization.Rlp.RlpReader reader = new(raw);
+        Transaction transaction = Nethermind.Serialization.Rlp.TxDecoder.Instance.Decode(
+            ref reader, Nethermind.Serialization.Rlp.RlpBehaviors.SkipTypedWrapping)!;
+        Assert.That(transaction.Type, Is.EqualTo(TxType.FrameTx));
+        Assert.That(transaction.NonceKeys, Is.Null);
+        Assert.That(Nethermind.Serialization.Rlp.FrameTxSigHash.ComputeValue(transaction),
+            Is.EqualTo(new ValueHash256(item.GetProperty("digest").GetString()!)));
+        byte[] encoded = Nethermind.Serialization.Rlp.TxDecoder.Instance.Encode(
+            transaction, Nethermind.Serialization.Rlp.RlpBehaviors.SkipTypedWrapping).Bytes;
+        Assert.That(encoded, Is.EqualTo(raw));
+    }
+
+    [TestCase("valid", true)]
+    [TestCase("reordered", true)]
+    [TestCase("duplicate", true)]
+    [TestCase("changed-message", false)]
+    [TestCase("changed-key", false)]
+    [TestCase("recomputed-for-changed-body", false)]
+    [TestCase("missing-dependency", false)]
+    [TestCase("corrupt-proof", false)]
+    [TestCase("one-hop-proof", false)]
+    [TestCase("missing-header-proof", false)]
+    public void Daisugi_wallet_claims_bind_block_dependencies(string scenario, bool accepted)
+    {
+        // This uses the existing proof-validation fixture's structural-validator doubles.
+        // It checks real native proofs and body commitments, not account authorization.
+        string root = System.Environment.GetEnvironmentVariable("DAISUGI_PROOF_DIR")
+            ?? throw new System.InvalidOperationException("DAISUGI_PROOF_DIR is required");
+        using System.Text.Json.JsonDocument input = System.Text.Json.JsonDocument.Parse(
+            System.IO.File.ReadAllText(System.IO.Path.Combine(root, "fixtures", "expected.json")));
+        System.Collections.Generic.List<FrameDependency> dependencies = [];
+        foreach (System.Text.Json.JsonElement item in input.RootElement.GetProperty("dependencies").EnumerateArray())
+        {
+            dependencies.Add(new FrameDependency(0x10,
+                new ValueHash256(item.GetProperty("message").GetString()!),
+                new ValueHash256(item.GetProperty("publicKeyHash").GetString()!)));
+        }
+        ValueHash256 original = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        Assert.That(original, Is.EqualTo(new ValueHash256(input.RootElement.GetProperty("nethermindHash").GetString()!)));
+        byte[] proof = System.IO.File.ReadAllBytes(System.IO.Path.Combine(root, "nethermind-results", "nethermind.bin"));
+        switch (scenario)
+        {
+            case "reordered": dependencies.Reverse(); break;
+            case "duplicate": dependencies.Add(dependencies[0]); break;
+            case "changed-message":
+            case "recomputed-for-changed-body": dependencies[0] = new FrameDependency(0x10, default, dependencies[0].VerificationKey); break;
+            case "changed-key": dependencies[0] = new FrameDependency(0x10, dependencies[0].DataHash, default); break;
+            case "missing-dependency": dependencies.RemoveAt(1); break;
+            case "corrupt-proof": proof[^1] ^= 1; break;
+            case "one-hop-proof": proof = System.IO.File.ReadAllBytes(System.IO.Path.Combine(root, "one-hop-results", "one-hop.bin")); break;
+        }
+        Transaction[] transactions = new Transaction[dependencies.Count];
+        for (int index = 0; index < transactions.Length; index++)
+        {
+            transactions[index] = new Transaction
+            {
+                Type = TxType.FrameTx,
+                ChainId = 1337,
+                SenderAddress = TestItem.AddressA,
+                NonceKeys = [Nethermind.Int256.UInt256.Zero],
+                Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null,
+                    Eip8288Constants.LeanSphincsVerificationGas, Nethermind.Int256.UInt256.Zero,
+                    Eip8288Dependencies.Serialize([dependencies[index]]))],
+                GasLimit = (long)Eip8288Constants.LeanSphincsVerificationGas
+            };
+        }
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithTransactions(transactions).TestObject;
+        ValueHash256 expected = scenario == "recomputed-for-changed-body"
+            ? Eip8288Dependencies.ComputeBlockDepsHash(block) : original;
+        if (scenario != "missing-header-proof") block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(expected));
+        bool valid = CreateValidator().ValidateSuggestedBlock(block, parent, out string? error);
+        Assert.That(valid, Is.EqualTo(accepted), error);
+        if (!accepted) Assert.That(error, Does.Contain("RecursiveStark").Or.Contain("deps hash"));
+    }

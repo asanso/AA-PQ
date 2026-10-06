@@ -1,0 +1,6 @@
+leanvm/
+prover/target/
+dotnet/bin/
+dotnet/obj/
+results/
+__pycache__/

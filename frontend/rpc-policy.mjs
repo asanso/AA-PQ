@@ -1,5 +1,6 @@
 import {decodeRlp} from 'ethers';
 import {DAISUGI_GENESIS} from '../explorer/native-frame.mjs';
+import {validateProofWrapper} from './aggregation-rpc.mjs';
 
 export const RPC_BODY_LIMIT = 128 * 1024;
 const reads = new Set(['web3_clientVersion','eth_chainId','eth_blockNumber','eth_getBalance','eth_getCode',
@@ -24,20 +25,31 @@ export function validateFrameEnvelope(raw) {
   // Structural gateway checks are not signature verification. The node validates
   // the complete envelope, witnesses, account authorization and execution rules.
 }
-export function validateRpcRequest(payload,{nativeFramesEnabled = false} = {}) {
-  if (!payload || Array.isArray(payload) || payload.jsonrpc !== '2.0' || typeof payload.method !== 'string' || !Array.isArray(payload.params)
+export function validateRpcRequest(payload,{nativeFramesEnabled = false, aggregationEnabled = false} = {}) {
+  if (!payload || Array.isArray(payload) || payload.jsonrpc !== '2.0' || typeof payload.method !== 'string' || (payload.params !== undefined && !Array.isArray(payload.params))
     || !(payload.id == null || typeof payload.id === 'string' || typeof payload.id === 'number')) throw new Error('Expected a single JSON-RPC 2.0 request with positional parameters.');
-  if (['eth_call','eth_estimateGas'].includes(payload.method) && payload.params.length > 2) throw new Error('State and block overrides are not enabled on the public RPC.');
+  const params = payload.params ?? [];
+  if (['eth_call','eth_estimateGas'].includes(payload.method) && params.length > 2) throw new Error('State and block overrides are not enabled on the public RPC.');
+  if (payload.method === 'eth_sendProofWrapper' || payload.method === 'eth_getProofWrapper') {
+    if (!aggregationEnabled) throw new Error('Native aggregation is not enabled on this endpoint.');
+    if (payload.method === 'eth_getProofWrapper') {
+      if (params.length) throw new Error('Expected no parameters.');
+    } else {
+      if (params.length !== 1) throw new Error('Expected one proof wrapper.');
+      validateProofWrapper(params[0]);
+    }
+    return;
+  }
   if (payload.method === 'eth_sendRawTransaction') {
     if (!nativeFramesEnabled) throw new Error('Native frame submission is not enabled on this endpoint.');
-    if (payload.params.length !== 1) throw new Error('Expected one signed transaction.');
-    validateFrameEnvelope(payload.params[0]);
+    if (params.length !== 1) throw new Error('Expected one signed transaction.');
+    validateFrameEnvelope(params[0]);
     return;
   }
   if (!reads.has(payload.method)) throw new Error('Method is not enabled on this endpoint.');
 }
 
-export function createRpcProxy({url,nativeFramesEnabled = false,fetchImpl = fetch}) {
+export function createRpcProxy({url,nativeFramesEnabled = false,aggregationEnabled = false,fetchImpl = fetch}) {
   let identity, expires = 0;
   async function upstream(payload) {
     const response = await fetchImpl(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
@@ -58,9 +70,9 @@ export function createRpcProxy({url,nativeFramesEnabled = false,fetchImpl = fetc
     return identity;
   }
   return async payload => {
-    try {validateRpcRequest(payload,{nativeFramesEnabled});}
+    try {validateRpcRequest(payload,{nativeFramesEnabled,aggregationEnabled});}
     catch(error) {error.status=400;error.rpcCode=-32602;throw error;}
-    if (payload.method === 'eth_sendRawTransaction') await verifyIdentity();
-    return upstream(payload);
+    if (payload.method === 'eth_sendRawTransaction' || payload.method === 'eth_sendProofWrapper') await verifyIdentity();
+    return upstream(payload.params === undefined ? {...payload,params:[]} : payload);
   };
 }

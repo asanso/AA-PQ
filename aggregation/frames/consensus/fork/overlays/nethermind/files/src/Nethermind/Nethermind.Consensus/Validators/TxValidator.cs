@@ -1,0 +1,682 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.TxPool;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Validation;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+
+namespace Nethermind.Consensus.Validators;
+
+public sealed class TxValidator : ITxValidator
+{
+    private readonly ITxValidator?[] _validators = new ITxValidator?[Transaction.MaxTxType + 1];
+
+    public TxValidator(ulong chainId)
+    {
+        // Sender-independent failures must precede intrinsic gas so malformed transactions cannot
+        // trigger EIP-2780 sender recovery; expensive blob proof validation remains after the gas gate.
+        RegisterValidator(TxType.Legacy, new CompositeTxValidator([
+            NonceCapTxValidator.Instance,
+            new LegacySignatureTxValidator(chainId),
+            ContractSizeTxValidator.Instance,
+            NonBlobFieldsTxValidator.Instance,
+            NonSetCodeFieldsTxValidator.Instance,
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance
+        ]));
+
+        ExpectedChainIdTxValidator expectedChainIdTxValidator = new(chainId);
+        RegisterValidator(TxType.AccessList, new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
+            NonceCapTxValidator.Instance,
+            SignatureTxValidator.Instance,
+            expectedChainIdTxValidator,
+            ContractSizeTxValidator.Instance,
+            NonBlobFieldsTxValidator.Instance,
+            NonSetCodeFieldsTxValidator.Instance,
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance
+        ]));
+        RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
+            NonceCapTxValidator.Instance,
+            SignatureTxValidator.Instance,
+            expectedChainIdTxValidator,
+            GasFieldsTxValidator.Instance,
+            ContractSizeTxValidator.Instance,
+            NonBlobFieldsTxValidator.Instance,
+            NonSetCodeFieldsTxValidator.Instance,
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance
+        ]));
+        RegisterValidator(TxType.Blob, new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
+            NonceCapTxValidator.Instance,
+            SignatureTxValidator.Instance,
+            expectedChainIdTxValidator,
+            GasFieldsTxValidator.Instance,
+            ContractSizeTxValidator.Instance,
+            BlobFieldsTxValidator.Instance,
+            MempoolBlobTxProofVersionValidator.Instance,
+            NonSetCodeFieldsTxValidator.Instance,
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance,
+            MempoolBlobTxValidator.Instance
+        ]));
+        RegisterValidator(TxType.SetCode, new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
+            NonceCapTxValidator.Instance,
+            SignatureTxValidator.Instance,
+            expectedChainIdTxValidator,
+            GasFieldsTxValidator.Instance,
+            ContractSizeTxValidator.Instance,
+            NonBlobFieldsTxValidator.Instance,
+            NoContractCreationTxValidator.Instance,
+            AuthorizationListTxValidator.Instance,
+            GasLimitCapTxValidator.Instance,
+            IntrinsicGasTxValidator.Instance
+        ]));
+        // EIP-8141: no envelope signature and no envelope gas limit, so signature and intrinsic-gas validators
+        // do not apply; the EIP-7594 wrapper is shared with type-3, so its validators do and no-op without one.
+        RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
+            NonceCapTxValidator.Instance,
+            expectedChainIdTxValidator,
+            GasFieldsTxValidator.Instance,
+            // The frame-tx decoder always populates both blob fields, so the presence-based
+            // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
+            FrameTxFieldsTxValidator.Instance,
+            FrameTxNonceKeysTxValidator.Instance,
+            FrameTxEnvelopeTxValidator.Instance,
+            MempoolBlobTxProofVersionValidator.Instance,
+            MempoolBlobTxValidator.Instance
+        ]));
+    }
+
+    public void RegisterValidator(TxType type, ITxValidator validator) => _validators[(byte)type] = validator;
+
+    /// <remarks>
+    /// Full and correct validation is only possible in the context of a specific block
+    /// as we cannot generalize correctness of the transaction without knowing the EIPs implemented
+    /// and the world state(account nonce in particular).
+    /// Even without protocol change, the tx can become invalid if another tx
+    /// from the same account with the same nonce got included on the chain.
+    /// As such, we can decide whether tx is well formed as long as we also validate nonce
+    /// just before the execution of the block / tx.
+    /// </remarks>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
+        IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options) =>
+        _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
+            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit, options)
+            : TxErrorMessages.InvalidTxType(releaseSpec.Name);
+}
+
+/// <summary>Runs the validators in order and returns the first failure, or success when all of them pass.</summary>
+/// <remarks>The validators are bound at construction, so later changes to the passed array are not observed.</remarks>
+public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
+{
+    // Bound once, each delegate calls its implementation directly, whereas one interface call site shared by
+    // all the validator types resolves the target through a polymorphic dispatch cache on every call.
+    private readonly Func<Transaction, IReleaseSpec, ulong, TxValidationOptions, ValidationResult>[] _validators =
+        Array.ConvertAll(validators, static validator =>
+            (Func<Transaction, IReleaseSpec, ulong, TxValidationOptions, ValidationResult>)validator.IsWellFormed);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options)
+    {
+        foreach (Func<Transaction, IReleaseSpec, ulong, TxValidationOptions, ValidationResult> validator in _validators)
+        {
+            ValidationResult isWellFormed = validator(transaction, releaseSpec, blockGasLimit, options);
+            if (!isWellFormed)
+            {
+                return isWellFormed;
+            }
+        }
+
+        return ValidationResult.Success;
+    }
+}
+
+public sealed class IntrinsicGasTxValidator : ITxValidator
+{
+    public static readonly IntrinsicGasTxValidator Instance = new();
+    private IntrinsicGasTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    /// <inheritdoc/>
+    /// <param name="blockGasLimit">Unused by the Ethereum intrinsic gas policy, with or without memoization.</param>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options)
+    {
+        if (transaction is LightTransaction)
+        {
+            return TxErrorMessages.InvalidTransactionForm;
+        }
+
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = (options & TxValidationOptions.SkipIntrinsicGasMemo) != 0
+            ? EthereumGasPolicy.CalculateIntrinsicGasWithoutMemo(transaction, releaseSpec)
+            : EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
+        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
+        {
+            return IntrinsicGasError((options & TxValidationOptions.SkipErrorDetails) != 0
+                ? TxErrorMessages.IntrinsicGasTooLow
+                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
+        }
+
+        return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
+            ? IntrinsicGasError(TxErrorMessages.IntrinsicGasTooLow)
+            : ValidationResult.Success;
+    }
+
+    private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
+}
+
+/// <summary>Applies <paramref name="inner"/> to every transaction except frame transactions, which carry no
+/// envelope for it to judge.</summary>
+/// <remarks>EIP-8141: a frame transaction has no envelope gas limit and no <c>to</c>, so <see cref="TxValidator"/>
+/// omits the envelope size, gas-cap and intrinsic-gas rules from its frame composite; head validation must too.</remarks>
+internal sealed class NonFrameTxValidator(ITxValidator inner) : ITxValidator
+{
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.Type == TxType.FrameTx ? ValidationResult.Success : inner.IsWellFormed(transaction, releaseSpec);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
+        transaction.Type == TxType.FrameTx ? ValidationResult.Success : inner.IsWellFormed(transaction, releaseSpec, blockGasLimit);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        transaction.Type == TxType.FrameTx ? ValidationResult.Success : inner.IsWellFormed(transaction, releaseSpec, blockGasLimit, options);
+}
+
+public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = null) : ITxValidator
+{
+    internal static readonly ReleaseSpecTxValidator Instance = new();
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        !(validate?.Invoke(releaseSpec) ?? IsEnabled(transaction.Type, releaseSpec))
+            ? TxErrorMessages.InvalidTxType(releaseSpec.Name)
+            : ValidationResult.Success;
+
+    private static bool IsEnabled(TxType type, IReleaseSpec releaseSpec) => type switch
+    {
+        TxType.AccessList => releaseSpec.IsEip2930Enabled,
+        TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
+        TxType.Blob => releaseSpec.IsEip4844Enabled,
+        TxType.SetCode => releaseSpec.IsEip7702Enabled,
+        // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
+        TxType.FrameTx => releaseSpec.IsEip8141Enabled,
+        _ => true,
+    };
+}
+
+public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
+{
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.ChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, transaction.ChainId) : ValidationResult.Success;
+}
+
+public sealed class GasFieldsTxValidator : ITxValidator
+{
+    public static readonly GasFieldsTxValidator Instance = new();
+    private GasFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
+}
+
+/// <summary>EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes) plus the
+/// EIP-7594 blob constraints for a blob-carrying frame transaction.</summary>
+public sealed class FrameTxFieldsTxValidator : ITxValidator
+{
+    public static readonly FrameTxFieldsTxValidator Instance = new();
+    private FrameTxFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!FrameTxValidation.IsWellFormed(transaction, releaseSpec, out string? error))
+        {
+            return error!;
+        }
+
+        // The POST_TX gate the head validator also carries is already answered by the call above.
+        ValidationResult gasReservationResult = FrameTxHeadFieldsTxValidator.ValidateGasReservation(transaction, releaseSpec);
+        if (!gasReservationResult)
+        {
+            return gasReservationResult;
+        }
+
+        // EIP-7594: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
+        // versioned-hash version byte as a type-3 blob tx.
+        byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
+        if (blobVersionedHashes is { Length: > 0 })
+        {
+            if (transaction.MaxFeePerBlobGas is null)
+            {
+                return TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
+            }
+
+            ValidationResult blobGasLimitResult = BlobFieldsTxValidator.ValidateBlobGasLimits(blobVersionedHashes.Length, releaseSpec);
+            return !blobGasLimitResult ? blobGasLimitResult : BlobFieldsTxValidator.ValidateBlobVersionedHashes(blobVersionedHashes);
+        }
+
+        return ValidationResult.Success;
+    }
+}
+
+/// <summary>The frame-transaction rules of <see cref="FrameTxFieldsTxValidator"/> whose verdict a change of
+/// head specification can flip: the EIP-7906 POST_TX gate and the spec-priced execution-gas reservation.</summary>
+/// <remarks>
+/// A POST_TX frame admitted after EIP-7906 is invalid on a head below it, and a repricing of the intrinsic or
+/// floored gas moves the reservation across the EIP-7825 cap while <see cref="GasLimitCapTxValidator"/> skips
+/// frame transactions. This therefore also runs in <see cref="HeadTxValidator"/>.
+/// What that validator checks and this one does not is either fork-independent frame shape, or the EIP-7594 blob
+/// leg, which is fork-priced but re-checked at the head by <see cref="MaxBlobCountBlobTxValidator"/> — a
+/// blob-carrying frame transaction falls through its type arm into the same bound. Out of scope here is
+/// <c>GasLimitTxFilter</c>'s admission bound, the head block gas limit: it is not a specification property, so a
+/// spec-change hook could not see it move. A transaction carrying no frames — every other type, and a reloaded
+/// light record — passes through; a light record is judged when its body is read back.
+/// </remarks>
+public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
+{
+    public static readonly FrameTxHeadFieldsTxValidator Instance = new();
+    private FrameTxHeadFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!releaseSpec.IsEip7906Enabled && transaction.Frames is { } frames)
+        {
+            foreach (TxFrame frame in frames)
+            {
+                if (frame.Mode == FrameMode.PostTx)
+                {
+                    return FrameTxValidation.PostTxNotEnabled;
+                }
+            }
+        }
+
+        return ValidateGasReservation(transaction, releaseSpec);
+    }
+
+    /// <summary>The reservation leg alone, for the caller that has already answered the POST_TX gate.</summary>
+    internal static ValidationResult ValidateGasReservation(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (transaction.Frames is null)
+        {
+            return ValidationResult.Success;
+        }
+
+        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))
+        {
+            return FrameTxValidation.FrameGasOverflow;
+        }
+
+        return executionReservation > Eip7825Constants.DefaultTxGasLimitCap
+            ? FrameTxValidation.FrameExecutionGasExceedsCap(executionReservation, Eip7825Constants.DefaultTxGasLimitCap)
+            : ValidationResult.Success;
+    }
+}
+
+/// <summary>Admits the EIP-8250 keyed-nonce envelope only on forks that define it, and only well-formed.</summary>
+/// <remarks>
+/// Pre-fork the keys carry no replay protection at all — the account nonce is left untouched — so admitting
+/// one would make the transaction replayable. Post-fork EIP-8250 replaces the scalar <c>nonce</c> with
+/// <c>nonce_keys, nonce_seq</c>, so the fork-blind decoder's legacy scalar-nonce shape is refused. Well-formedness
+/// is re-checked because <c>eth_call</c>, <c>eth_estimateGas</c> and block building construct a transaction
+/// without going through the decoder. A pre-fork scalar-nonce frame tx is valid on admission but invalid once
+/// EIP-8250 activates, so this also runs in <see cref="HeadTxValidator"/> to evict it at the transition; it
+/// guards on the frame type because that validator is not type-dispatched.
+/// </remarks>
+public sealed class FrameTxNonceKeysTxValidator : ITxValidator
+{
+    public static readonly FrameTxNonceKeysTxValidator Instance = new();
+    private FrameTxNonceKeysTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!transaction.SupportsFrames)
+        {
+            return ValidationResult.Success;
+        }
+
+        UInt256[]? nonceKeys = transaction.NonceKeys;
+        if (nonceKeys is null)
+        {
+            // Preserve the signed scalar envelope only under the explicit Daisugi compatibility rule.
+            // The scalar nonce and keyed [0] both consume the same account nonce.
+            return releaseSpec.IsEip8250Enabled && !releaseSpec.IsDaisugiLegacyFramesEnabled
+                ? FrameTxValidation.LegacyNonceNotAllowed : ValidationResult.Success;
+        }
+
+        if (!releaseSpec.IsEip8250Enabled)
+        {
+            return FrameTxValidation.KeyedNoncesNotEnabled;
+        }
+
+        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
+            ? ValidationResult.Success
+            : FrameTxValidation.MalformedNonceKeySet;
+    }
+}
+
+/// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
+/// <remarks>The RLP decoder tells the envelope shapes apart without fork context, so the fork gate lives here.
+/// The reference cap is not re-checked: <see cref="FrameTxFieldsTxValidator"/> also sits in the frame-transaction
+/// composite and enforces it through <see cref="FrameTxValidation.IsWellFormed"/>, on decoder-built and
+/// caller-built transactions alike. A transaction admitted after EIP-8272 is invalid on a head below it, so this
+/// also runs in <see cref="HeadTxValidator"/> to evict it at the transition.</remarks>
+public sealed class FrameTxEnvelopeTxValidator : ITxValidator
+{
+    public static readonly FrameTxEnvelopeTxValidator Instance = new();
+    private FrameTxEnvelopeTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.RecentRootReferences is null || releaseSpec.IsEip8272Enabled
+            ? ValidationResult.Success
+            : FrameTxValidation.RecentRootReferencesNotEnabled;
+}
+
+public sealed class ContractSizeTxValidator : ITxValidator
+{
+    public static readonly ContractSizeTxValidator Instance = new();
+    private ContractSizeTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.IsAboveInitCode(releaseSpec) ? TxErrorMessages.ContractSizeTooBig : ValidationResult.Success;
+}
+
+/// <remark>
+///  Ensure that non Blob transactions do not contain Blob specific fields.
+///  This validator will be deprecated once we have a proper Transaction type hierarchy.
+/// </remark>
+public sealed class NonBlobFieldsTxValidator : ITxValidator
+{
+    public static readonly NonBlobFieldsTxValidator Instance = new();
+    private NonBlobFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => transaction switch
+    {
+        // Execution-payload version verification
+        { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
+        { BlobVersionedHashes: not null } => TxErrorMessages.NotAllowedBlobVersionedHashes,
+        { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransactionForm,
+        _ => ValidationResult.Success
+    };
+}
+
+public sealed class NonSetCodeFieldsTxValidator : ITxValidator
+{
+    public static readonly NonSetCodeFieldsTxValidator Instance = new();
+    private NonSetCodeFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => transaction switch
+    {
+        { AuthorizationList: not null } => TxErrorMessages.NotAllowedAuthorizationList,
+        _ => ValidationResult.Success
+    };
+}
+
+public sealed class BlobFieldsTxValidator : ITxValidator
+{
+    public static readonly BlobFieldsTxValidator Instance = new();
+    private BlobFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction switch
+        {
+            { To: null } => TxErrorMessages.TxMissingTo,
+            { MaxFeePerBlobGas: null } => TxErrorMessages.BlobTxMissingMaxFeePerBlobGas,
+            { BlobVersionedHashes: null } => TxErrorMessages.BlobTxMissingBlobVersionedHashes,
+            _ => ValidateBlobFields(transaction, releaseSpec)
+        };
+
+    private static ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec)
+    {
+        int blobCount = transaction.BlobVersionedHashes!.Length;
+
+        ValidationResult blobPerTxLimitValidationResult = ValidateBlobGasLimits(blobCount, spec);
+
+        if (!blobPerTxLimitValidationResult)
+        {
+            return blobPerTxLimitValidationResult;
+        }
+
+        return ValidateBlobVersionedHashes(transaction.BlobVersionedHashes!);
+    }
+
+    /// <summary>Validates that every blob versioned hash is present, 32 bytes, and carries
+    /// EIP-4844's <c>VERSIONED_HASH_VERSION_KZG</c>.</summary>
+    internal static ValidationResult ValidateBlobVersionedHashes(byte[]?[] blobVersionedHashes)
+    {
+        foreach (byte[]? versionedHash in blobVersionedHashes)
+        {
+            switch (versionedHash)
+            {
+                case null: return TxErrorMessages.MissingBlobVersionedHash;
+                case { Length: not Eip4844Constants.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
+                case { Length: Eip4844Constants.BytesPerBlobVersionedHash } when versionedHash[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
+            }
+        }
+
+        return ValidationResult.Success;
+    }
+
+    public static ValidationResult ValidateBlobGasLimits(int txBlobCount, IReleaseSpec spec)
+    {
+        if (txBlobCount < Eip4844Constants.MinBlobsPerTransaction)
+        {
+            return TxErrorMessages.BlobTxMissingBlobs;
+        }
+
+        ulong txBlobGas = BlobGasCalculator.CalculateBlobGas(txBlobCount);
+
+        ulong maxBlobGasPerBlock = spec.GasCosts.MaxBlobGasPerBlock;
+
+        if (txBlobGas > maxBlobGasPerBlock)
+        {
+            return BlockErrorMessages.BlobGasUsedAboveBlockLimit(maxBlobGasPerBlock, txBlobCount, txBlobGas);
+        }
+
+        ulong maxBlobGasPerTx = spec.GasCosts.MaxBlobGasPerTx;
+
+        return txBlobGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(txBlobGas, maxBlobGasPerTx) : ValidationResult.Success;
+    }
+}
+
+public sealed class MaxBlobCountBlobTxValidator : ITxValidator
+{
+    public static readonly MaxBlobCountBlobTxValidator Instance = new();
+    private MaxBlobCountBlobTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction switch
+        {
+            // EIP-8141: re-check a blob-carrying frame tx (type 6) against the head spec too. Type-3 stays
+            // gated on the type, so a type-3 declaring no blobs is still rejected rather than skipped.
+            { Type: not TxType.Blob, CarriesBlobs: false } => ValidationResult.Success,
+            _ => ValidateBlobFields(transaction, releaseSpec)
+        };
+
+    private static ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec) =>
+        BlobFieldsTxValidator.ValidateBlobGasLimits(transaction.BlobVersionedHashes?.Length ?? 0, spec);
+}
+
+/// <summary>
+/// Validate Blob transactions in mempool version.
+/// </summary>
+public sealed class MempoolBlobTxValidator : ITxValidator
+{
+    public static readonly MempoolBlobTxValidator Instance = new();
+    private MempoolBlobTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options)
+    {
+        return transaction switch
+        {
+            { NetworkWrapper: null } => ValidationResult.Success,
+            // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 wrapper with type-3.
+            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } when transaction.SupportsBlobs || transaction.CarriesBlobs => ValidateBlobs(transaction, wrapper, options),
+            _ => TxErrorMessages.InvalidTransactionForm,
+        };
+
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, TxValidationOptions options)
+        {
+            if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1))
+            {
+                return TxErrorMessages.InvalidProofVersion;
+            }
+
+            IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
+            bool hasProofMaterial = wrapper.HasFullBlobs() || (wrapper.Cells is { Length: > 0 } && !wrapper.CellMask.IsEmpty);
+            int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
+
+            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+                transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+                (options & TxValidationOptions.SkipBlobProofs) != 0 ? ValidationResult.Success :
+                !hasProofMaterial ? TxErrorMessages.InvalidTransactionForm :
+                !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
+                ValidationResult.Success;
+        }
+    }
+}
+
+/// <summary>
+/// Validate tx proof version in mempool version.
+/// </summary>
+public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
+{
+    public static readonly MempoolBlobTxProofVersionValidator Instance = new();
+    private MempoolBlobTxProofVersionValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!transaction.SupportsBlobs && !transaction.CarriesBlobs) return ValidationResult.Success;
+
+        ProofVersion? version = transaction.GetProofVersion();
+        return version is null
+            ? transaction.NetworkWrapper is not null ? TxErrorMessages.InvalidTransactionForm : ValidationResult.Success
+            : ValidateProofVersion(version.Value, releaseSpec);
+
+        static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
+            txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
+    }
+}
+
+public abstract class BaseSignatureTxValidator : ITxValidator
+{
+    protected virtual ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec) =>
+        releaseSpec.ValidateChainId ? TxErrorMessages.InvalidTxSignature : ValidationResult.Success;
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        Signature? signature = transaction.Signature;
+        if (signature is null)
+        {
+            return TxErrorMessages.InvalidTxSignature;
+        }
+
+        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
+        UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
+
+        UInt256 sMax = releaseSpec.IsEip2Enabled ? SecP256k1Curve.HalfNPlusOne : SecP256k1Curve.N;
+        return sValue.IsZero || sValue >= sMax ? TxErrorMessages.InvalidTxSignature
+            : rValue.IsZero || rValue >= SecP256k1Curve.N ? TxErrorMessages.InvalidTxSignature
+            : signature.V is 27 or 28 ? ValidationResult.Success
+            : ValidateChainId(transaction, releaseSpec);
+    }
+}
+
+public sealed class LegacySignatureTxValidator(ulong chainId) : BaseSignatureTxValidator
+{
+    protected override ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        ulong v = transaction.Signature!.V;
+        return releaseSpec.IsEip155Enabled && (v == chainId * 2 + 35ul || v == chainId * 2 + 36ul)
+            ? ValidationResult.Success
+            : base.ValidateChainId(transaction, releaseSpec);
+    }
+}
+
+public sealed class SignatureTxValidator : BaseSignatureTxValidator
+{
+    public static readonly SignatureTxValidator Instance = new();
+    private SignatureTxValidator() { }
+}
+
+public sealed class NoContractCreationTxValidator : ITxValidator
+{
+    public static readonly NoContractCreationTxValidator Instance = new();
+    private NoContractCreationTxValidator() { }
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        SetCodeTxValidation.ValidateNoContractCreation(transaction);
+}
+
+public sealed class AuthorizationListTxValidator : ITxValidator
+{
+    public static readonly AuthorizationListTxValidator Instance = new();
+    private AuthorizationListTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        SetCodeTxValidation.ValidateAuthorizationList(transaction);
+}
+
+public sealed class GasLimitCapTxValidator : ITxValidator
+{
+    public static readonly GasLimitCapTxValidator Instance = new();
+    private GasLimitCapTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        ulong gasLimitCap = releaseSpec.GetTxGasLimitCap();
+        return transaction.GasLimit > gasLimitCap ?
+            TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
+    }
+}
+
+/// <summary>
+/// EIP-2681 validation.
+/// </summary>
+public sealed class NonceCapTxValidator : ITxValidator
+{
+    public static readonly NonceCapTxValidator Instance = new();
+    private NonceCapTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
+}
