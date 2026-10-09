@@ -1,7 +1,7 @@
 # AA-PQ / Daisugi
 
 <!-- portal-version:start -->
-![version 0.2](docs/assets/portal-version.svg)
+![version 0.3](docs/assets/portal-version.svg)
 <!-- portal-version:end -->
 
 An Ethereum-compatible testnet portal with a read-only explorer, a test ETH
