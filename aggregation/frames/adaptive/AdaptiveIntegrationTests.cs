@@ -71,7 +71,7 @@ public class AdaptiveIntegrationTests
             byte[] proof = File.ReadAllBytes(Path.Combine(Root, entry.GetProperty("file").GetString()!));
             ValueHash256 commitment = new(entry.GetProperty("commitment").GetString()!);
             bool legacy = entry.GetProperty("legacy").GetBoolean();
-            Assert.That(verifier.VerifyKnownRecursiveStark(in commitment, proof), Is.EqualTo(legacy || active));
+            Assert.That(verifier.VerifyKnownRecursiveStark(in commitment, proof), Is.EqualTo(active ? !legacy : legacy));
             Assert.That(verifier.VerifyBlockRecursiveStark(in commitment, proof, false), Is.EqualTo(legacy));
             Assert.That(verifier.VerifyBlockRecursiveStark(in commitment, proof, true), Is.True);
             Assert.That(verifier.VerifyBlockRecursiveStark(default, proof, true), Is.False);
@@ -155,5 +155,9 @@ public class AdaptiveIntegrationTests
         Assert.That(store.TryGetInput([first], out AggregationInput direct), Is.True);
         Assert.That(direct.Deps, Has.Count.EqualTo(1));
         Assert.That(store.TryGetPreparedInput([new(0x10, default, default)], out _), Is.False);
+        store.ClearCachedRecursive();
+        Assert.That(store.TryGetPreparedInput([first], out _), Is.False);
+        Assert.That(store.TryGetInput([first], out direct), Is.True);
+        Assert.That(direct.Deps, Has.Count.EqualTo(1));
     }
 }

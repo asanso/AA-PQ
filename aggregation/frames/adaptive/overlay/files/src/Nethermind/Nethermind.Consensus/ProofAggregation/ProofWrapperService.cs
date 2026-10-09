@@ -24,6 +24,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private readonly object _aggregationLock = new();
     private readonly AdaptiveBatchPolicy _batchPolicy = new();
     private ValueHash256? _productionProgram;
+    private double _preparedAt;
     private readonly Dictionary<ValueHash256, double> _firstSeen = [];
     public bool AdaptiveBatchingEnabled => leanProofVerifier.AdaptiveBatchingEnabled;
     public ReadOnlySpan<byte> ProductionVerificationKey => leanProofVerifier.ProductionVerificationKey;
@@ -294,9 +295,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             _cachedWrapper = null;
             _batchPolicy.Reset();
             _firstSeen.Clear();
+            leanProofStore.ClearCachedRecursive();
             _productionProgram = program;
         }
         bool adaptive = AdaptiveBatchingEnabled;
+        // Give the current valid group up to three slots to enter a block before replacing it.
+        // The bound avoids waiting indefinitely on a transaction that cannot be included.
+        WrapperSnapshot? ready = Volatile.Read(ref _cachedWrapper);
+        if (adaptive && ready is not null && now - _preparedAt < 6 && ArePending(ready.Transactions))
+            return Result<byte[]>.Success(returnEncoded ? (byte[])ready.Encoded.Clone() : []);
         if (adaptive)
         {
             HashSet<ValueHash256> pending = [];
@@ -348,6 +355,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 }
                 if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
                     || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies) continue;
+                bool currentProgram = true;
+                foreach (RecursiveProofInput parent in candidateInput.RecursiveProofs)
+                {
+                    ValueHash256 parentHash = Eip8288Dependencies.ComputeDepsHash(parent.InnerDeps);
+                    if (!leanProofVerifier.VerifyKnownRecursiveStark(in parentHash, parent.Proof.Span))
+                    { currentProgram = false; break; }
+                }
+                if (!currentProgram) continue;
                 deps = combined;
                 selectedInput = candidateInput;
                 covered.UnionWith(transactionDeps);
@@ -404,6 +419,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 Mode = MempoolWrapper.ModeRecursive,
                 RecursiveStark = new RecursiveStark(proof!, new Hash256(hash))
             };
+            // Do not expose a stale adaptive group to the proposal picker: it would need recursive pruning.
+            if (adaptive && !ArePending(hashes))
+                return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
             leanProofStore.AddCachedRecursive(deps, proof!);
             if (adaptive && deps.Count > 0)
                 _batchPolicy.Completed(System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency,
@@ -414,6 +432,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!ArePending(hashes))
                 return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
             RecursiveProofInput parent = new(deps, proof!);
+            _preparedAt = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
             Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent));
             return Result<byte[]>.Success(returnEncoded ? encoded : []);
         }

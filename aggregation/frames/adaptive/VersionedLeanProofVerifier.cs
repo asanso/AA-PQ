@@ -33,7 +33,7 @@ public sealed class VersionedLeanProofVerifier(ISpecProvider specs, IBlockFinder
             : key.SequenceEqual(Eip8288Constants.AggregatedVk) && _legacy.VerifyRecursiveStark(in hash, key, proof);
 
     public bool VerifyKnownRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> proof)
-        => VerifyBlockRecursiveStark(in hash, proof, Active);
+        => VerifyRecursiveStark(in hash, ProductionVerificationKey, proof);
 
     // The block's specification controls historical acceptance, never the current head.
     public bool VerifyBlockRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> proof, bool adaptiveEnabled)

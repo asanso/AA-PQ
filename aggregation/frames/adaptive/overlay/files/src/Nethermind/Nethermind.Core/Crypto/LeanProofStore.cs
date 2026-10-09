@@ -487,6 +487,17 @@ public sealed class LeanProofStore
         return false;
     }
 
+    /// <summary>Invalidates generated proofs when the production guest changes, preserving pinned witnesses.</summary>
+    public void ClearCachedRecursive()
+    {
+        lock (_lock)
+        {
+            _recursiveByDeps.Clear();
+            _recursiveCache.Clear();
+            _cachedBytes = 0;
+        }
+    }
+
     /// <summary>Returns one prepared proof covering all requested dependencies, without replacing pinned raw witnesses.</summary>
     public bool TryGetPreparedInput(IReadOnlyList<FrameDependency> dependencies, out AggregationInput input)
     {

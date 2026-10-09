@@ -104,7 +104,7 @@ def prepare(source, output):
     text = read(aggregator).replace('DirectBatchSize', 'verifier.MaxDirectSignatures')
     text = text.replace('Eip8288Constants.AggregatedVk', 'verifier.ProductionVerificationKey')
     edits[aggregator] = text
-    # A historical exact proof can be reused; new recursive composition must use one guest.
+    # Pending recursive inputs must use the current guest; history is checked separately.
     replace(aggregator, 'verifier.VerifyRecursiveStark(in depsHash, verifier.ProductionVerificationKey, parent.Proof.Span)',
             'verifier.VerifyKnownRecursiveStark(in depsHash, parent.Proof.Span)')
 
@@ -125,6 +125,7 @@ def prepare(source, output):
     wrapper = 'Nethermind.Consensus/ProofAggregation/ProofWrapperService.cs'
     replace(wrapper, '    private int _rotation;', '''    private readonly AdaptiveBatchPolicy _batchPolicy = new();
     private ValueHash256? _productionProgram;
+    private double _preparedAt;
     private readonly Dictionary<ValueHash256, double> _firstSeen = [];
     public bool AdaptiveBatchingEnabled => leanProofVerifier.AdaptiveBatchingEnabled;
     public ReadOnlySpan<byte> ProductionVerificationKey => leanProofVerifier.ProductionVerificationKey;
@@ -148,9 +149,15 @@ def prepare(source, output):
             _cachedWrapper = null;
             _batchPolicy.Reset();
             _firstSeen.Clear();
+            leanProofStore.ClearCachedRecursive();
             _productionProgram = program;
         }
         bool adaptive = AdaptiveBatchingEnabled;
+        // Give the current valid group up to three slots to enter a block before replacing it.
+        // The bound avoids waiting indefinitely on a transaction that cannot be included.
+        WrapperSnapshot? ready = Volatile.Read(ref _cachedWrapper);
+        if (adaptive && ready is not null && now - _preparedAt < 6 && ArePending(ready.Transactions))
+            return Result<byte[]>.Success(returnEncoded ? (byte[])ready.Encoded.Clone() : []);
         if (adaptive)
         {
             HashSet<ValueHash256> pending = [];
@@ -179,6 +186,15 @@ def prepare(source, output):
     replace(wrapper, 'int start = candidates.Count == 0 ? 0 :', 'int start = adaptive || candidates.Count == 0 ? 0 :')
     replace(wrapper, 'if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper || stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper)',
             'if ((adaptive && combined.Count > AdaptiveBatchPolicy.MaxClaims) || sphincs > (adaptive ? AdaptiveBatchPolicy.MaxClaims : Eip8288Constants.MaxLeanSigDepsPerWrapper) || stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper)')
+    replace(wrapper, '                deps = combined;', '''                bool currentProgram = true;
+                foreach (RecursiveProofInput parent in candidateInput.RecursiveProofs)
+                {
+                    ValueHash256 parentHash = Eip8288Dependencies.ComputeDepsHash(parent.InnerDeps);
+                    if (!leanProofVerifier.VerifyKnownRecursiveStark(in parentHash, parent.Proof.Span))
+                    { currentProgram = false; break; }
+                }
+                if (!currentProgram) continue;
+                deps = combined;''')
     anchor = '        try\n        {\n            ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);'
     replace(wrapper, anchor, '''        if (adaptive && deps.Count > 0)
         {
@@ -198,10 +214,16 @@ def prepare(source, output):
             _batchPolicy.Reset();
             return Result<byte[]>.Fail("No proof-backed pending transactions.");
         }''')
-    replace(wrapper, '            leanProofStore.AddCachedRecursive(deps, proof!);', '''            leanProofStore.AddCachedRecursive(deps, proof!);
+    replace(wrapper, '            leanProofStore.AddCachedRecursive(deps, proof!);', '''            // Do not expose a stale adaptive group to the proposal picker: it would need recursive pruning.
+            if (adaptive && !ArePending(hashes))
+                return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
+            leanProofStore.AddCachedRecursive(deps, proof!);
             if (adaptive && deps.Count > 0)
                 _batchPolicy.Completed(System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency,
                     deps.Count, System.Diagnostics.Stopwatch.GetElapsedTime(proofStarted).TotalSeconds);''')
+    replace(wrapper, '            Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent));',
+            '''            _preparedAt = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+            Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent));''')
     replace('Nethermind.Network/P2P/Subprotocols/Lean/LeanProofGossip.cs', 'TimeSpan.FromMilliseconds(1000)', 'TimeSpan.FromMilliseconds(wrappers.AdaptiveBatchingEnabled ? 50 : 1000)')
     replace('Nethermind.Network/P2P/Subprotocols/Lean/LeanProofGossip.cs', '                    if (!wrappers.IsEnabled) continue;',
             '                    timer.Period = TimeSpan.FromMilliseconds(wrappers.AdaptiveBatchingEnabled ? 50 : 1000);\n                    if (!wrappers.IsEnabled) continue;')
@@ -241,6 +263,18 @@ def prepare(source, output):
     private static MempoolWrapper RoundTrip(MempoolWrapper wrapper)''')
     # Decode bounds may be broader than active policy; the validator enforces the active bound.
     store = 'Nethermind.Core/Crypto/LeanProofStore.cs'
+    replace(store, '    /// <summary>Collects direct and recursive witnesses, discarding dependencies outside the requested set.</summary>', '''    /// <summary>Invalidates generated proofs when the production guest changes, preserving pinned witnesses.</summary>
+    public void ClearCachedRecursive()
+    {
+        lock (_lock)
+        {
+            _recursiveByDeps.Clear();
+            _recursiveCache.Clear();
+            _cachedBytes = 0;
+        }
+    }
+
+    /// <summary>Collects direct and recursive witnesses, discarding dependencies outside the requested set.</summary>''')
     replace(store, '    /// <summary>Collects direct and recursive witnesses, discarding dependencies outside the requested set.</summary>', '''    /// <summary>Returns one prepared proof covering all requested dependencies, without replacing pinned raw witnesses.</summary>
     public bool TryGetPreparedInput(IReadOnlyList<FrameDependency> dependencies, out AggregationInput input)
     {

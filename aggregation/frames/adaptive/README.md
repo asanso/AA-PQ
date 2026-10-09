@@ -1,6 +1,6 @@
 # Adaptive signature aggregation candidate
 
-Status: private integration candidate, disabled unless explicitly activated.
+Status: opt-in experimental integration, disabled unless explicitly activated.
 This package does not deploy an application, install a client, schedule a fork,
 submit a transaction or change an existing wallet.
 
@@ -25,6 +25,19 @@ from a prepared group can still require recursive pruning during production.
 The 40-dependency production policy does not change the 256-dependency consensus
 bound, the 8-MiB proof limit or gas accounting.
 
+Before publishing a completed adaptive proof to the shared proposal cache, the
+producer checks that every selected transaction is still pending. A result whose
+selection changed during proving is discarded from that cache; the next cycle
+builds a proof for the remaining transactions. This prevents that known stale
+selection from initiating unnecessary recursive pruning on the proposal path.
+Other causes of pruning, including state changes after this check, remain possible.
+A ready group is retained for up to six seconds while all its transactions remain
+pending, instead of immediately proving an overlapping larger selection. This
+three-slot grace period is a local production policy; it changes no consensus
+rule and does not guarantee inclusion. Once any member leaves the pool, the next
+cycle can prepare the remaining transactions. The time bound permits reconsidering
+an unproductive selection when new transactions arrive.
+
 ## Program identity and compatibility
 
 The larger guest has a different verification key. The original native library
@@ -39,15 +52,21 @@ Activation requires chain 1337, EIP-8288 and an explicit
 `params.daisugiAdaptiveAggregationTransitionTimestamp` in a chain specification.
 Both are absent by default. No timestamp has been selected by this package.
 
-Exact historical proofs can be reused. Recursive composition across the two
-guest identities is not implemented. Mixed-version pending wrappers, partial
-selection of historical proof groups and reorgs across activation remain release
-gates. Admission verdicts and production caches are scoped by program identity.
+Pending recursive wrappers must use the current production guest. Generated
+proof caches are cleared when that identity changes; pinned original witnesses
+are retained. Pending inputs from another guest are skipped rather than composed
+with the current guest. Clients holding an old recursive wrapper must rebuild it
+from the original witnesses after activation. Historical block verification still
+accepts the program permitted by that block's specification. Recursive composition
+across guest identities is not implemented. Admission verdicts and production
+caches are scoped by program identity.
 
 The proof envelope and Lighthouse payload schema are unchanged. The optimized
 guest still requires compatible execution clients on every participating node.
-The complete Engine/Lighthouse transport and historical replay checks must be
-repeated with the final release before shared-chain activation.
+The October 9 packaged-client rehearsal exercised Engine/Lighthouse transport,
+original and adaptive proofs, forty signed wallet transactions in one block,
+restart from persisted history and finalization beyond that block. This is a
+bounded integration check, not an interoperability qualification of external nodes.
 
 ## Source preparation
 
@@ -105,6 +124,12 @@ the generic parameter-mapping test's `DaisugiLegacyFrames` default check and the
 upstream test that assumes enabling EIP-8288 also reschedules EIP-8141. The suite
 is not fully green; those expectations need an explicit resolution before release.
 
+The follow-up queue fixes passed all 156 proof-service tests, including three
+adaptive cases in `AdaptiveQueueTests.cs`. Place this test file in the private
+`Nethermind.Consensus.Test/ProofAggregation` directory. Those tests isolate queue
+behavior with a fixed-verdict test backend; native cryptographic validity is
+covered by the separate integration checks, not by that test backend.
+
 `AdaptiveIntegrationTests.cs` and `AdaptiveWalletTests.cs` are native integration
 harnesses. Copy them into `Nethermind.Crypto.LeanFfi.Test` in the private checkout,
 install both real libraries and the worker beside its test assembly, and use
@@ -117,9 +142,10 @@ test bundle. Never replace either verification library with the startup stub.
 
 The earlier approximately 20-signature/s result is an offline warm-prover
 benchmark for 40-signature batches. It is not measured sustained throughput or
-wallet-to-inclusion latency for this integration. Those measurements, overload
-and cancellation behavior, mixed-version transitions, and full client transport
-regression remain required before recommending activation.
+wallet-to-inclusion latency for this integration. Live measurements must report
+proving, queueing and inclusion separately. Overload, cancellation and long-running
+resource behavior remain experimental limitations; the worker has a bounded
+request/response protocol and a 120-second timeout with process recovery.
 
 The staging portal and production portal use the same Daisugi chain. Publishing
 or deploying staging does not activate the new prover. Client activation needs

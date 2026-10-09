@@ -8,7 +8,7 @@
     },
     "src/Nethermind/Nethermind.Consensus/ProofAggregation/VersionedLeanProofVerifier.cs": {
       "before": null,
-      "after": "91ccec8cef9fc76949860579d44e669eaf2484cd39a65fd60870cbad6550d4ab"
+      "after": "440af5ca213fa7ad9253149226afbda27a61c090aa4f36eb925e48a33960121f"
     },
     "src/Nethermind/Nethermind.Core/Crypto/AdaptiveProofProgram.cs": {
       "before": null,
@@ -96,7 +96,7 @@
     },
     "src/Nethermind/Nethermind.Consensus/ProofAggregation/ProofWrapperService.cs": {
       "before": "4fb65556fa71445f95cb5fa36c9e46539bfe5db63c08e4f4e012b0570079526c",
-      "after": "42c138d5994ffd38fe4b529892de918ef7fdbf5e812b2f72f9355aebd8fd81fa"
+      "after": "f9d0710fc06934883c7b83945823de7b6641a77edfbbad8db200b637c20dac70"
     },
     "src/Nethermind/Nethermind.Consensus/ProofAggregation/InclusionListProofPackage.cs": {
       "before": "251ac44f8ddf01de22fc65c26b07a7073c9d9f6165e2e60c1e6faa94be8613b8",
@@ -124,7 +124,7 @@
     },
     "src/Nethermind/Nethermind.Core/Crypto/LeanProofStore.cs": {
       "before": "d60886a968f18c6e7f546c6e1f730b4c8efe9f4e86855f4d3335531719b7b5e8",
-      "after": "a955244f4bd56adedc76d75aa3960d016e27e7e8d439df139167d654347f3cb9"
+      "after": "0fd0a83b7ef38de94ab63f1655d91241dcadfd0d0fd5f3f2f1efd562535a9910"
     },
     "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockProductionTransactionPicker.cs": {
       "before": "54d634296960f2276ee95382ddaaf96c5c812532d251893d5ad684abfa7134d8",
