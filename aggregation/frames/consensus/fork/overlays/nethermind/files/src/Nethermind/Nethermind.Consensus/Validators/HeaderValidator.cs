@@ -1,0 +1,485 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics.CodeAnalysis;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Int256;
+using Nethermind.Logging;
+
+namespace Nethermind.Consensus.Validators
+{
+    public class HeaderValidator(
+        IBlockTree? blockTree,
+        ISealValidator? sealValidator,
+        ISpecProvider? specProvider,
+        ILogManager? logManager)
+        : IHeaderValidator
+    {
+        private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
+
+        protected readonly ISealValidator _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
+        protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly ulong? _daoBlockNumber = specProvider.DaoBlockNumber;
+        protected readonly ILogger _logger = logManager?.GetClassLogger<HeaderValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+        protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+
+        public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
+        {
+            actualHash = header.CalculateHash();
+            return header.Hash == actualHash;
+        }
+
+        public static bool ValidateHash(BlockHeader header) => ValidateHash(header, out _);
+
+        private bool ValidateHash(BlockHeader header, ref string? error)
+        {
+            bool hashAsExpected = ValidateHash(header);
+
+            if (!hashAsExpected)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+                error = BlockErrorMessages.InvalidHeaderHash(header.Hash!, header.CalculateHash());
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
+        /// </summary>
+        /// <param name="header">BlockHeader to validate</param>
+        /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
+        /// <param name="isUncle"><value>True</value> if is an uncle block, otherwise <value>False</value></param>
+        /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false) =>
+            Validate(header, parent, isUncle, out _);
+
+        /// <summary>
+        /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
+        /// </summary>
+        /// <param name="header">BlockHeader to validate</param>
+        /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
+        /// <param name="isUncle"><value>True</value> if is an uncle block, otherwise <value>False</value></param>
+        /// <param name="error">Detailed error message if validation fails, otherwise <value>null</value>.</param>
+        /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
+            Validate<OffFlag>(header, parent, isUncle, out error, validateHash: true);
+
+        /// <inheritdoc cref="IHeaderValidator.Validate(BlockHeader, BlockHeader, bool, out string, bool)"/>
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
+            Validate<OffFlag>(header, parent, isUncle, out error, validateHash);
+
+        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash) where TOrphaned : struct, IFlag
+        {
+            IReleaseSpec spec;
+            error = null;
+            bool orphaned = typeof(TOrphaned) == typeof(OnFlag);
+            parent = orphaned ? null : parent!;
+
+            // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
+            return ValidateFieldLimit(header, ref error)
+                   && (!validateHash || ValidateHash(header, ref error))
+                   && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
+                   && (orphaned || ValidateParent(header, parent, ref error))
+                   && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
+                   && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
+                   && ValidateGasUsed(header, ref error)
+                   && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
+                   && (orphaned || ValidateTimestamp(header, parent, ref error))
+                   && (orphaned || ValidateBlockNumber(header, parent, ref error))
+                   && (orphaned || Validate1559(header, parent, spec, ref error))
+                   && ValidateBlobGasFields(header, spec, ref error)
+                   && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
+                   && ValidateRequestsHash(header, spec, ref error)
+                   && ValidateBlockAccessListHash(header, spec, ref error)
+                   && ValidateSlotNumber(header, spec, ref error)
+                   && ValidateRecursiveStarkFields(header, spec, ref error);
+        }
+
+        public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
+            Validate<OnFlag>(header, null, false, out error, validateHash: true);
+
+        private static bool ValidateRecursiveStarkFields(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            RecursiveStark? proof = header.RecursiveStark;
+            if (!spec.IsEip8288Enabled)
+            {
+                if (proof is null) return true;
+                error = BlockErrorMessages.RecursiveStarkNotEnabled;
+                return false;
+            }
+            if (proof is null)
+            {
+                if (header.IsGenesis) return true;
+                error = BlockErrorMessages.MissingRecursiveStark;
+                return false;
+            }
+            if (proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes })
+            {
+                error = BlockErrorMessages.InvalidRecursiveStark;
+                return false;
+            }
+            return true;
+        }
+
+        protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.RequestsEnabled)
+            {
+                if (header.RequestsHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field is not set.");
+                    error = BlockErrorMessages.MissingRequests;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.RequestsHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field should not have value.");
+                    error = BlockErrorMessages.RequestsNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        protected virtual bool Validate1559(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip1559Enabled)
+            {
+                UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
+
+                if (expectedBaseFee != header.BaseFeePerGas)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
+                    error = BlockErrorMessages.InvalidBaseFeePerGas(expectedBaseFee, header.BaseFeePerGas);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        protected bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
+        {
+            // No parent-relative block-number check at genesis (parent is null only when ValidateParent already accepted genesis).
+            if (parent is null) return true;
+
+            if (header.Number != parent.Number + 1)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                error = BlockErrorMessages.InvalidBlockNumber;
+                return false;
+            }
+
+            return true;
+        }
+
+        protected bool ValidateGasUsed(BlockHeader header, ref string? error)
+        {
+            if (header.GasUsed > header.GasLimit)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                error = BlockErrorMessages.ExceededGasLimit;
+                return false;
+            }
+
+            return true;
+        }
+
+        // Ethereum protocol hard-caps block gas limit at 2^63-1 to prevent overflow and ensure
+        // compatibility with signed 64-bit systems.
+        protected bool ValidateFieldLimit(BlockHeader header, ref string? error)
+        {
+            if (header.GasLimit > 0x7FFFFFFFFFFFFFFF)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit higher than 2^63-1. Gas limit: {header.GasLimit}");
+                error = BlockErrorMessages.InvalidGasLimit;
+                return false;
+            }
+
+            return true;
+        }
+
+        protected bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
+        {
+            if (parent is null)
+            {
+                if (header.Number != 0)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
+                    error = BlockErrorMessages.InvalidAncestor;
+                    return false;
+                }
+
+                bool isGenesisValid = ValidateGenesis(header);
+                if (!isGenesisValid)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
+                    error = BlockErrorMessages.InvalidGenesisBlock;
+                    return false;
+                }
+            }
+            else if (parent.Hash != header.ParentHash)
+            {
+                error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
+                return false;
+            }
+
+            return true;
+        }
+
+        protected virtual bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
+        {
+            bool result = _sealValidator.ValidateParams(parent, header, isUncle);
+
+            if (!result)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
+                error = BlockErrorMessages.InvalidSealParameters;
+            }
+
+            return result;
+        }
+
+        protected virtual bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
+        {
+            bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
+                                   && (isUncle
+                                       || _daoBlockNumber is null
+                                       || header.Number < _daoBlockNumber.Value
+                                       || header.Number >= _daoBlockNumber.Value + 10
+                                       || Bytes.AreEqual(header.ExtraData, DaoExtraData));
+            if (!extraDataValid)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid. MaximumExtraDataSize {spec.MaximumExtraDataSize}, ExtraDataLength {header.ExtraData.Length}, DaoBlockNumber: {_daoBlockNumber}");
+                error = BlockErrorMessages.InvalidExtraData;
+            }
+
+            return extraDataValid;
+        }
+
+        protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            // ValidateParent (called earlier in the chain) accepts a null parent only for genesis.
+            // Gas-limit-vs-parent comparisons don't apply at genesis, so skip them.
+            if (parent is null) return true;
+
+            ulong adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
+            ulong maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
+
+            // Detect the addition overflowing ulong (hive tests pass parent.GasLimit = ulong.MaxValue);
+            // when the sum would overflow there's no real "too high" GasLimit to reject.
+            ulong maxNextGasLimit = adjustedParentGasLimit + maxGasLimitDifference;
+            bool maxNextGasLimitOverflowed = ulong.MaxValue - maxGasLimitDifference < adjustedParentGasLimit;
+            bool gasLimitNotTooHigh = maxNextGasLimitOverflowed || header.GasLimit < maxNextGasLimit;
+
+            if (!gasLimitNotTooHigh)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
+                error = BlockErrorMessages.InvalidGasLimit;
+            }
+
+            bool gasLimitNotTooLow = header.GasLimit > adjustedParentGasLimit - maxGasLimitDifference &&
+                                     header.GasLimit >= spec.MinGasLimit;
+            if (!gasLimitNotTooLow)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low. " +
+                                                 $"Gas limit: {header.GasLimit}, " +
+                                                 $"Adjusted parent gas limit: {adjustedParentGasLimit}, " +
+                                                 $"Max gas limit difference: {maxGasLimitDifference}, " +
+                                                 $"Spec min gas limit: {spec.MinGasLimit}");
+                error = BlockErrorMessages.InvalidGasLimit;
+            }
+
+            return gasLimitNotTooHigh && gasLimitNotTooLow;
+        }
+
+        protected virtual bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
+        {
+            // No parent-relative timestamp check at genesis (parent is null only when ValidateParent already accepted genesis).
+            if (parent is null) return true;
+
+            bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
+            if (!timestampMoreThanAtParent)
+            {
+                error = BlockErrorMessages.InvalidTimestamp;
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - timestamp before parent");
+            }
+            return timestampMoreThanAtParent;
+        }
+
+        protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
+        {
+            // Same class of null-parent exposure as ValidateBlockNumber/GasLimitRange/Timestamp:
+            // ValidateParent accepts null for genesis, but the non-zero-total-difficulty branch
+            // below dereferences parent. No current fixture triggers this (TotalDifficulty is
+            // typically null on uncle headers), but the guard keeps the method consistent with
+            // its siblings.
+            if (parent is null) return true;
+
+            bool result = true;
+
+            if (header.TotalDifficulty is not null)
+            {
+                if (header.TotalDifficulty.Value.IsZero)
+                {
+                    // Same as in BlockTree.SetTotalDifficulty
+                    if (!(_blockTree.Genesis!.Difficulty.IsZero && _specProvider.TerminalTotalDifficulty?.IsZero == true))
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
+                        result = false;
+                        error = BlockErrorMessages.InvalidTotalDifficulty;
+                    }
+                }
+                else if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
+                    result = false;
+                    error = BlockErrorMessages.InvalidTotalDifficulty;
+                }
+            }
+
+            return result;
+        }
+
+        private bool ValidateGenesis(BlockHeader header) =>
+            header.GasUsed < header.GasLimit &&
+            header.GasLimit > _specProvider.GenesisSpec.MinGasLimit &&
+            header.Timestamp > 0 &&
+            header.Number == 0 &&
+            header.Bloom is not null &&
+            header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
+
+        /// <summary>
+        /// Checks that the EIP-4844 blob-gas fields are present exactly when the fork enables them.
+        /// </summary>
+        /// <remarks>Parent-independent, so it also runs for orphaned headers.</remarks>
+        protected virtual bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip4844Enabled)
+            {
+                if (header.BlobGasUsed is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlobGasUsed field is not set.");
+                    error = BlockErrorMessages.MissingBlobGasUsed;
+                    return false;
+                }
+
+                if (header.ExcessBlobGas is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("ExcessBlobGas field is not set.");
+                    error = BlockErrorMessages.MissingExcessBlobGas;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.BlobGasUsed is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlobGasUsed field should not have value.");
+                    error = BlockErrorMessages.NotAllowedBlobGasUsed;
+                    return false;
+                }
+
+                if (header.ExcessBlobGas is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("ExcessBlobGas field should not have value.");
+                    error = BlockErrorMessages.NotAllowedExcessBlobGas;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Checks that <see cref="BlockHeader.ExcessBlobGas"/> matches the value derived from <paramref name="parent"/>.
+        /// </summary>
+        /// <remarks>Assumes <see cref="ValidateBlobGasFields"/> has passed.</remarks>
+        protected virtual bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (!spec.IsEip4844Enabled)
+            {
+                return true;
+            }
+
+            ulong? expectedExcessBlobGas = CalculateExcessBlobGas(parent, spec);
+            if (header.ExcessBlobGas != expectedExcessBlobGas)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
+                error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
+                return false;
+            }
+
+            return true;
+        }
+
+        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) =>
+            BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+
+        protected bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.BlockLevelAccessListsEnabled)
+            {
+                if (header.BlockAccessListHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field is not set.");
+                    error = BlockErrorMessages.MissingBlockLevelAccessListHash;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.BlockAccessListHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field should not have value.");
+                    error = BlockErrorMessages.BlockLevelAccessListHashNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        protected bool ValidateSlotNumber(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7843Enabled)
+            {
+                if (header.SlotNumber is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field is not set.");
+                    error = BlockErrorMessages.MissingSlotNumber;
+                    return false;
+                }
+            }
+            else
+            {
+                // Proof RLP occupies a later header position, so its preceding absent slot
+                // is encoded as zero. DecodeULong materializes that placeholder as 0;
+                // null and 0 produce identical header bytes and hashes in this case.
+                bool proofPlaceholder = spec.IsEip8288Enabled && header.RecursiveStark is not null
+                    && header.SlotNumber == 0;
+                if (header.SlotNumber is not null && !proofPlaceholder)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field should not have value.");
+                    error = BlockErrorMessages.SlotNumberNotEnabled;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+    }
+}

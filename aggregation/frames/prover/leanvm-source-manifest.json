@@ -1,0 +1,86 @@
+[
+  {
+    "Path": "README.md",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/README.md",
+    "Sha256": "08fc56c375c6bc3043b30afb8c409a08da47b26029ba8a597f5098c059f4abd8",
+    "Bytes": 7949
+  },
+  {
+    "Path": "Cargo.toml",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/Cargo.toml",
+    "Sha256": "088942899de732bd1ebaa1e2b9196684bb1f749f3c1d53e5db79450a62a60afa",
+    "Bytes": 1514
+  },
+  {
+    "Path": "examples/sphincs_aggregation.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/examples/sphincs_aggregation.rs",
+    "Sha256": "7da67f80ed4bdf6229225e16d34ff61858da7a1f792118951add953459c00873",
+    "Bytes": 2125
+  },
+  {
+    "Path": "crates/sphincs/src/lib.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/sphincs/src/lib.rs",
+    "Sha256": "6cc1d6a36556f7fb8cf1014c7c08116d6d8e1f5b446dcdcbc9ad500e4f668b62",
+    "Bytes": 4325
+  },
+  {
+    "Path": "crates/sphincs/src/hash.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/sphincs/src/hash.rs",
+    "Sha256": "5bf51712e45d90c152a72bb4a2a199f2168750e90663574236df77233f67562a",
+    "Bytes": 4387
+  },
+  {
+    "Path": "crates/sphincs/src/sphincs.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/sphincs/src/sphincs.rs",
+    "Sha256": "d20587dbecd6f04b5a41690906e126382e186aba7632e0f5c077f85a538929ec",
+    "Bytes": 11119
+  },
+  {
+    "Path": "crates/sphincs/src/fors.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/sphincs/src/fors.rs",
+    "Sha256": "993ee2386ae02ccfc0c3c0566575db2ba2eb8d7ffc280ff5ffe475216fe32ac5",
+    "Bytes": 3744
+  },
+  {
+    "Path": "crates/sphincs/src/wots.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/sphincs/src/wots.rs",
+    "Sha256": "0a4690bf9507fbebc0d76eea7e8531c0d2938d22491a9f9fa5dc4ec067dff69c",
+    "Bytes": 5454
+  },
+  {
+    "Path": "crates/sphincs/tests/sphincs_tests.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/sphincs/tests/sphincs_tests.rs",
+    "Sha256": "fd63a8fa2aa1cf3d0d2f653ba7693a3caf245b5293773de11b3aac252bcaf956",
+    "Bytes": 5548
+  },
+  {
+    "Path": "crates/sphincs/tests/vectors/sphincs-v2-reference-0.json",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/sphincs/tests/vectors/sphincs-v2-reference-0.json",
+    "Sha256": "455af112dfab0d7d4dcfa3d0ff8d02b6cad605b5dd89512cfcb58135406d0ced",
+    "Bytes": 12776
+  },
+  {
+    "Path": "crates/rec_aggregation/src/aggregation.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/rec_aggregation/src/aggregation.rs",
+    "Sha256": "ed329c9d99360ed11a6bd9c7c5a014f0dfe16fba90597bb0cf10e70749b009ad",
+    "Bytes": 239390
+  },
+  {
+    "Path": "crates/rec_aggregation/src/lib.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/rec_aggregation/src/lib.rs",
+    "Sha256": "6d700bd9f4bb89dd98b41ccd7e505bcea719df2fbb2557222d2c57bec2782971",
+    "Bytes": 1609
+  },
+  {
+    "Path": "crates/rec_aggregation/src/benchmark.rs",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/rec_aggregation/src/benchmark.rs",
+    "Sha256": "a2982f8e05e5319968318d326610e20c7decda921464591cac711971a09f44d1",
+    "Bytes": 9317
+  },
+  {
+    "Path": "crates/rec_aggregation/guests/lean_ethereum.py",
+    "Url": "https://raw.githubusercontent.com/leanEthereum/leanVM/b7b3b742af8dda100a0263b22c36e33963cc165c/crates/rec_aggregation/guests/lean_ethereum.py",
+    "Sha256": "f9bb033fd13a7a640e74032323982ef7fa0b9af5619f8f817b74948a3897a460",
+    "Bytes": 187463
+  }
+]

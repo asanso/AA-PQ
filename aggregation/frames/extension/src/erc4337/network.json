@@ -1,0 +1,17 @@
+{
+  "chainId": 1337,
+  "genesisHash": "0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55",
+  "entryPoint": "0x433709009B8330FDa32311DF1C2AFA402eD8D009",
+  "entryPointCodeHash": "0xbea618193512e4e21b095241dabf274ef27b5b7318e39fa15eb917a4b55c044a",
+  "factory": "0x0fc6b9c68766fc710b3068fc18af0df36d4a0c47",
+  "factoryCodeHash": "0x27ffa2827c051ca637670dc5156e8b1f510bb91d3f444bf76c540a90ecacbdca",
+  "implementation": "0x88859acdEc439Ec9A08a29A9090AF16371b99108",
+  "implementationCodeHash": "0xe280735960ff1df64f36b6fffc190f7be49d6f1b2a3e2824b9af72ed1ffb5c54",
+  "verifier": "0xf505AD2Cff58b84E145D637d99Fae0617B5685BE",
+  "verifierCodeHash": "0x7ab53ba1ae0d906f2d144cb673fb481e04d58b22ec72a8a0ec37cc66079f3417",
+  "signatureProfile": "sphincs-g",
+  "signatureBytes": 6176,
+  "deploymentStatus": "deployed; SPHINCS ERC-4337 inclusion verified",
+  "deploymentHash": "0x0b9d90cd08ad83339c302ad388a2ce57b1634d694fff8c56781796975cff4726",
+  "deploymentBlock": "0x85118"
+}

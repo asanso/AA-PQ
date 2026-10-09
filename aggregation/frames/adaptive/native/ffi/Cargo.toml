@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+[package]
+name = "nethermind-lean"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+
+[lib]
+name = "nethermind_lean"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sphincs = { path = "../leanvm/crates/sphincs" }
+rec_aggregation = { path = "../leanvm/crates/rec_aggregation", features = ["eip8288-mixed"] }
+lean_vm = { path = "../leanvm/crates/lean_vm" }
+lean_compiler = { path = "../leanvm/crates/lean_compiler" }
+primitives = { path = "../leanvm/crates/primitives" }
+parallel = { path = "../leanvm/crates/parallel" }
+bincode = "1.3"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+
+[profile.release]
+opt-level = 3
+
+[[example]]
+name = "lean_startup_stub"
+crate-type = ["cdylib"]
+test = false

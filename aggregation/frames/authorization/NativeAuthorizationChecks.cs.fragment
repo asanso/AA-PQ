@@ -1,0 +1,312 @@
+#nullable enable
+    private static readonly Address DaisugiRecipient = new("0xda1500000000000000000000000000000000c001");
+
+    private static System.Text.Json.JsonElement DaisugiFixture(int index)
+    {
+        string root = Environment.GetEnvironmentVariable("DAISUGI_AUTH_DIR")
+            ?? throw new InvalidOperationException("DAISUGI_AUTH_DIR is required");
+        using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(
+            System.IO.File.ReadAllText(System.IO.Path.Combine(root, "fixtures", "authorization.json")));
+        return document.RootElement.GetProperty("fixtures")[index].Clone();
+    }
+
+    private static Transaction DaisugiTransaction(int index)
+    {
+        System.Text.Json.JsonElement input = DaisugiFixture(index).GetProperty("transaction");
+        System.Collections.Generic.List<TxFrame> frames = [];
+        foreach (System.Text.Json.JsonElement item in input.GetProperty("frames").EnumerateArray())
+        {
+            string? target = item.GetProperty("target").GetString();
+            frames.Add(new TxFrame((FrameMode)item.GetProperty("mode").GetByte(),
+                (FrameFlags)item.GetProperty("flags").GetByte(), target is null ? null : new Address(target),
+                item.GetProperty("executionGas").GetUInt64(), item.GetProperty("stateGas").GetUInt64(),
+                UInt256.Parse(item.GetProperty("value").GetString()!),
+                Convert.FromHexString(item.GetProperty("data").GetString()![2..])));
+        }
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = ulong.Parse(input.GetProperty("chainId").GetString()!),
+            SenderAddress = new Address(input.GetProperty("sender").GetString()!),
+            Nonce = ulong.Parse(input.GetProperty("nonce").GetString()!),
+            NonceKeys = [UInt256.Zero],
+            FrameSignatures = [],
+            Frames = [.. frames],
+            GasPrice = UInt256.Parse(input.GetProperty("maxPriorityFee").GetString()!),
+            DecodedMaxFeePerGas = UInt256.Parse(input.GetProperty("maxFee").GetString()!),
+            MaxFeePerBlobGas = UInt256.Zero,
+            GasLimit = FrameTxValidation.TotalGasLimit([.. frames])
+        };
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
+
+    private sealed class DaisugiTestBlockchain : BasicTestBlockchain
+    {
+        public Task Initialize(Action<ContainerBuilder> configure) => Build(configure);
+        protected override Nethermind.Consensus.IBlockProducer CreateTestBlockProducer()
+            => new DaisugiTestProducer(this, BlockProducerEnvFactory.CreatePersistent(), BlocksConfig);
+    }
+
+    private sealed class DaisugiTestProducer(TestBlockchain chain, Nethermind.Consensus.IBlockProducerEnv environment,
+        Nethermind.Config.IBlocksConfig config) : TestBlockProducer(environment.TxSource, environment.ChainProcessor,
+            environment.ReadOnlyStateProvider, chain.Container.Resolve<Nethermind.Consensus.ISealer>(), chain.BlockTree,
+            chain.Timestamper, chain.SpecProvider, chain.LogManager, config)
+    {
+        protected override BlockHeader PrepareBlockHeader(BlockHeader parent, Nethermind.Consensus.Producers.PayloadAttributes? attributes = null)
+        {
+            BlockHeader header = base.PrepareBlockHeader(parent, attributes);
+            // Match upstream PostMergeBlockProducer's blob-field preparation while retaining test sealing.
+            header.BlobGasUsed = 0;
+            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, chain.SpecProvider.GetSpec(header));
+            return header;
+        }
+    }
+
+    private static async Task<BasicTestBlockchain> DaisugiChain(LeanProofStore proofs)
+    {
+        DaisugiTestBlockchain chain = new();
+        await chain.Initialize(builder => builder
+            .AddSingleton<ISpecProvider>(new SingleReleaseSpecProvider(Eip8288Prototype.Instance, 1337, 1337))
+            .AddSingleton<ILeanProofVerifier>(NativeLeanProofVerifier.Instance)
+            .AddSingleton(proofs)
+            .AddSingleton<IUnclesValidator, UnclesValidator>()
+            .AddScoped<Nethermind.Blockchain.IGenesisPostProcessor, Nethermind.Evm.State.IWorldState, ISpecProvider>((state, provider) =>
+                new Nethermind.Core.Test.Container.FunctionalGenesisPostProcessor(_ =>
+                {
+                    for (int index = 0; index < 2; index++)
+                    {
+                        System.Text.Json.JsonElement fixture = DaisugiFixture(index);
+                        Address account = new(fixture.GetProperty("transaction").GetProperty("sender").GetString()!);
+                        state.CreateAccount(account, UInt256.Parse("10000000000000000000"));
+                        state.InsertCode(account, Convert.FromHexString(fixture.GetProperty("runtime").GetString()![2..]), provider.GenesisSpec);
+                    }
+                    state.CreateAccount(DaisugiRecipient, UInt256.Zero);
+                    state.InsertCode(DaisugiRecipient, Convert.FromHexString("60003560005500"), provider.GenesisSpec);
+                    state.RecalculateStateRoot();
+                })));
+        return chain;
+    }
+
+    private static void DaisugiAddWitness(LeanProofStore proofs, Transaction transaction, int index, bool unrelated = false)
+    {
+        System.Text.Json.JsonElement fixture = DaisugiFixture(index);
+        byte[] witness = Convert.FromHexString(fixture.GetProperty(unrelated ? "unrelatedWitness" : "witness").GetString()![2..]);
+        System.Collections.Generic.List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        Assert.That(dependencies, Has.Count.EqualTo(1));
+        FrameDependency dependency = dependencies[0];
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, witness), Is.True);
+        proofs.AddVerified(dependencies, [witness], null);
+    }
+
+    [Test]
+    public async Task Daisugi_dependency_account_authorizes_real_sphincs_transfers()
+    {
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await DaisugiChain(proofs);
+        for (int index = 0; index < 2; index++)
+        {
+            Transaction transaction = DaisugiTransaction(index);
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.None).ToString(), Does.Contain("MissingDependencyProof"));
+            DaisugiAddWitness(proofs, transaction, index);
+            ValidationResult wellFormed = new TxValidator(1337).IsWellFormed(transaction, Eip8288Prototype.Instance);
+            Assert.That((bool)wellFormed, Is.True, wellFormed.ToString());
+            AcceptTxResult accepted = chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(accepted, Is.EqualTo(AcceptTxResult.Accepted), accepted.ToString());
+        }
+        using CancellationTokenSource budget = new(TimeSpan.FromMinutes(3));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.BlockProducer.BuildBlock(parentHeader: parent,
+            payloadAttributes: new Nethermind.Consensus.Producers.PayloadAttributes
+            {
+                Timestamp = parent.Timestamp + 1,
+                Withdrawals = [],
+                ParentBeaconBlockRoot = Keccak.Zero,
+                PrevRandao = Keccak.Zero,
+                SlotNumber = (parent.SlotNumber ?? 0) + 1
+            }, cancellationToken: budget.Token) ?? throw new InvalidOperationException("No block was produced");
+        Assert.That(chain.Container.Resolve<IBlockValidator>().ValidateSuggestedBlock(block, parent, out string? blockError),
+            Is.True, blockError);
+        Assert.That(chain.BlockTree.SuggestBlock(block, Nethermind.Blockchain.BlockTreeSuggestOptions.ForceDontSetAsMain),
+            Is.EqualTo(Nethermind.Blockchain.AddBlockResult.Added));
+        Assert.That(chain.BlockchainProcessor.Process(block, Nethermind.Consensus.Processing.ProcessingOptions.StoreReceipts,
+            Nethermind.Blockchain.Tracing.NullBlockTracer.Instance), Is.Not.Null);
+        Assert.That(block.Transactions, Has.Length.EqualTo(2));
+        Assert.That(block.Header.RecursiveStark, Is.Not.Null);
+        ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment,
+            Eip8288Constants.AggregatedVk, block.Header.RecursiveStark!.StarkProof), Is.True);
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        Assert.That(receipts, Has.Length.EqualTo(2));
+        using (chain.MainWorldState.BeginScope(block.Header))
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.MainWorldState.GetBalance(DaisugiRecipient), Is.EqualTo(UInt256.Parse("200000000000000")));
+            chain.MainWorldState.Get(new StorageCell(DaisugiRecipient, UInt256.Zero), out UInt256 stored);
+            Assert.That(stored, Is.EqualTo(new UInt256(block.Transactions[^1].Frames![2].Data.Span, isBigEndian: true)));
+            for (int index = 0; index < 2; index++)
+            {
+                Assert.That(receipts[index].StatusCode, Is.EqualTo(StatusCode.Success));
+                Assert.That(receipts[index].FrameReceipts, Has.Length.EqualTo(3));
+                foreach (TxFrameReceipt receipt in receipts[index].FrameReceipts!)
+                    Assert.That(receipt.Status, Is.EqualTo(StatusCode.Success));
+                Assert.That(block.Transactions[index].FrameSignatures, Is.Empty);
+                Assert.That(chain.MainWorldState.GetNonce(block.Transactions[index].SenderAddress!), Is.EqualTo(1));
+            }
+        }
+        string root = Environment.GetEnvironmentVariable("DAISUGI_AUTH_DIR")!;
+        System.IO.File.WriteAllBytes(System.IO.Path.Combine(root, "accepted-block-proof.bin"), block.Header.RecursiveStark.StarkProof);
+        byte[] encodedBlock = Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes;
+        System.IO.File.WriteAllBytes(System.IO.Path.Combine(root, "accepted-block.rlp"), encodedBlock);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(root, "accepted-block.json"), System.Text.Json.JsonSerializer.Serialize(new
+        {
+            blockHash = block.Hash!.ToString(),
+            transactionHashes = Array.ConvertAll(block.Transactions, transaction => transaction.Hash!.ToString()),
+            proofBytes = block.Header.RecursiveStark.StarkProof.Length,
+            proofSha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(block.Header.RecursiveStark.StarkProof)),
+            commitment = commitment.ToString(),
+            gasUsed = block.GasUsed,
+            receipts = Array.ConvertAll(receipts, receipt => new
+            {
+                receipt.GasUsed,
+                receipt.StatusCode,
+                frames = Array.ConvertAll(receipt.FrameReceipts!, frame => new { frame.Status, frame.ExecutionGasUsed, frame.StateGasUsed })
+            }),
+            scope = "In-memory production modules; not a Daisugi network block"
+        }));
+    }
+
+    [TestCase("recipient")]
+    [TestCase("value")]
+    [TestCase("calldata")]
+    [TestCase("fee")]
+    [TestCase("priority-fee")]
+    [TestCase("gas")]
+    [TestCase("state-gas")]
+    [TestCase("nonce")]
+    [TestCase("nonce-key")]
+    [TestCase("legacy-nonce")]
+    [TestCase("chain")]
+    [TestCase("sender")]
+    [TestCase("other-valid-key")]
+    [TestCase("extra-frame")]
+    [TestCase("verify-mode")]
+    [TestCase("unrelated-valid-signature")]
+    public async Task Daisugi_dependency_account_rejects_changed_authorization(string scenario)
+    {
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await DaisugiChain(proofs);
+        Transaction transaction = DaisugiTransaction(0);
+        TxFrame body = transaction.Frames![2];
+        if (scenario == "unrelated-valid-signature")
+        {
+            System.Text.Json.JsonElement fixture = DaisugiFixture(0);
+            FrameDependency unrelated = new(0x10, new ValueHash256(fixture.GetProperty("unrelatedMessage").GetString()!),
+                new ValueHash256(fixture.GetProperty("keyHash").GetString()!));
+            transaction.Frames[0] = new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 3000, UInt256.Zero,
+                Eip8288Dependencies.Serialize([unrelated]));
+        }
+        if (scenario == "other-valid-key") transaction.Frames[0] = DaisugiTransaction(1).Frames![0];
+        DaisugiAddWitness(proofs, transaction, scenario == "other-valid-key" ? 1 : 0, scenario == "unrelated-valid-signature");
+        switch (scenario)
+        {
+            case "recipient": transaction.Frames[2] = new TxFrame(body.Mode, body.Flags, TestItem.AddressD, body.ExecutionGasLimit, body.StateGasLimit, body.Value, body.Data); break;
+            case "value": transaction.Frames[2] = new TxFrame(body.Mode, body.Flags, body.Target, body.ExecutionGasLimit, body.StateGasLimit, body.Value + UInt256.One, body.Data); break;
+            case "calldata": transaction.Frames[2] = new TxFrame(body.Mode, body.Flags, body.Target, body.ExecutionGasLimit, body.StateGasLimit, body.Value, new byte[32]); break;
+            case "fee": transaction.DecodedMaxFeePerGas += UInt256.One; break;
+            case "priority-fee": transaction.GasPrice += UInt256.One; break;
+            case "gas": transaction.Frames[2] = new TxFrame(body.Mode, body.Flags, body.Target, body.ExecutionGasLimit + 1, body.StateGasLimit, body.Value, body.Data); break;
+            case "state-gas": transaction.Frames[2] = new TxFrame(body.Mode, body.Flags, body.Target, body.ExecutionGasLimit, body.StateGasLimit + 1, body.Value, body.Data); break;
+            case "nonce": transaction.Nonce = 1; break;
+            case "nonce-key": transaction.NonceKeys = [UInt256.One]; break;
+            case "legacy-nonce": transaction.NonceKeys = null; break;
+            case "chain": transaction.ChainId = 1338; break;
+            case "sender": transaction.SenderAddress = DaisugiTransaction(1).SenderAddress; break;
+            case "extra-frame": transaction.Frames = [.. transaction.Frames, body]; break;
+            case "verify-mode":
+                TxFrame verify = transaction.Frames[1];
+                transaction.Frames[1] = new TxFrame(FrameMode.Default, verify.Flags, verify.Target,
+                    verify.ExecutionGasLimit, verify.StateGasLimit, verify.Value, verify.Data);
+                break;
+        }
+        transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+        transaction.Hash = transaction.CalculateHash();
+        AcceptTxResult result = chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+        Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Accepted), scenario);
+        Assert.That(chain.TxPool.GetPendingTransactions(), Is.Empty);
+        string root = Environment.GetEnvironmentVariable("DAISUGI_AUTH_DIR")!;
+        System.IO.File.WriteAllText(System.IO.Path.Combine(root, "rejected-" + scenario + ".json"),
+            System.Text.Json.JsonSerializer.Serialize(new { scenario, result = result.ToString() }));
+    }
+
+    [TestCase("valid", true)]
+    [TestCase("missing-proof", false)]
+    [TestCase("corrupt-proof", false)]
+    [TestCase("changed-recipient", false)]
+    public async Task Daisugi_dependency_account_imports_block_without_witnesses(string scenario, bool accepted)
+    {
+        string root = Environment.GetEnvironmentVariable("DAISUGI_AUTH_DIR")!;
+        byte[] raw = System.IO.File.ReadAllBytes(System.IO.Path.Combine(root, "accepted-block.rlp"));
+        Block block = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(raw.AsSpan())
+            ?? throw new InvalidOperationException("The encoded block is null");
+        LeanProofStore emptyProofStore = new();
+        using BasicTestBlockchain receiver = await DaisugiChain(emptyProofStore);
+        Assert.That(receiver.TxPool.GetPendingTransactions(), Is.Empty);
+        Assert.That(receiver.BlockTree.Head!.Hash, Is.EqualTo(block.ParentHash));
+        block.Header.TotalDifficulty = (receiver.BlockTree.Head.TotalDifficulty ?? UInt256.Zero) + block.Difficulty;
+        switch (scenario)
+        {
+            case "missing-proof": block.Header.RecursiveStark = null; break;
+            case "corrupt-proof": block.Header.RecursiveStark!.StarkProof[^1] ^= 1; break;
+            case "changed-recipient":
+                Transaction transaction = block.Transactions[0];
+                TxFrame body = transaction.Frames![2];
+                transaction.Frames[2] = new TxFrame(body.Mode, body.Flags, TestItem.AddressD,
+                    body.ExecutionGasLimit, body.StateGasLimit, body.Value, body.Data);
+                transaction.Hash = transaction.CalculateHash();
+                block.Header.TxRoot = Nethermind.State.Proofs.TxTrie.CalculateRoot(block.Transactions);
+                break;
+        }
+        block.Header.Hash = block.Header.CalculateHash();
+        if (scenario == "changed-recipient")
+        {
+            ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block);
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment,
+                Eip8288Constants.AggregatedVk, block.Header.RecursiveStark!.StarkProof), Is.True,
+                "the account must reject the changed operation even though the declared signature proof is valid");
+        }
+        // Network/Engine ingress validates the suggested block before EVM processing.
+        IBlockValidator validator = receiver.Container.Resolve<IBlockValidator>();
+        Assert.That(validator, Is.InstanceOf<BlockValidator>());
+        bool validEnvelope = validator.ValidateSuggestedBlock(block, receiver.BlockTree.Head.Header, out string? validationError);
+        if (scenario == "missing-proof")
+            Assert.That(validationError, Is.EqualTo(Nethermind.Core.Messages.BlockErrorMessages.MissingRecursiveStark));
+        else if (scenario == "corrupt-proof")
+            Assert.That(validationError, Is.EqualTo(Nethermind.Core.Messages.BlockErrorMessages.InvalidRecursiveStark));
+        else
+            Assert.That(validEnvelope, Is.True, validationError);
+        Block? processed = null;
+        if (validEnvelope)
+        {
+            Assert.That(receiver.BlockTree.SuggestBlock(block, Nethermind.Blockchain.BlockTreeSuggestOptions.ForceDontSetAsMain),
+                Is.EqualTo(Nethermind.Blockchain.AddBlockResult.Added));
+            processed = receiver.BlockchainProcessor.Process(block,
+                Nethermind.Consensus.Processing.ProcessingOptions.StoreReceipts,
+                Nethermind.Blockchain.Tracing.NullBlockTracer.Instance);
+        }
+        Assert.That(processed is not null, Is.EqualTo(accepted), scenario);
+        if (accepted)
+        {
+            Assert.That(processed!.Header.StateRoot, Is.EqualTo(block.Header.StateRoot));
+            using (receiver.MainWorldState.BeginScope(processed.Header))
+            {
+                Assert.That(receiver.MainWorldState.GetBalance(DaisugiRecipient), Is.EqualTo(UInt256.Parse("200000000000000")));
+                receiver.MainWorldState.Get(new StorageCell(DaisugiRecipient, UInt256.Zero), out UInt256 stored);
+                Assert.That(stored, Is.EqualTo(new UInt256(block.Transactions[^1].Frames![2].Data.Span, isBigEndian: true)));
+            }
+        }
+        System.IO.File.WriteAllText(System.IO.Path.Combine(root, "import-" + scenario + ".json"),
+            System.Text.Json.JsonSerializer.Serialize(new { scenario, accepted, validEnvelope, validationError, witnessStoreWasEmpty = true }));
+    }
+
+#nullable restore

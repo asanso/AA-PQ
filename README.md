@@ -271,3 +271,11 @@ attribution and network component licenses are listed in
 
 See [native frame integration](docs/NATIVE-FRAMES.md) for the account, original
 NiceTry wallet, HTTPS gateway, client budget and staging acceptance workflow.
+
+## Experimental native aggregation
+
+The native aggregation wallet, bounded RPC gateway and proof-aware explorer are
+documented in [Native aggregation](docs/native-aggregation-development.md).
+Client source overlays and revision pins are under `aggregation/frames`.
+The ordinary portal build does not activate a client fork or enable aggregation
+submission; both require explicit environment configuration.

@@ -1,0 +1,270 @@
+#nullable enable
+    private static string WalletRoot => Environment.GetEnvironmentVariable("DAISUGI_WALLET_DIR")
+        ?? throw new InvalidOperationException("DAISUGI_WALLET_DIR is required");
+
+    private static System.Text.Json.JsonElement WalletData()
+    {
+        using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(
+            System.IO.File.ReadAllText(System.IO.Path.Combine(WalletRoot, "fixtures", "wallet.json")));
+        return document.RootElement.Clone();
+    }
+
+    private static byte[] WalletBytes(string hex) => Convert.FromHexString(hex[2..]);
+
+    private static async Task<BasicTestBlockchain> WalletChain(bool recentRoot = false)
+    {
+        DaisugiTestBlockchain chain = new();
+        await chain.Initialize(builder => builder
+            .AddSingleton<ISpecProvider>(new SingleReleaseSpecProvider(Eip8288Prototype.Instance, 1337, 1337))
+            .AddSingleton<ILeanProofVerifier>(NativeLeanProofVerifier.Instance)
+            .AddSingleton(new LeanProofStore())
+            .AddSingleton<IUnclesValidator, UnclesValidator>()
+            .AddScoped<Nethermind.Blockchain.IGenesisPostProcessor, IWorldState, ISpecProvider>((state, provider) =>
+                new Nethermind.Core.Test.Container.FunctionalGenesisPostProcessor(genesis =>
+                {
+                    genesis.Header.GasLimit = 30_000_000;
+                    if (recentRoot)
+                    {
+                        genesis.Header.SlotNumber = 1;
+                        if (!state.AccountExists(Eip8272Constants.RecentRootAddress)) state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
+                        state.Set(RecentRootStore.ReferenceCell(TestItem.KeccakA.ValueHash256, 0),
+                            RecentRootStore.EntryHash(TestItem.KeccakA.ValueHash256, 0, TestItem.KeccakB.ValueHash256).ToUInt256());
+                    }
+                    System.Text.Json.JsonElement data = WalletData();
+                    foreach ((string addressField, string codeField) in new[] { ("factory", "factoryRuntime"), ("implementation", "implementationRuntime") })
+                    {
+                        Address address = new(data.GetProperty("config").GetProperty(addressField).GetString()!);
+                        state.CreateAccount(address, UInt256.Zero);
+                        state.InsertCode(address, WalletBytes(data.GetProperty(codeField).GetString()!), provider.GenesisSpec);
+                    }
+                    foreach (System.Text.Json.JsonElement fixture in data.GetProperty("fixtures").EnumerateArray())
+                        state.CreateAccount(new Address(fixture.GetProperty("sender").GetString()!), UInt256.Parse("10000000000000000000"));
+                    state.CreateAccount(DaisugiRecipient, UInt256.Zero);
+                    state.InsertCode(DaisugiRecipient, Convert.FromHexString("60003560005500"), provider.GenesisSpec);
+                    state.RecalculateStateRoot();
+                })));
+        return chain;
+    }
+
+    private static Nethermind.JsonRpc.Modules.Eth.IEthRpcModule WalletRpc(BasicTestBlockchain chain)
+        => chain.Container.Resolve<Nethermind.JsonRpc.Modules.IRpcModuleFactory<Nethermind.JsonRpc.Modules.Eth.IEthRpcModule>>().Create();
+
+    private static async Task<Block> WalletBlock(BasicTestBlockchain chain)
+    {
+        using CancellationTokenSource budget = new(TimeSpan.FromMinutes(3));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.BlockProducer.BuildBlock(parentHeader: parent,
+            payloadAttributes: new Nethermind.Consensus.Producers.PayloadAttributes
+            {
+                Timestamp = parent.Timestamp + 1, Withdrawals = [], ParentBeaconBlockRoot = Keccak.Zero,
+                PrevRandao = Keccak.Zero, SlotNumber = (parent.SlotNumber ?? 0) + 1
+            }, cancellationToken: budget.Token) ?? throw new InvalidOperationException("No block produced");
+        Assert.That(chain.Container.Resolve<IBlockValidator>().ValidateSuggestedBlock(block, parent, out string? error), Is.True, error);
+        Assert.That(chain.BlockTree.SuggestBlock(block, Nethermind.Blockchain.BlockTreeSuggestOptions.ForceDontSetAsMain),
+            Is.EqualTo(Nethermind.Blockchain.AddBlockResult.Added));
+        Assert.That(chain.BlockchainProcessor.Process(block, Nethermind.Consensus.Processing.ProcessingOptions.StoreReceipts,
+            Nethermind.Blockchain.Tracing.NullBlockTracer.Instance), Is.Not.Null);
+        return block;
+    }
+
+    [Test, Order(0)]
+    public async Task Daisugi_wallet_rpc_factory_constructor_installs_exact_runtime()
+    {
+        using BasicTestBlockchain chain = await WalletChain();
+        Transaction creation = Build.A.Transaction.WithCode(WalletBytes(WalletData().GetProperty("factoryCreation").GetString()!))
+            .WithChainId(1337).WithNonce(0).WithValue(0).WithGasLimit(20_000_000).WithGasPrice(100_000_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        using (chain.MainWorldState.BeginScope(chain.BlockTree.Head!.Header))
+        {
+            Nethermind.Blockchain.Tracing.CallOutputTracer trace = new();
+            chain.TxProcessor.CallAndRestore(creation, new Nethermind.Evm.BlockExecutionContext(chain.BlockTree.Head.Header,
+                chain.SpecProvider.GetSpec(chain.BlockTree.Head.Header)), trace);
+            Assert.That(trace.Error, Is.Null, Convert.ToHexString(trace.ReturnValue ?? []));
+        }
+        Assert.That(chain.TxPool.SubmitTx(creation, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Block block = await WalletBlock(chain);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        Assert.That(chain.ReceiptStorage.Get(block)[0].StatusCode, Is.EqualTo(StatusCode.Success), "Gas used: " + chain.ReceiptStorage.Get(block)[0].GasUsed);
+        Address factory = ContractAddress.From(TestItem.AddressB, 0);
+        Address implementation = ContractAddress.From(factory, 1);
+        using (chain.MainWorldState.BeginScope(block.Header))
+        {
+            Assert.That(chain.MainWorldState.GetCodeHash(implementation).ToString(),
+                Is.EqualTo(Keccak.Compute(WalletBytes(WalletData().GetProperty("implementationRuntime").GetString()!)).ToString()));
+            Assert.That(chain.MainWorldState.GetCode(factory).Length, Is.GreaterThan(0));
+        }
+    }
+
+    [Test, Order(20)]
+    public async Task Daisugi_wallet_rpc_creates_accounts_and_executes_subsequent_sends()
+    {
+        using BasicTestBlockchain chain = await WalletChain();
+        Nethermind.JsonRpc.Modules.Eth.IEthRpcModule rpc = WalletRpc(chain);
+        System.Text.Json.JsonElement data = WalletData();
+        for (int round = 0; round < 2; round++)
+        {
+            for (int index = 0; index < 2; index++)
+            {
+                System.Text.Json.JsonElement scenario = data.GetProperty("fixtures")[index].GetProperty("scenarios")[round];
+                Nethermind.JsonRpc.ResultWrapper<Hash256[]> result = await rpc.eth_sendProofWrapper(WalletBytes(scenario.GetProperty("wrapper").GetString()!));
+                Assert.That(result.Result, Is.EqualTo(Result.Success), result.Result.Error);
+                Assert.That(result.Data, Has.Length.EqualTo(1));
+                Assert.That(result.Data[0].ToString(), Is.EqualTo(scenario.GetProperty("hash").GetString()));
+            }
+            Block block = await WalletBlock(chain);
+            Assert.That(block.Transactions, Has.Length.EqualTo(2));
+            TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+            Assert.That(receipts, Has.Length.EqualTo(2));
+            using (chain.MainWorldState.BeginScope(block.Header))
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chain.MainWorldState.GetBalance(DaisugiRecipient), Is.EqualTo(UInt256.Parse("200000000000000") * (UInt256)(round + 1)));
+                for (int index = 0; index < 2; index++)
+                {
+                    System.Text.Json.JsonElement fixture = data.GetProperty("fixtures")[index];
+                    Address account = new(fixture.GetProperty("sender").GetString()!);
+                    Assert.That(chain.MainWorldState.GetCodeHash(account).ToString(), Is.EqualTo(Keccak.Compute(WalletBytes(fixture.GetProperty("runtime").GetString()!)).ToString()));
+                    // CREATE2 initializes the contract nonce to one; frame execution advances it once.
+                    Assert.That(chain.MainWorldState.GetNonce(account), Is.EqualTo((ulong)(round + 2)));
+                    Assert.That(receipts[index].FrameReceipts, Has.Length.EqualTo(round == 0 ? 4 : 3));
+                    foreach (TxFrameReceipt frame in receipts[index].FrameReceipts!) Assert.That(frame.Status, Is.EqualTo(StatusCode.Success));
+                    Assert.That(block.Transactions[index].FrameSignatures, Is.Empty);
+                }
+            }
+            string prefix = System.IO.Path.Combine(WalletRoot, "wallet-block-" + round);
+            System.IO.File.WriteAllBytes(prefix + ".rlp", Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes);
+            System.IO.File.WriteAllBytes(prefix + "-proof.bin", block.Header.RecursiveStark!.StarkProof);
+            System.IO.File.WriteAllText(prefix + ".json", System.Text.Json.JsonSerializer.Serialize(new
+            {
+                blockHash = block.Hash!.ToString(), proofBytes = block.Header.RecursiveStark.StarkProof.Length,
+                proofSha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(block.Header.RecursiveStark.StarkProof)),
+                blockGas = block.GasUsed,
+                transactions = Array.ConvertAll(block.Transactions, transaction => transaction.Hash!.ToString()),
+                receipts = Array.ConvertAll(receipts, receipt => new { receipt.StatusCode, receipt.GasUsed,
+                    frames = Array.ConvertAll(receipt.FrameReceipts!, frame => new { frame.Status, frame.ExecutionGasUsed, frame.StateGasUsed }) })
+            }));
+        }
+    }
+
+    [Order(10)]
+    [TestCase("signature")]
+    [TestCase("recipient")]
+    [TestCase("value")]
+    [TestCase("factory")]
+    [TestCase("creation-data")]
+    [TestCase("nonce")]
+    [TestCase("missing-witness")]
+    [TestCase("dependency")]
+    public async Task Daisugi_wallet_rpc_rejects_tampered_wrapper(string scenario)
+    {
+        using BasicTestBlockchain chain = await WalletChain();
+        byte[] encoded = WalletBytes(WalletData().GetProperty("fixtures")[0].GetProperty("scenarios")[0].GetProperty("wrapper").GetString()!);
+        Nethermind.Serialization.Rlp.RlpReader reader = new(encoded);
+        MempoolWrapper wrapper = MempoolWrapperDecoder.Instance.Decode(ref reader)!;
+        Transaction transaction = wrapper.Transactions[0].Full!;
+        if (scenario == "signature") wrapper.Proofs![0][^1] ^= 1;
+        if (scenario is "missing-witness" or "dependency") wrapper = new MempoolWrapper
+        {
+            Transactions = wrapper.Transactions, Mode = wrapper.Mode,
+            Deps = scenario == "dependency" ? [] : wrapper.Deps,
+            Proofs = scenario == "missing-witness" ? [] : wrapper.Proofs
+        };
+        if (scenario == "nonce") transaction.Nonce = 1;
+        int index = scenario is "factory" or "creation-data" ? 0 : 3;
+        TxFrame original = transaction.Frames![index];
+        if (scenario is "recipient" or "factory" or "value" or "creation-data")
+        {
+            byte[] callData = original.Data.ToArray();
+            if (scenario == "creation-data") callData[^1] ^= 1;
+            transaction.Frames[index] = new TxFrame(original.Mode, original.Flags,
+                scenario is "recipient" or "factory" ? TestItem.AddressD : original.Target,
+                original.ExecutionGasLimit, original.StateGasLimit,
+                scenario == "value" ? original.Value + UInt256.One : original.Value, callData);
+        }
+        transaction.Hash = transaction.CalculateHash();
+        Nethermind.JsonRpc.ResultWrapper<Hash256[]> result = await WalletRpc(chain).eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success), scenario);
+        Assert.That(result.Result.Error, Does.Not.Contain("timed out").And.Not.Contain("budget"));
+        Assert.That(chain.TxPool.GetPendingTransactions(), Is.Empty);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(WalletRoot, "rejected-" + scenario + ".json"),
+            System.Text.Json.JsonSerializer.Serialize(new { scenario, error = result.Result.Error }));
+    }
+    [Test, Order(15)]
+    public async Task Daisugi_wallet_rpc_rejects_valid_but_unsigned_recent_root_reference()
+    {
+        using BasicTestBlockchain chain = await WalletChain(recentRoot: true);
+        byte[] encoded = WalletBytes(WalletData().GetProperty("fixtures")[0].GetProperty("scenarios")[0].GetProperty("wrapper").GetString()!);
+        Nethermind.Serialization.Rlp.RlpReader reader = new(encoded);
+        MempoolWrapper wrapper = MempoolWrapperDecoder.Instance.Decode(ref reader)!;
+        Transaction transaction = wrapper.Transactions[0].Full!;
+        RecentRootReference reference = new(TestItem.KeccakA.ValueHash256, 0, TestItem.KeccakB.ValueHash256);
+        using (chain.MainWorldState.BeginScope(chain.BlockTree.Head!.Header))
+            Assert.That(RecentRootStore.IsReferenceValid(chain.MainWorldState, reference.SourceId, reference.Slot, reference.Root, 1), Is.True);
+        transaction.RecentRootReferences = [reference];
+        transaction.Hash = transaction.CalculateHash();
+        Nethermind.JsonRpc.ResultWrapper<Hash256[]> result = await WalletRpc(chain).eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes);
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.Result.Error, Does.Contain("validation prefix frame reverted"));
+        Assert.That(chain.TxPool.GetPendingTransactions(), Is.Empty);
+        // The same signed intent without the added, unsigned reference must be admitted.
+        transaction.RecentRootReferences = null;
+        transaction.Hash = transaction.CalculateHash();
+        result = await WalletRpc(chain).eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes);
+        Assert.That(result.Result, Is.EqualTo(Result.Success), result.Result.Error);
+    }
+
+    [TestCase("valid")]
+    [TestCase("missing-proof")]
+    [TestCase("corrupt-proof")]
+    [TestCase("changed-recipient")]
+    public async Task Daisugi_wallet_import_without_signature_witnesses(string scenario)
+    {
+        using BasicTestBlockchain chain = await WalletChain();
+        for (int round = 0; round < (scenario == "valid" ? 2 : 1); round++)
+        {
+            Block block = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(System.IO.File.ReadAllBytes(
+                System.IO.Path.Combine(WalletRoot, "wallet-block-" + round + ".rlp")).AsSpan())!;
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.ParentHash));
+            block.Header.TotalDifficulty = (chain.BlockTree.Head.TotalDifficulty ?? UInt256.Zero) + block.Difficulty;
+            if (scenario == "missing-proof") block.Header.RecursiveStark = null;
+            if (scenario == "corrupt-proof") block.Header.RecursiveStark!.StarkProof[^1] ^= 1;
+            if (scenario == "changed-recipient")
+            {
+                Transaction transaction = block.Transactions[0];
+                TxFrame last = transaction.Frames![^1];
+                transaction.Frames[^1] = new TxFrame(last.Mode, last.Flags, TestItem.AddressD,
+                    last.ExecutionGasLimit, last.StateGasLimit, last.Value, last.Data);
+                transaction.Hash = transaction.CalculateHash();
+                block.Header.TxRoot = Nethermind.State.Proofs.TxTrie.CalculateRoot(block.Transactions);
+                ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block);
+                Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment,
+                    Eip8288Constants.AggregatedVk, block.Header.RecursiveStark!.StarkProof), Is.True);
+            }
+            block.Header.Hash = block.Header.CalculateHash();
+            bool validEnvelope = chain.Container.Resolve<IBlockValidator>().ValidateSuggestedBlock(block, chain.BlockTree.Head.Header, out string? error);
+            if (scenario == "missing-proof") Assert.That(error, Is.EqualTo(Nethermind.Core.Messages.BlockErrorMessages.MissingRecursiveStark));
+            else if (scenario == "corrupt-proof") Assert.That(error, Is.EqualTo(Nethermind.Core.Messages.BlockErrorMessages.InvalidRecursiveStark));
+            else Assert.That(validEnvelope, Is.True, error);
+            Block? processed = null;
+            if (validEnvelope)
+            {
+                Assert.That(chain.BlockTree.SuggestBlock(block, Nethermind.Blockchain.BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(Nethermind.Blockchain.AddBlockResult.Added));
+                processed = chain.BlockchainProcessor.Process(block, Nethermind.Consensus.Processing.ProcessingOptions.StoreReceipts,
+                    Nethermind.Blockchain.Tracing.NullBlockTracer.Instance);
+            }
+            Assert.That(processed is not null, Is.EqualTo(scenario == "valid"));
+            Assert.That(chain.TxPool.GetPendingTransactions(), Is.Empty);
+            if (processed is not null)
+            {
+                using (chain.MainWorldState.BeginScope(processed.Header))
+                {
+                    Assert.That(chain.MainWorldState.GetBalance(DaisugiRecipient), Is.EqualTo(UInt256.Parse("200000000000000") * (UInt256)(round + 1)));
+                    foreach (System.Text.Json.JsonElement fixture in WalletData().GetProperty("fixtures").EnumerateArray())
+                        Assert.That(chain.MainWorldState.GetNonce(new Address(fixture.GetProperty("sender").GetString()!)), Is.EqualTo((ulong)(round + 2)));
+                }
+            }
+            System.IO.File.WriteAllText(System.IO.Path.Combine(WalletRoot, "import-" + scenario + "-" + round + ".json"),
+                System.Text.Json.JsonSerializer.Serialize(new { scenario, round, accepted = processed is not null, validEnvelope, error, witnessStoreWasEmpty = true }));
+        }
+    }
+#nullable restore

@@ -1,0 +1,107 @@
+#nullable enable
+    private static class DaisugiPragueSpec
+    {
+        public static readonly ReleaseSpec Instance = Create();
+        private static ReleaseSpec Create()
+        {
+            ReleaseSpec spec = Prague.Instance.Clone();
+            spec.Name = "DaisugiPragueAggregationTransportTest";
+            spec.IsEip8141Enabled = true;
+            spec.IsEip8288Enabled = true;
+            spec.IsEip8250Enabled = true;
+            spec.IsEip8272Enabled = true;
+            spec.IsEip7906Enabled = true;
+            return spec;
+        }
+    }
+
+    private static void ExportEnginePayload(Block block, string prefix)
+    {
+        Nethermind.Merge.Plugin.Data.ExecutionPayloadV3 payload = Nethermind.Merge.Plugin.Data.ExecutionPayloadV3.Create(block);
+        Nethermind.Serialization.Json.EthereumJsonSerializer serializer = new();
+        System.IO.File.WriteAllText(prefix + "-engine.json", serializer.Serialize(payload));
+        System.IO.File.WriteAllText(prefix + "-engine-context.json", serializer.Serialize(new
+        {
+            parentBeaconBlockRoot = block.ParentBeaconBlockRoot,
+            executionRequests = block.ExecutionRequests ?? [],
+        }));
+        Assert.That(block.Difficulty, Is.EqualTo(UInt256.Zero));
+        Assert.That(block.Header.BlockAccessListHash, Is.Null);
+        Assert.That(block.Header.SlotNumber, Is.Null.Or.EqualTo(0));
+    }
+
+    [Test]
+    public async Task Daisugi_wallet_rpc_empty_dependency_block_preserves_transport()
+    {
+        using BasicTestBlockchain chain = await WalletChain();
+        Block block = await WalletBlock(chain);
+        Assert.That(block.Transactions, Is.Empty);
+        Assert.That(Eip8288Dependencies.ForBlock(block), Is.Empty);
+        Assert.That(block.Header.RecursiveStark, Is.Not.Null);
+        Assert.That(block.Header.RecursiveStark!.StarkProof, Is.Not.Empty);
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(
+            Eip8288Dependencies.ComputeBlockDepsHash(block), Eip8288Constants.AggregatedVk,
+            block.Header.RecursiveStark.StarkProof), Is.True);
+        string prefix = System.IO.Path.Combine(WalletRoot, "empty-block");
+        System.IO.File.WriteAllBytes(prefix + ".rlp", Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes);
+        System.IO.File.WriteAllBytes(prefix + "-proof.bin", block.Header.RecursiveStark.StarkProof);
+        ExportEnginePayload(block, prefix);
+    }
+
+    [TestCase("valid")]
+    [TestCase("empty")]
+    [TestCase("corrupt-proof")]
+    [TestCase("missing-proof")]
+    [TestCase("changed-commitment")]
+    public async Task Daisugi_engine_transport_import(string scenario)
+    {
+        using BasicTestBlockchain chain = await WalletChain();
+        Nethermind.Serialization.Json.EthereumJsonSerializer serializer = new();
+        bool expectedValid = scenario is "valid" or "empty";
+        for (int round = 0; round < (scenario == "valid" ? 2 : 1); round++)
+        {
+            string prefix = System.IO.Path.Combine(WalletRoot, scenario == "empty" ? "empty-block" : "wallet-block-" + round);
+            Block original = Nethermind.Serialization.Rlp.Rlp.Decode<Block>(System.IO.File.ReadAllBytes(prefix + ".rlp").AsSpan())!;
+            Nethermind.Merge.Plugin.Data.ExecutionPayloadV3 payload = serializer.Deserialize<Nethermind.Merge.Plugin.Data.ExecutionPayloadV3>(
+                System.IO.File.ReadAllText(System.IO.Path.Combine(WalletRoot, scenario == "empty" ? "roundtrip-empty" : "roundtrip-" + round, "engine-payload.json")))!;
+            payload.ParentBeaconBlockRoot = original.ParentBeaconBlockRoot;
+            payload.ExecutionRequests = original.ExecutionRequests ?? [];
+            Assert.That(payload.ValidateForkOnNewPayload(chain.SpecProvider, 4), Is.True);
+            if (scenario == "corrupt-proof") payload.RecursiveStarkProof![^1] ^= 1;
+            if (scenario == "missing-proof") payload.RecursiveStarkProof = null;
+            if (scenario == "changed-commitment") payload.RecursiveStarkBlockDepsHash![0] ^= 1;
+            Result<Block> decoded = payload.TryGetBlock();
+            if (scenario == "missing-proof")
+            {
+                Assert.That(decoded.IsError, Is.True);
+                return;
+            }
+            Assert.That(decoded.IsSuccess, Is.True, decoded.Error);
+            Block block = decoded.Data ?? throw new InvalidOperationException(decoded.Error);
+            if (expectedValid)
+            {
+                Assert.That(block.Header.CalculateHash(), Is.EqualTo(original.Hash));
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block).Bytes,
+                    Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.Encode(original).Bytes));
+            }
+            block.Header.Hash = block.Header.CalculateHash();
+            block.Header.TotalDifficulty = chain.BlockTree.Head!.TotalDifficulty;
+            bool valid = chain.Container.Resolve<IBlockValidator>().ValidateSuggestedBlock(block, chain.BlockTree.Head.Header, out string? error);
+            Assert.That(valid, Is.EqualTo(expectedValid), error);
+            Block? processed = null;
+            if (valid)
+            {
+                Assert.That(chain.BlockTree.SuggestBlock(block, Nethermind.Blockchain.BlockTreeSuggestOptions.ForceDontSetAsMain),
+                    Is.EqualTo(Nethermind.Blockchain.AddBlockResult.Added));
+                processed = chain.BlockchainProcessor.Process(block, Nethermind.Consensus.Processing.ProcessingOptions.StoreReceipts,
+                    Nethermind.Blockchain.Tracing.NullBlockTracer.Instance);
+                Assert.That(processed, Is.Not.Null);
+                Assert.That(processed!.StateRoot, Is.EqualTo(original.StateRoot));
+                Assert.That(chain.BlockTree.TryUpdateMainChain(processed.Header, wereProcessed: true,
+                    forceUpdateHeadBlock: true, preloadedBlocks: [processed]), Is.True);
+            }
+            System.IO.File.WriteAllText(System.IO.Path.Combine(WalletRoot, "engine-import-" + scenario + "-" + round + ".json"),
+                System.Text.Json.JsonSerializer.Serialize(new { scenario, round, valid, error, executed = processed is not null, witnessStoreWasEmpty = true }));
+        }
+    }
+#nullable restore

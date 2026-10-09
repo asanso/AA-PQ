@@ -1,0 +1,235 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using Nethermind.Config;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.TxPool;
+
+namespace Nethermind.Consensus.Processing
+{
+    public partial class BlockProcessor
+    {
+        public class BlockProductionTransactionPicker(
+            ISpecProvider specProvider,
+            long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes,
+            bool ignoreEip3607 = false,
+            LeanProofStore? leanProofStore = null)
+            : IBlockProductionTransactionPicker
+        {
+            private readonly long _maxTxLengthBytes = maxTxLengthKilobytes.KiB;
+
+            protected readonly ISpecProvider _specProvider = specProvider;
+
+            public event EventHandler<AddingTxEventArgs>? AddingTransaction;
+
+            protected void OnAddingTransaction(AddingTxEventArgs e) => AddingTransaction?.Invoke(this, e);
+
+            public virtual AddingTxEventArgs CanAddTransaction(
+                Block block,
+                Transaction currentTx,
+                IReadOnlySet<Transaction> transactionsInBlock,
+                IReadOnlyStateProvider stateProvider,
+                ulong cumulativeBlockExecutionGas,
+                ulong cumulativeBlockStateGas)
+            {
+                AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
+
+                ulong reservedStarkGas = (block as BlockToProduce)?.RecursiveStarkGas ?? 0;
+                ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas).SaturatingSub(reservedStarkGas);
+
+                // No more gas available in block for any transactions, the only case we have to really stop. An
+                // EIP-8141 frame transaction reserves from its own lower intrinsic cost, so the legacy floor gates the spec read.
+                if (GasCostOf.Transaction > gasRemaining
+                    && (!_specProvider.GetSpec(block.Header).IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
+                {
+                    return args.Set(TxAction.Stop, "Block full");
+                }
+
+                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
+                {
+                    return args.Set(
+                        // If smallest tx is too large, stop picking
+                        currentTx.GasLimit == GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
+                        "Too large for CL");
+                }
+
+                if (currentTx.SenderAddress is null)
+                {
+                    return args.Set(TxAction.Skip, "Null sender");
+                }
+
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+                ulong txStarkGas = spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(currentTx) : 0;
+                gasRemaining = gasRemaining.SaturatingSub(txStarkGas);
+
+                if (transactionsInBlock.Contains(currentTx))
+                {
+                    return args.Set(TxAction.Skip, "Transaction already in block");
+                }
+
+                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas).SaturatingSub(reservedStarkGas);
+                if (txStarkGas > stateGasRemaining)
+                    return args.Set(TxAction.Skip, "Not enough state gas for dependency proof");
+                stateGasRemaining -= txStarkGas;
+                if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
+                {
+                    return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
+                }
+
+                if (executionReservation > gasRemaining)
+                {
+                    return args.Set(TxAction.Skip, $"Not enough execution gas in block, gas limit {executionReservation} > {gasRemaining}");
+                }
+
+                if (stateReservation > stateGasRemaining)
+                {
+                    return args.Set(TxAction.Skip, $"Not enough state gas in block, gas limit {stateReservation} > {stateGasRemaining}");
+                }
+
+                if (currentTx.IsAboveInitCode(spec))
+                {
+                    return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
+                }
+
+                // EIP-8141 exempts frame transactions from EIP-3607 ("Do not apply the restriction put
+                // in place by EIP-3607 to frame transactions"), so the pool admits one from a contract
+                // sender; without the same exemption here it could never be built into a block.
+                if (!ignoreEip3607 && !currentTx.SupportsFrames && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                {
+                    return args.Set(TxAction.Skip, $"Sender is contract");
+                }
+
+                // EIP-8250 moves a keyed transaction's replay protection to NONCE_MANAGER; both arms read the state
+                // built up so far, so either also skips a candidate whose domain an earlier one in this block consumed.
+                if (KeyedNonceManager.UsesKeyedNonce(currentTx))
+                {
+                    if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
+                    {
+                        return args.Set(TxAction.Skip, KeyedNonceSkipReason(stateProvider, currentTx));
+                    }
+                }
+                else
+                {
+                    ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                    if (expectedNonce != currentTx.Nonce)
+                    {
+                        return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                    }
+                }
+
+                // A frame transaction's fees are paid by the frame that approves payment, which need not
+                // be the sender, so a sender-balance gate here would skip transactions that do pay.
+                if (!currentTx.SupportsFrames)
+                {
+                    UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
+                    if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                    {
+                        return args;
+                    }
+                }
+
+                if (txStarkGas != 0)
+                {
+                    List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx);
+                    BlockToProduce? producing = block as BlockToProduce;
+                    LeanProofBudget budget = producing?.LeanProofBudget ?? new();
+                    List<FrameDependency> missing = budget.Missing(required);
+                    AggregationInput candidateInput = new();
+                    if (missing.Count != 0 && !budget.TryUseInclusionList(producing?.InclusionListProofInput, missing, out candidateInput)
+                        && (leanProofStore is null || !(spec.IsDaisugiAdaptiveAggregationEnabled ? leanProofStore.TryGetPreparedInput(missing, out candidateInput) : leanProofStore.TryGetInput(missing, out candidateInput))))
+                        return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
+                    if (spec.IsDaisugiAdaptiveAggregationEnabled && missing.Count != 0)
+                    {
+                        if (candidateInput.Deps.Count != 0 || candidateInput.RecursiveProofs.Count != 1)
+                            return args.Set(TxAction.Skip, "Waiting for an adaptive dependency proof");
+                        ValueHash256 group = candidateInput.RecursiveProofs[0].ProofHash;
+                        if (producing?.AdaptiveProofGroup is { } existingGroup && existingGroup != group)
+                            return args.Set(TxAction.Skip, "A different adaptive proof group is selected");
+                    }
+                    if (!budget.TryPrepare(candidateInput, required, out AggregationInput contribution, out string? proofError))
+                        return args.Set(TxAction.Skip, proofError!);
+                    args.LeanProofInput = contribution;
+                    args.LeanDependencies = required;
+                }
+
+                OnAddingTransaction(args);
+                return args;
+            }
+
+            /// <summary>Explains a keyed-nonce skip by naming the first key whose sequence disagrees with the candidate's.</summary>
+            /// <remarks>Cold path only, reached once the candidate is already being skipped. Any single key of the set can be
+            /// the one an earlier transaction in this block consumed, so a set-wide value would name a key that is current.</remarks>
+            private static string KeyedNonceSkipReason(IReadOnlyStateProvider stateProvider, Transaction currentTx)
+            {
+                UInt256[] nonceKeys = currentTx.NonceKeys!;
+                if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+                {
+                    return "Invalid nonce sequence - malformed key set";
+                }
+
+                foreach (ref readonly UInt256 nonceKey in nonceKeys.AsSpan())
+                {
+                    ulong current = KeyedNonceManager.CurrentNonceSeq(stateProvider, currentTx.SenderAddress!, in nonceKey);
+                    if (current != currentTx.Nonce)
+                    {
+                        return $"Invalid nonce sequence - key {nonceKey} expected {current}";
+                    }
+                }
+
+                // Well-formed and every key at nonce_seq leaves exhaustion as the only reason the set was rejected.
+                return $"Invalid nonce sequence - exhausted at {currentTx.Nonce}";
+            }
+
+            private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
+            {
+                bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
+                UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
+
+                if (senderBalance < transactionPotentialCost)
+                {
+                    e.Set(TxAction.Skip, $"Transaction cost ({transactionPotentialCost}) is higher than sender balance ({senderBalance})");
+                    return false;
+                }
+
+                if (!transaction.IsServiceTransaction && eip1559Enabled)
+                {
+                    UInt256 maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value;
+
+                    if (senderBalance < maxFee)
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}");
+                        return false;
+                    }
+
+                    if (transaction.CarriesBlobs && (
+                        !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
+                        senderBalance < (maxFee += blobBaseFee)))
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, BlobBaseFee: {blobBaseFee}");
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+
+        public enum TxAction
+        {
+            Add,
+            Skip,
+            Stop
+        }
+    }
+}

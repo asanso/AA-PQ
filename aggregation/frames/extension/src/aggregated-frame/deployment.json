@@ -1,0 +1,6 @@
+{
+  "active": false,
+  "chainId": 1337,
+  "profileName": "Daisugi.AggregatedFrameAccount.v2",
+  "reason": "Aggregation account deployment and HTTPS endpoint verification are pending."
+}

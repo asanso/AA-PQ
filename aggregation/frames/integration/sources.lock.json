@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "activation": "disabled",
+  "nethermind": {
+    "repository": "NethermindEth/nethermind",
+    "revision": "4a17b571f453d112bae5175a2e4966900201deae",
+    "archiveSha256": "2b23d9b6c78108245c21ae5a2c71c4d2253c6374decfa07193db3210c06a7aa0",
+    "dependencyMode": 4,
+    "dependencyCommitment": "keccak256(canonical 96-byte triples)",
+    "nativeAbi": 5,
+    "leanvmRepository": "Marchhill/leanVM",
+    "leanvmRevision": "854997bd156f47f1b1ce2192c4499741f29bd0df"
+  },
+  "oneHopReference": {
+    "repository": "leanEthereum/leanVM",
+    "revision": "f33f31bf7c1191667e29a68a3acae63b9164c1c6",
+    "archiveSha256": "7dc1bcefeea6637af90769cef6944a9f4f2f8cc997a61e89147053240807c6b8",
+    "dependencyCommitment": "blake2s256(sorted unique message || root || public_parameter)",
+    "interchangeableWithNethermind": false
+  }
+}

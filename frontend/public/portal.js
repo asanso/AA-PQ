@@ -3,6 +3,7 @@ import {formatUnits, isAddress} from '/ethers.js';
 import './faucet.js';
 import {renderTransactionDetails,attachTransactionDetailEvents} from './transaction-view.js';
 import {renderTimestamp} from './timestamp.js';
+import {renderBlockAggregation} from './native-frame-view.js';
 import {renderInputPanel as dataPanel,clearInputPanels,attachInputPanelEvents} from './input-data.js';
 
 const $ = id => document.getElementById(id);
@@ -65,7 +66,7 @@ function showOverview() {
   const frames = overview?.nativeFrames;
   $('metricFrames').textContent = frames?.count == null ? '—' : integer(frames.count);
   $('frameIndexStatus').textContent = frames?.count == null ? 'Native frame index unavailable' : frames.status === 'complete' ? 'Type 0x06 · native transactions' : 'Native frame index · partial';
-  $('latestFrames').innerHTML = frames?.transactions?.slice(0,5).map(tx=>row('Fr',link('tx',tx.hash),'From '+link('address',tx.from,short(tx.from,5))+'<br>'+renderTimestamp(tx.timestamp,{compact:true}),`${integer(tx.frameCount)} frames<br>${frameOutcome(tx)}`)).join('') || empty(frames?.count != null ? 'No native frame transactions in the indexed range.' : 'Native frame data is unavailable.');
+  $('latestFrames').innerHTML = frames?.transactions?.slice(0,5).map(tx=>row('Fr',link('tx',tx.hash),'From '+link('address',tx.from,short(tx.from,5))+'<br>'+renderTimestamp(tx.timestamp,{compact:true}),`${integer(tx.frameCount)} frames${tx.hasAggregationDependency ? '<br>Aggregate dependency' : ''}<br>${frameOutcome(tx)}`)).join('') || empty(frames?.count != null ? 'No native frame transactions in the indexed range.' : 'Native frame data is unavailable.');
   $('overviewError').hidden = !explorerError && !networkError;
   $('overviewError').textContent = [networkError && 'Network: ' + networkError, explorerError && 'Explorer: ' + explorerError].filter(Boolean).join(' ');
   $('activityStatus').textContent = !overview ? 'Explorer unavailable' : overview.entryPointIndex?.message ||
@@ -111,7 +112,7 @@ function renderDetail(kind, data) {
   section.classList.toggle('show-native-record',kind==='tx' && (Number(data.transactionDetails?.type ?? data.type)===6 || !!data.nativeFrame));
   section.querySelector('.page-heading h1').textContent=kind==='tx'?'Transaction details':kind==='op'?'UserOperation details':kind==='address'?'Address details':'Block details';
   section.querySelector('.page-heading p:not(.eyebrow)').textContent='On-chain records from Daisugi.';
-  if (kind === 'block') return detail('Block ' + integer(data.number),[['Block number',mono(integer(data.number))],['Block hash',mono(data.hash)],['Timestamp',renderTimestamp(data.timestamp)],['Transactions',integer(data.transactionCount)],['Gas used',mono(integer(data.gasUsed))],['Gas limit',mono(integer(data.gasLimit))]]) + table('Transactions','Included in this block',['Transaction hash','Timestamp (UTC)'],(data.transactions || []).map(tx=>[link('tx',typeof tx === 'string' ? tx : tx.hash,typeof tx === 'string' ? tx : tx.hash),renderTimestamp(data.timestamp,{compact:true})]),'This block contains no transactions.');
+  if (kind === 'block') return detail('Block ' + integer(data.number),[['Block number',mono(integer(data.number))],['Block hash',mono(data.hash)],['Timestamp',renderTimestamp(data.timestamp)],['Transactions',integer(data.transactionCount)],['Gas used',mono(integer(data.gasUsed))],['Gas limit',mono(integer(data.gasLimit))]]) + renderBlockAggregation(data.aggregation) + table('Transactions','Included in this block',['Transaction hash','Timestamp (UTC)'],(data.transactions || []).map(tx=>[link('tx',typeof tx === 'string' ? tx : tx.hash,typeof tx === 'string' ? tx : tx.hash),renderTimestamp(data.timestamp,{compact:true})]),'This block contains no transactions.');
   if (kind === 'address') return detail('Address', [['Address',mono(data.address)],['Balance',esc(data.balance) + ' ETH'],['Account type',esc(data.type)],['ERC-4337 deployment',data.deployment ? link('tx',data.deployment.transactionHash) : '<span class="subtle">No indexed EntryPoint deployment</span>']]) + frameRows(data.nativeFrames) + operationRows(data.operations || []);
   if (kind === 'op') {
     return detail('UserOperation', [['UserOperation hash',mono(data.userOpHash)],['Sender',link('address',data.sender,data.sender)],['Transaction',link('tx',data.transactionHash,data.transactionHash)],['Block',link('block',data.blockNumber)],['Timestamp',renderTimestamp(data.timestamp ?? data.transactionDetails?.timestamp)],['Result',outcome(data.success)],['Nonce',mono(data.nonce)],['Actual gas used',mono(integer(data.actualGasUsed))],['Actual gas cost',esc(units(data.actualGasCost)) + ' ETH'],['Paymaster',link('address',data.paymaster,data.paymaster)],['Signature size',dataSize(data.signature)],['Call data size',dataSize(data.operationCallData)]])

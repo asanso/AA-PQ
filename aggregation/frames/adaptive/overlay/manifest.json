@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "activation": "disabled",
+  "files": {
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/AdaptiveBatchPolicy.cs": {
+      "before": null,
+      "after": "50d9941695a0181c877309db98403b24b78920e95169e8ce1439f561b0f1ae26"
+    },
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/VersionedLeanProofVerifier.cs": {
+      "before": null,
+      "after": "440af5ca213fa7ad9253149226afbda27a61c090aa4f36eb925e48a33960121f"
+    },
+    "src/Nethermind/Nethermind.Core/Crypto/AdaptiveProofProgram.cs": {
+      "before": null,
+      "after": "782cdc7f972a347b12da1cd3357a80df0ff36c328353ee38fb170ef628a05087"
+    },
+    "src/Nethermind/Nethermind.Crypto/AdaptiveProofWorker.cs": {
+      "before": null,
+      "after": "b14293cb856e6ad450a4fdbcc7e0bce20b3e2699ed79a9c12728aeed1c567e3f"
+    },
+    "src/Nethermind/Nethermind.Core/Crypto/ILeanProofVerifier.cs": {
+      "before": "fa6346d84c59d89c0247b9e213ac0b58bf3e5843d6a31f3b5c0a218ce817857d",
+      "after": "9d3970fe5929f0fdf5ad7ac68a1ed27862d01fdc9b920b31abf5269b9715e0cd"
+    },
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/ProductionProofCache.cs": {
+      "before": "609dfae412baa78cda80fa98b313ae43d42ec47c3b35a322f23bfc732b0625cd",
+      "after": "8381b543781613d654e9b003beb7f863375dc8949cf5786c178db7dfa5a7fb78"
+    },
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/InclusionListProofVerifier.cs": {
+      "before": "651c45e2e7248bc237c8bc0886565548426d8557a98d4fc9f0fbd791f1c75559",
+      "after": "d942b21812070a9fc8b46ab9d18ad89a4f40592942d1e4e1687113de911071ff"
+    },
+    "src/Nethermind/Nethermind.Crypto/NativeAdaptiveProofVerifier.cs": {
+      "before": null,
+      "after": "3fd3b21ecda8daddbcd9e6c4c9f6d337b6f7a21efeec62176485678e61791d76"
+    },
+    "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs": {
+      "before": "9f18561143af0ec903e0b0b2820d76ab7b600c626c03ce3c0b6bd406eb457933",
+      "after": "8b71e38569ec0cd99f475a0a296285959de64ce3c99df978362416dc0b9591c0"
+    },
+    "src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs": {
+      "before": "65af1bd7719aa35845abcb1694ca5b2bb7a8d3fd9bfe1d56126a3645be893e4b",
+      "after": "4aae1b8c660216a739cd1369273ca56cb87376a6f6565adb2d1afb536733723a"
+    },
+    "src/Nethermind/Nethermind.Core/Specs/ReleaseSpecDecorator.cs": {
+      "before": "f194a617332224cf10f5f4a0b457506442b4d63f6131dcbabd6f082bea6bacc9",
+      "after": "c74422bf73d4034cba80a6d9004390deab0102c8cd6f4aacc373ec6109bc52ae"
+    },
+    "src/Nethermind/Nethermind.Specs/ReleaseSpec.cs": {
+      "before": "692cf70786f863963f5f207be2b80b4c2dd2233dc514c7c141af979956efb8bc",
+      "after": "6cca1b5de0ad5a21b05d328be682a8ad4f5d597ac544ea60884d2ba5c9b91cbd"
+    },
+    "src/Nethermind/Nethermind.Specs.Test/OverridableReleaseSpec.cs": {
+      "before": "429532acbb32fa32f407696b7a11a75beba53bfd4724901856a6562760046440",
+      "after": "e1acf0e5048615c7f01c9ad2c13f0de5f663f08ad93df65a5f3a88d19cbacca3"
+    },
+    "src/Nethermind/Nethermind.Specs.Test/ChainSpecStyle/GethGenesisLoaderTests.cs": {
+      "before": "5e02cf08b0f8876f1e4414e9e784aabf8fe99aec6b4788139631381bd42d1105",
+      "after": "c433e3c0be732588ccedef3bd18d7fcd9b874925f0fd7d48d159ec91193cb8df"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/ChainParameters.cs": {
+      "before": "7f53db519ea875d47356fb8ff09ad857ca8967aecd4fd04e6039359fc3ac1ab0",
+      "after": "c1e9458f4fae25e0ec3bd7f249d760e32f9966b4f1424e1153212b7144a89aee"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/Json/ChainSpecParamsJson.cs": {
+      "before": "4c06427d7d10f642e2231ade1bca83936dc1bc9c68674ba438591fe67faeb7cb",
+      "after": "780b2d86a2c09ba53dbb483b26c7ebecece7d3bb4fa49840effc8cc4b8d4664b"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/Json/GethGenesisConfigJson.cs": {
+      "before": "498ab75a282dcea5d1c48751d5bd1138610407d62138c2ef30ab4dede2a7bf88",
+      "after": "e3a2c7d6b84b0d19ed8e8f636360bb227afb7c3563bb66b2bb1e7e337c815991"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/GethGenesisLoader.cs": {
+      "before": "06c390d622504cbbd46113e3f96b8262fa5de9ca9cc9769a23fcd45cb94a512d",
+      "after": "6283504e955617222515f2f7de5f8202d6498241bf922a88d42d8ab7ab05b7a1"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/ChainSpecLoader.cs": {
+      "before": "b516ecf79d2119ff58d172644ea4548293af8fd9ccc9240501080874c7193f21",
+      "after": "5437c55f3727bbb14c71020306693042c22c171ee22131b2cdb3dc95e6760d38"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs": {
+      "before": "c17042b43bbfb63db40ae64d4f0c5dca3bb71f427088c3c5f06fa2ecef480cf4",
+      "after": "f1c9d5c8845a8c7254d4ddfafd88b873f656234d04d099e8191771b3f0df09b6"
+    },
+    "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs": {
+      "before": "e096ff92d437e241453b7591d7cc9505ad40222a431e25d3dc2dc10771f832de",
+      "after": "3f8dfcf59281a93faa5e43e5a7ccb7aa283141dff16c2e7291ab1618172bb34c"
+    },
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/RecursiveStarkAggregator.cs": {
+      "before": "e87973cc3ddd1b125b40c3152fa22046bc77fe41ae5347f6124ab20926539078",
+      "after": "b57f7232f1eb87c3b53134df91eb440c4e20d3afb298c4a162832de226693e19"
+    },
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/MempoolWrapperValidator.cs": {
+      "before": "18cd0aee32914ecff188ba64c60799611250a76bd21d2be465751351cd71a5e2",
+      "after": "dab538649ee9f8ee87e1d64e87ad070735a378a61ee728da40d6507082fe7ec2"
+    },
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/ProofWrapperService.cs": {
+      "before": "4fb65556fa71445f95cb5fa36c9e46539bfe5db63c08e4f4e012b0570079526c",
+      "after": "f9d0710fc06934883c7b83945823de7b6641a77edfbbad8db200b637c20dac70"
+    },
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/InclusionListProofPackage.cs": {
+      "before": "251ac44f8ddf01de22fc65c26b07a7073c9d9f6165e2e60c1e6faa94be8613b8",
+      "after": "0e453cef5a34d121ca7f913dc28c3b468c2d60f2673325077a255bc7eff3cf16"
+    },
+    "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs": {
+      "before": "28819d6ea817037f864a6f1191dc1352c45aaac0716b775b764f6d591ca46e68",
+      "after": "1a5c70cf95bcde43cd2f1d59cae2c299903546ed423bf17f6610ed6fd247872f"
+    },
+    "src/Nethermind/Nethermind.Network/P2P/Subprotocols/Lean/LeanProofGossip.cs": {
+      "before": "9b06fdcf3776c05d9c1ff82d7c6d677678dbdc4853e06b97e4e940554c51a835",
+      "after": "8c5134cec675937373678008f605e2284e0907c066e7c771359ffaf86d84713a"
+    },
+    "src/Nethermind/Nethermind.Network/P2P/Subprotocols/Lean/LeanProtocolHandler.cs": {
+      "before": "c4ea2ec2ab6827ed7a2cc7c20c6f1f1e1c391d92ba062345140c22d9b3a8d7ad",
+      "after": "bbc86c7748d94ff22fb30feeec03651fd6893ecadec93457038242b0c606b3c8"
+    },
+    "src/Nethermind/Nethermind.Consensus/ProofAggregation/MempoolWrapperDecoder.cs": {
+      "before": "bc1028203bfe3e116ea628ee2a4d7e00b1a68089b9c0d7137f567d85d5e1a0e2",
+      "after": "61f5f747830603c2e1194ea96d611feaed587eb012018b7b6444505b6d8d7c89"
+    },
+    "src/Nethermind/Nethermind.Consensus.Test/ProofAggregation/MempoolWrapperTests.cs": {
+      "before": "d51faa736dc5785338b83a5ac5d3f6c1c041fea4c64fdf506c75c06655323e1c",
+      "after": "d7cc40c6dfe6a686800c7e6434bf3e02b0aed57cbb454010e028554d5383ed74"
+    },
+    "src/Nethermind/Nethermind.Core/Crypto/LeanProofStore.cs": {
+      "before": "d60886a968f18c6e7f546c6e1f730b4c8efe9f4e86855f4d3335531719b7b5e8",
+      "after": "0fd0a83b7ef38de94ab63f1655d91241dcadfd0d0fd5f3f2f1efd562535a9910"
+    },
+    "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockProductionTransactionPicker.cs": {
+      "before": "54d634296960f2276ee95382ddaaf96c5c812532d251893d5ad684abfa7134d8",
+      "after": "d0a53ed88000df989aae4d74a12edd3976db2f842b92d84116c1b2556aa0a889"
+    },
+    "src/Nethermind/Nethermind.Consensus/Producers/BlockToProduce.cs": {
+      "before": "5bfeeb5b9de51b6bbef1ec8f997163bbde9cabca26c5c1a495d57964162638ec",
+      "after": "b5d801e9e006686decda895a7954de64e2f0a5809e5d31179d792ef9538c3e86"
+    },
+    "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockProductionTransactionsExecutor.cs": {
+      "before": "06ce89ea2a8625b08e84a7ba1b660ba484fb38989ff9450e949c3f52c4345356",
+      "after": "af5c610965fb6cda2d0b9b17446f43611e36e3c3b0338f8f4a16ac95273070fa"
+    }
+  }
+}

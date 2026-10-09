@@ -1,0 +1,8 @@
+node_modules/
+nicetry-daisugi/
+nicetry-daisugi-*/
+nicetry-unified-*/
+nicetry-aggregation-*/
+*.zip
+.env
+.env.*

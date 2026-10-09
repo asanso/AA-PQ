@@ -8,6 +8,36 @@ const address='0x'+'1'.repeat(40);
 const payload = () => ['0x0539','0x',address,[['0x02','0x',address,['0x0100','0x'],'0x','0x']],[['0x','0x','0x','0x1234']],['0x01','0x02','0x'],[]];
 const raw = p=>'0x06'+encodeRlp(p).slice(2);
 const request=(method,params=[])=>({jsonrpc:'2.0',id:7,method,params});
+
+test('zero-argument wallet reads accept omitted params without mutating the request',async()=>{
+  const calls=[];
+  const proxy=createRpcProxy({url:'http://mock',fetchImpl:async(_url,options)=>{
+    const call=JSON.parse(options.body);calls.push(call);
+    return {ok:true,json:async()=>({jsonrpc:'2.0',id:call.id,result:'0x539'})};
+  }});
+  for(const method of ['eth_chainId','eth_blockNumber','eth_gasPrice','eth_maxPriorityFeePerGas','web3_clientVersion']) {
+    const call=Object.freeze({jsonrpc:'2.0',id:'wallet-read',method});
+    assert.doesNotThrow(()=>validateRpcRequest(call));
+    assert.equal((await proxy(call)).id,'wallet-read');
+    assert.deepEqual(calls.at(-1),{...call,params:[]});
+    assert.equal(Object.hasOwn(call,'params'),false);
+  }
+});
+
+test('optional params do not permit invalid parameter types, missing signed data or disabled methods',async()=>{
+  let forwarded=0;
+  const proxy=createRpcProxy({url:'http://mock',fetchImpl:async()=>{forwarded++;throw Error('Unexpected forwarding');}});
+  for(const params of [null,{},'',0,false]) {
+    await assert.rejects(proxy(request('eth_blockNumber',params)),/positional parameters/);
+  }
+  const missing=method=>({jsonrpc:'2.0',id:1,method});
+  assert.throws(()=>validateRpcRequest(missing('admin_peers')),/not enabled/);
+  assert.throws(()=>validateRpcRequest(missing('eth_sendRawTransaction'),{nativeFramesEnabled:true}),/one signed transaction/);
+  assert.throws(()=>validateRpcRequest(missing('eth_sendProofWrapper'),{aggregationEnabled:true}),/one proof wrapper/);
+  assert.throws(()=>validateRpcRequest(missing('eth_getProofWrapper')),/not enabled/);
+  assert.doesNotThrow(()=>validateRpcRequest(missing('eth_getProofWrapper'),{aggregationEnabled:true}));
+  assert.equal(forwarded,0);
+});
 test('native submission is explicitly gated while wallet reads remain available',()=>{
   for(const method of ['eth_getTransactionCount','eth_gasPrice','eth_estimateGas','eth_call','eth_getBlockByNumber'])validateRpcRequest(request(method));
   assert.throws(()=>validateRpcRequest(request('eth_sendRawTransaction',[raw(payload())])),/not enabled/);

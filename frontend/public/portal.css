@@ -1443,6 +1443,11 @@ main {padding-bottom:40px;}
 .native-fields>div:first-child { grid-column:1/-1 }
 .native-fields dt { color:var(--muted); font-size:11px; margin-bottom:6px }
 .native-fields dd { margin:0; overflow-wrap:anywhere }
+.aggregation-panel {margin-bottom:12px;min-width:0;}
+.aggregation-stats {display:flex;flex-wrap:wrap;gap:16px 28px;margin:0 0 16px;}
+.aggregation-stats dt {font-size:11px;color:var(--muted);margin-bottom:6px;}
+.aggregation-stats dd {margin:0;font-size:13px;overflow-wrap:anywhere;}
+.aggregation-transactions {padding-left:18px;line-height:1.8;overflow-wrap:anywhere;}
 .native-mode { color:var(--muted); font-weight:400; margin-left:12px; font-size:11px }
 .native-frame .embedded-input { margin-top:16px }
 .native-raw { margin-top:16px }

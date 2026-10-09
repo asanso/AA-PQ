@@ -1,0 +1,35 @@
+[package]
+name = "daisugi-full-fork-checks"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+types = { path = "../lighthouse/consensus/types" }
+execution_layer = { path = "../lighthouse/beacon_node/execution_layer" }
+state_processing = { path = "../lighthouse/consensus/state_processing" }
+genesis = { path = "../lighthouse/beacon_node/genesis" }
+lighthouse_network = { path = "../lighthouse/beacon_node/lighthouse_network" }
+beacon_chain = { path = "../lighthouse/beacon_node/beacon_chain" }
+store = { path = "../lighthouse/beacon_node/store" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tempfile = "3"
+alloy-rlp = "0.3"
+ethereum_ssz = "0.10.4"
+tree_hash = "0.12.1"
+serde_json = "1"
+hex = "0.4"
+sha2 = "0.10"
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[patch."https://github.com/libp2p/rust-libp2p.git"]
+libp2p = { git = "https://github.com/sigp/rust-libp2p.git", rev = "c774d4e71357d7cd2f792c4767d616d2dd369ee3" }
+libp2p-mplex = { git = "https://github.com/sigp/rust-libp2p.git", rev = "c774d4e71357d7cd2f792c4767d616d2dd369ee3" }
+libp2p-quic = { git = "https://github.com/sigp/rust-libp2p.git", rev = "c774d4e71357d7cd2f792c4767d616d2dd369ee3" }
+
+[profile.test]
+debug = 0
+incremental = false

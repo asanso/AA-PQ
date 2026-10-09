@@ -1,0 +1,18 @@
+[package]
+name = "daisugi-frame-aggregation"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+leanvm = { path = "../leanvm" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[lib]
+crate-type = ["rlib", "cdylib"]

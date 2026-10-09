@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "activation": "disabled",
+  "nethermind": {
+    "repository": "NethermindEth/nethermind",
+    "revision": "4a17b571f453d112bae5175a2e4966900201deae",
+    "archiveSha256": "2b23d9b6c78108245c21ae5a2c71c4d2253c6374decfa07193db3210c06a7aa0",
+    "dependencyMode": 4,
+    "dependencyCommitment": "keccak256(canonical 96-byte triples)",
+    "nativeAbi": 5,
+    "leanvmRepository": "Marchhill/leanVM",
+    "leanvmRevision": "854997bd156f47f1b1ce2192c4499741f29bd0df"
+  },
+  "lighthouse": {
+    "repository": "sigp/lighthouse",
+    "revision": "e423a66763bb1bd780492d635123f208d80c3538",
+    "archiveSha256": "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c",
+    "fork": "Daisugi",
+    "sszForkTag": 8,
+    "activationEpoch": null,
+    "activationVersion": null
+  },
+  "guestVerificationKey": "9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace",
+  "rustToolchain": "1.99.0",
+  "recommendedMaxConsensusPayloadBytes": 20971520,
+  "maxRecursiveProofBytes": 8388608
+}

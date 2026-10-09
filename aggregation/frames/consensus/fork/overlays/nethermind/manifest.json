@@ -1,0 +1,93 @@
+{
+  "revision": "4a17b571f453d112bae5175a2e4966900201deae",
+  "anchors": {
+    "Directory.Build.props": "597c468a790b1f0b0b92ad18bcd5fa943d7b62fa2e8c181f56db080cdcbf1812",
+    "global.json": "73edba3e46e9794dfcfdeddaf43a8436c56b510dda9a7515a50b0d2784e26cc7"
+  },
+  "files": {
+    "src/Nethermind/Nethermind.Merge.Plugin/Data/ExecutionPayloadBodyV1Result.cs": {
+      "before": "c1ff1b8010611346a3b48ae0f2a2814977bb2af106a07206ccb44471cba52434",
+      "after": "b936576a53ad08c32c4d0e7a1340946f9ccae71fdef9ee34675dcddb377b65a3"
+    },
+    "src/Nethermind/Nethermind.Merge.Plugin/Data/ExecutionPayloadBodyV2Result.cs": {
+      "before": "7b104fec6834f9f406ee5e820bbf81830973fc8f040aa1467b8b29d0366bf01b",
+      "after": "793f9b0672c6b8915fe37c636d05bcb795de7e04504c737056fe9ee6593a0332"
+    },
+    "src/Nethermind/Nethermind.Merge.Plugin/Data/PayloadBodiesV1DirectResponse.cs": {
+      "before": "75c6dba4222ac2eadd80c781db1a7fdefe143a651ebdf59cffd55a94e8a02718",
+      "after": "621ec5fb7e964cfdf84e465123feb5cec1443157284d72a50729d42a988b9843"
+    },
+    "src/Nethermind/Nethermind.Merge.Plugin/Data/PayloadBodiesV2DirectResponse.cs": {
+      "before": "d8e4d521723f67ac7b1057cdc6f9d7776aa74c5ebea04700c34431e3fb519f5f",
+      "after": "f86dfb7ff1e5d502a10a817f7035ea8c7a8ab4ecd15aa057d5acd09a1d9c5d8d"
+    },
+    "src/Nethermind/Nethermind.Merge.Plugin/SszRest/SszCodec.cs": {
+      "before": "1e6d2df969cb66bb7f04e30d1cab5550746b1b8574bfc03534b896af4cbaf032",
+      "after": "2a6d61871fc75ef277d6215c3550d28253baa94d853c16b00648c9dc5cd72b3e"
+    },
+    "src/Nethermind/Nethermind.Specs/Forks/Eip8288Prototype.cs": {
+      "before": "de23846e3445f76060855223dafd1b723f34175ff3db2b2621532e5ff986ac46",
+      "after": "eccb4f35b32d2cbec8efc839447ee372310ecb69fb049f6301fb5013f67499b7"
+    },
+    "src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs": {
+      "before": "8a1eaf9d56c8f33c10a265caa404f4f2a8f638a181f5f3fa9b793bd203d27086",
+      "after": "65af1bd7719aa35845abcb1694ca5b2bb7a8d3fd9bfe1d56126a3645be893e4b"
+    },
+    "src/Nethermind/Nethermind.Core/Specs/ReleaseSpecDecorator.cs": {
+      "before": "61adffebda4899a2b46383c3a8136352bb8003c40cde6cfab617dc327f25646a",
+      "after": "f194a617332224cf10f5f4a0b457506442b4d63f6131dcbabd6f082bea6bacc9"
+    },
+    "src/Nethermind/Nethermind.Specs/ReleaseSpec.cs": {
+      "before": "d7f6e0e8893f7b9caada39643560128e06cf740018cacab174be5298a02d3fc7",
+      "after": "692cf70786f863963f5f207be2b80b4c2dd2233dc514c7c141af979956efb8bc"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/ChainParameters.cs": {
+      "before": "b78379a324470c5897f414bd6065ddf54a9e713bc00f5d49ba58a8b6ff43a801",
+      "after": "7f53db519ea875d47356fb8ff09ad857ca8967aecd4fd04e6039359fc3ac1ab0"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/Json/ChainSpecParamsJson.cs": {
+      "before": "aec7aa19c1d55c9decbf4d072abb192ed76a704f2f68312d478baf9ad598b88e",
+      "after": "4c06427d7d10f642e2231ade1bca83936dc1bc9c68674ba438591fe67faeb7cb"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/Json/GethGenesisConfigJson.cs": {
+      "before": "226e43ed65df47982aa2950f179698e283e12d1fce5c9360c2f18781e90e3637",
+      "after": "498ab75a282dcea5d1c48751d5bd1138610407d62138c2ef30ab4dede2a7bf88"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/GethGenesisLoader.cs": {
+      "before": "472ac8884dbb7c218f2d529d07bedbfa2c751a19d088a7a970c0c06f23ad4018",
+      "after": "06c390d622504cbbd46113e3f96b8262fa5de9ca9cc9769a23fcd45cb94a512d"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/ChainSpecLoader.cs": {
+      "before": "ce238a6a8b4cb36c1716afdce430788fd76c88f8af6373bf5ffc33af04a691c6",
+      "after": "b516ecf79d2119ff58d172644ea4548293af8fd9ccc9240501080874c7193f21"
+    },
+    "src/Nethermind/Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs": {
+      "before": "465502d2ff54db6993dd3775551c2f88291f9e79a79509d1a5c46fdada853748",
+      "after": "c17042b43bbfb63db40ae64d4f0c5dca3bb71f427088c3c5f06fa2ecef480cf4"
+    },
+    "src/Nethermind/Nethermind.Consensus/Validators/TxValidator.cs": {
+      "before": "dfc2030db8c33703bb96c643d9e0a12bdc958b3d24fae181b4bf2603a93a0535",
+      "after": "5ded98a740d42582ee851ca240b61612eaf3ab1fa985804266d1c34b0575e127"
+    },
+    "src/Nethermind/Nethermind.TxPool/TxPool.cs": {
+      "before": "c952c00704e033f3b2a7e590efbbecfd72ed107658621cf1fe7104bc1c4d0054",
+      "after": "4ebdaca47ebc85e08c4034ab308416ca43d197cba22fe83256122fe27fbf2d82"
+    },
+    "src/Nethermind/Nethermind.Core/FrameTxValidation.cs": {
+      "before": "6b360e19feaf2f4ff22feaa11ca9ec2e5d3c30f24854159506eafe4044fd0522",
+      "after": "36728135b76e2585c7267ee0ea34c97777651bd68785ffadc81b8fd988258912"
+    },
+    "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessorBase.FrameTx.cs": {
+      "before": "34c048533dab2e7d4870049397b79a85b5cd9ec8c5ae86b71ff4c5941664ef88",
+      "after": "a58e2801402637cc65b5a1ee0aff8db8d808c875972a971474818eae04d30a27"
+    },
+    "src/Nethermind/Nethermind.TxPool/Filters/FrameTxVerifyGasFilter.cs": {
+      "before": "bda8c0ad2781410669bccabb724bcddfcd24d507406b0b7a4a2d246c972c361e",
+      "after": "78a6e2b26f066517706b8ff31249301ff373e0e1625966b214815db05db9dbc9"
+    },
+    "src/Nethermind/Nethermind.Consensus/Validators/HeaderValidator.cs": {
+      "before": "bc6df888c709f28ed75cda6fe9d7b19902f6733175bddf23cac28687084e1b43",
+      "after": "544f8c9da6fa667ef110820c08df83e60141b1d41b2b8e2caf60d7f14323f0ca"
+    }
+  }
+}
