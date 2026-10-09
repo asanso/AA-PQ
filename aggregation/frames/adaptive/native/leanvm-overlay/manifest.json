@@ -1,0 +1,25 @@
+{
+  "revision": "854997bd156f47f1b1ce2192c4499741f29bd0df",
+  "files": {
+    "crates/lean_vm/src/cpu/mod.rs": {
+      "before": "021a9b9d568f8c8179b9e54f7b28ace8663687fbd43a2637e253a79f5bf72eea",
+      "after": "3929a70d32d8aab2d86dea049d89e49d9fa166f1befab0ea36f801cc38e7fb4b"
+    },
+    "crates/pcs/src/whir.rs": {
+      "before": "9644015c5336b102bbb9a4c2313d7fe016671a17f37a0bff75911328f0062558",
+      "after": "551b1de3febd6d9ce8a209568f773b963b059c69b29540795a73aed5daf12413"
+    },
+    "crates/rec_aggregation/guests/eip8288_mixed.py": {
+      "before": "79be907ad8cc14b2313f65cdfaa952aabad5629041b89a458a122bc6a04f1d4f",
+      "after": "89b5c378d4b905d5d36f7092bb97fadc78f7f11eb70cd15a06e0d0870b1d2173"
+    },
+    "crates/rec_aggregation/src/eip8288_mixed.rs": {
+      "before": "5b72cf023df057d64636fd6c74aa8bf6d266d0217d3763b28aa0bb056a2af31d",
+      "after": "7c1b9ed4cbaa08b9d0c6ac9f6b035f3c684aa3a91f7c61cddc586729265d05ec"
+    },
+    "crates/zk_alloc/src/syscall.rs": {
+      "before": "1974e1d1f02a3f1d683f54c70cbbfdf728c179c53041edaa6b7f6ec3510acbc2",
+      "after": "418c9f8aa95f1cb63afe6a96ce73f6ff7e14b194468d6dfa1a7b38992fc289b0"
+    }
+  }
+}

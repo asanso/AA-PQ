@@ -1,0 +1,636 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Text;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
+using Nethermind.TxPool;
+
+namespace Nethermind.Consensus.Validators;
+
+public class BlockValidator(
+    ITxValidator? txValidator,
+    IHeaderValidator? headerValidator,
+    IUnclesValidator? unclesValidator,
+    ISpecProvider? specProvider,
+    ILogManager? logManager,
+    ILeanProofVerifier leanProofVerifier)
+    : IBlockValidator
+{
+    private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+    private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
+    private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier));
+    private readonly BlockDecoder _blockDecoder = new();
+    private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
+
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
+        _headerValidator.Validate(header, parent, isUncle, out error);
+
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash) =>
+        _headerValidator.Validate(header, parent, isUncle, out error, validateHash);
+
+    public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
+        _headerValidator.ValidateOrphaned(header, out error);
+    /// <summary>
+    /// Applies to blocks without parent
+    /// </summary>
+    /// <param name="block">A block to validate</param>
+    /// <param name="error">Error description in case of failed validation</param>
+    /// <returns>Validation result</returns>
+    /// <remarks>
+    /// Parent may be absent during BeaconSync
+    /// </remarks>
+    public bool ValidateOrphanedBlock(Block block, out string? error) =>
+        ValidateBlock<OnFlag>(block, null, out error);
+
+    /// <summary>
+    /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
+    /// </summary>
+    /// <param name="block">A block to validate</param>
+    /// <param name="parent">Parent of the block</param>
+    /// <param name="errorMessage">Message detailing a validation failure.</param>
+    /// <param name="validateHashes">
+    /// <c>false</c> to skip four keccaks: the header hash, which binds <see cref="BlockHeader.Hash"/> to the header
+    /// contents, and the uncles hash, transactions root and withdrawals root, which bind the body to the header.
+    /// Everything else still runs, the EIP-4895 withdrawals presence rules included. Validators overriding
+    /// <see cref="ValidateWithdrawals(Block, IReleaseSpec, bool, ref string)"/> (Optimism's does) apply their own
+    /// withdrawals rules regardless of this flag.
+    /// <para>
+    /// Only pass <c>false</c> after deriving those three roots from the block's own body and verifying the header
+    /// hash against the header contents (see <see cref="HeaderValidator.ValidateHash(BlockHeader)"/>). A payload
+    /// type that takes the roots off the wire instead - Taiko's is one - hashes consistently while leaving them
+    /// unchecked, so the skip is unsound for it. Without the hash check, a block whose hash does not match its
+    /// contents is accepted, and that hash is what the block tree and the consensus layer see.
+    /// </para>
+    /// </param>
+    /// <returns>
+    /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
+    /// </returns>
+    public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? errorMessage, bool validateHashes = true) =>
+        ValidateBlock<OffFlag>(block, parent, out errorMessage, validateHashes);
+
+    private bool ValidateBlock<TOrphaned>(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true) where TOrphaned : struct, IFlag
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        errorMessage = null;
+
+        return ValidateBlockSize(block, spec, ref errorMessage) &&
+               ValidateTransactions(block, spec, ref errorMessage) &&
+               ValidateHeader<TOrphaned>(block, parent, validateHashes, ref errorMessage) &&
+               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
+               ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
+               ValidateEip4844Fields(block, spec, ref errorMessage) &&
+               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
+               ValidateBlockLevelAccessList(block, spec, ref errorMessage) &&
+               ValidateRecursiveStark(block, spec, ref errorMessage);
+    }
+
+    /// <summary>
+    /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
+    /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
+    /// STARK must verify against the aggregated verification key.
+    /// </summary>
+    private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
+    {
+        RecursiveStark? recursiveStark = block.Header.RecursiveStark;
+        if (!spec.IsEip8288Enabled)
+        {
+            if (recursiveStark is null) return true;
+            error = BlockErrorMessages.RecursiveStarkNotEnabled;
+            return false;
+        }
+
+        if (recursiveStark is null)
+        {
+            error = BlockErrorMessages.MissingRecursiveStark;
+            if (_logger.IsWarn) _logger.Warn($"Missing recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            return false;
+        }
+
+        if (recursiveStark.StarkProof.Length is 0 or > NativeLeanProofVerifier.MaxProofBytes)
+        {
+            error = BlockErrorMessages.InvalidRecursiveStark;
+            return false;
+        }
+
+        Hash256 computed = new(Eip8288Dependencies.ComputeBlockDepsHash(block));
+        if (recursiveStark.BlockDepsHash != computed)
+        {
+            error = BlockErrorMessages.InvalidBlockDepsHash(recursiveStark.BlockDepsHash, computed);
+            if (_logger.IsWarn) _logger.Warn($"Block deps hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {recursiveStark.BlockDepsHash}, got {computed}");
+            return false;
+        }
+
+        if (!_leanProofVerifier.VerifyBlockRecursiveStark(in computed.ValueHash256, recursiveStark.StarkProof, spec.IsDaisugiAdaptiveAggregationEnabled))
+        {
+            error = BlockErrorMessages.InvalidRecursiveStark;
+            if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, bool validateHashes, ref string? errorMessage)
+        where TOrphaned : struct, IFlag
+    {
+        bool blockHeaderValid = typeof(TOrphaned) == typeof(OffFlag)
+            ? parent is not null && _headerValidator.Validate(block.Header, parent, false, out errorMessage, validateHashes)
+            : parent is null && _headerValidator.ValidateOrphaned(block.Header, out errorMessage);
+
+        if (_logger.IsDebug && !blockHeaderValid) _logger.Debug($"{Invalid(block)} Invalid header: {errorMessage}");
+
+        return blockHeaderValid;
+    }
+
+    private bool ValidateUncles<TOrphaned>(Block block, IReleaseSpec spec, bool validateHashes, ref string? errorMessage)
+        where TOrphaned : struct, IFlag
+    {
+        if (spec.MaximumUncleCount < block.Uncles.Length)
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
+            errorMessage = BlockErrorMessages.ExceededUncleLimit(spec.MaximumUncleCount);
+            return false;
+        }
+
+        if (validateHashes && !ValidateUnclesHashMatches(block, out Hash256 unclesHash))
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
+            errorMessage = BlockErrorMessages.InvalidUnclesHash;
+            return false;
+        }
+
+        if (typeof(TOrphaned) == typeof(OffFlag) && block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, block.Uncles))
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
+            errorMessage = BlockErrorMessages.InvalidUncle;
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool ValidateBlockSize(Block block, IReleaseSpec spec, ref string? errorMessage)
+    {
+        if (spec.IsEip7934Enabled)
+        {
+            int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
+            if (encodedSize > spec.Eip7934MaxRlpBlockSize)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} RLP encoded size of {encodedSize} bytes exceeds the max limit of {spec.Eip7934MaxRlpBlockSize} bytes");
+                errorMessage = BlockErrorMessages.ExceededBlockSizeLimit(spec.Eip7934MaxRlpBlockSize);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Processed block validation is comparing the block hashes (which include all other results).
+    /// We only make exact checks on what is invalid if the hash is different.
+    /// </summary>
+    /// <param name="processedBlock">This should be the block processing result (after going through the EVM processing)</param>
+    /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
+    /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
+    /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) =>
+        ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
+
+    /// <summary>
+    /// Processed block validation is comparing the block hashes (which include all other results).
+    /// We only make exact checks on what is invalid if the hash is different.
+    /// </summary>
+    /// <param name="processedBlock">This should be the block processing result (after going through the EVM processing)</param>
+    /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
+    /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
+    /// <param name="error">Detailed error message if validation fails otherwise <value>null</value>.</param>
+    /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+    {
+        // EIP-7928: enforce the BAL item gas-limit floor against the BAL produced during
+        // execution. The pre-execution check in ValidateBlockLevelAccessList only fires when
+        // the suggested block carries a BAL (engine-API path); RLP-imported blocks have a
+        // null suggested BAL and the agreed gas limit must still be validated against the
+        // generated BAL here.
+        string? balSizeError = null;
+        if (suggestedBlock.BlockAccessList is null
+            && processedBlock.GeneratedBlockAccessList is not null
+            && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
+            && !ValidateBlockLevelAccessListSize(processedBlock, ref balSizeError))
+        {
+            error = balSizeError;
+            return false;
+        }
+
+        if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
+        {
+            error = null;
+            return true;
+        }
+
+        if (_logger.IsWarn) _logger.Warn($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
+        if (_logger.IsWarn) _logger.Warn($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
+        error = null;
+        if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
+            error ??= BlockErrorMessages.HeaderGasUsedMismatch(suggestedBlock.Header.GasUsed, processedBlock.Header.GasUsed);
+        }
+
+        if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
+            error ??= BlockErrorMessages.InvalidLogsBloom(suggestedBlock.Header.Bloom, processedBlock.Header.Bloom);
+        }
+
+        if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
+            error ??= BlockErrorMessages.InvalidReceiptsRoot(suggestedBlock.Header.ReceiptsRoot, processedBlock.Header.ReceiptsRoot);
+        }
+
+        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
+            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
+            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+        }
+
+        if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
+            error ??= BlockErrorMessages.InvalidStateRoot(suggestedBlock.Header.StateRoot, processedBlock.Header.StateRoot);
+        }
+
+        if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
+            error ??= BlockErrorMessages.HeaderBlobGasMismatch(suggestedBlock.Header.BlobGasUsed, processedBlock.Header.BlobGasUsed);
+        }
+
+        if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
+            error ??= BlockErrorMessages.IncorrectExcessBlobGas(suggestedBlock.Header.ExcessBlobGas, processedBlock.Header.ExcessBlobGas);
+        }
+
+        if (processedBlock.Header.ParentBeaconBlockRoot != suggestedBlock.Header.ParentBeaconBlockRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
+            error ??= BlockErrorMessages.InvalidParentBeaconBlockRoot(suggestedBlock.Header.ParentBeaconBlockRoot, processedBlock.Header.ParentBeaconBlockRoot);
+        }
+
+        if (processedBlock.Header.RequestsHash != suggestedBlock.Header.RequestsHash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
+            error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
+        }
+
+        if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- slot number: expected {suggestedBlock.Header.SlotNumber}, got {processedBlock.Header.SlotNumber}");
+            error ??= BlockErrorMessages.SlotNumberMismatch(suggestedBlock.Header.SlotNumber, processedBlock.Header.SlotNumber);
+        }
+
+        if (receipts.Length != processedBlock.Transactions.Length)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
+            error ??= BlockErrorMessages.ReceiptCountMismatch(processedBlock.Transactions.Length, receipts.Length);
+        }
+        else
+        {
+            for (int i = 0; i < processedBlock.Transactions.Length; i++)
+            {
+                if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
+                {
+                    if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
+                    error ??= BlockErrorMessages.InvalidTxInBlock(i);
+                }
+            }
+        }
+
+        if (suggestedBlock.ExtraData is not null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
+        }
+
+        return false;
+    }
+
+    public bool ValidateWithdrawals(Block block, out string? error)
+    {
+        error = null;
+        return ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), true, ref error);
+    }
+
+    /// <remarks>
+    /// The EIP-4895 presence rules run regardless of <paramref name="validateHashes"/>: a verified header hash says
+    /// nothing about whether the body carries the withdrawals the fork requires, only that the root field is the one
+    /// that was hashed.
+    /// </remarks>
+    protected virtual bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error)
+    {
+        if (spec.WithdrawalsEnabled && block.Withdrawals is null)
+        {
+            error = BlockErrorMessages.MissingWithdrawals;
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
+            return false;
+        }
+
+        if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
+        {
+            error = BlockErrorMessages.WithdrawalsNotEnabled;
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
+            return false;
+        }
+
+        if (validateHashes && block.Withdrawals is not null && !ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
+        {
+            error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
+            return false;
+        }
+
+        return true;
+    }
+
+    protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, ref string? errorMessage)
+    {
+        Transaction[] transactions = block.Transactions;
+        bool isEip2780Enabled = spec.IsEip2780Enabled;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
+
+            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
+            // makes the intrinsic-gas validation below sender-dependent.
+            if (isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+
+            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+            if (!isWellFormed)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
+                errorMessage = isWellFormed.Error;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error)
+    {
+        if (!spec.IsEip4844Enabled)
+        {
+            return true;
+        }
+
+        int blobsInBlock = 0;
+        UInt256 feePerBlobGas = UInt256.Zero;
+        Transaction[] transactions = block.Transactions;
+
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            Transaction transaction = transactions[txIndex];
+
+            if (!transaction.CarriesBlobs)
+            {
+                continue;
+            }
+
+            if (feePerBlobGas.IsZero)
+            {
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas))
+                {
+                    error = BlockErrorMessages.BlobGasPriceOverflow;
+                    if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
+                    return false;
+                }
+            }
+
+            if (transaction.MaxFeePerBlobGas < feePerBlobGas)
+            {
+                error = BlockErrorMessages.InsufficientMaxFeePerBlobGas(transaction.SenderAddress, transaction.MaxFeePerBlobGas, feePerBlobGas);
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {feePerBlobGas}.");
+                return false;
+            }
+
+            blobsInBlock += transaction.BlobVersionedHashes!.Length;
+        }
+
+        ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
+
+        if (blobGasUsed > spec.GasCosts.MaxBlobGasPerBlock)
+        {
+            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit(spec.GasCosts.MaxBlobGasPerBlock, blobsInBlock, blobGasUsed);
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
+            return false;
+        }
+
+        if (blobGasUsed != block.Header.BlobGasUsed)
+        {
+            error = BlockErrorMessages.HeaderBlobGasMismatch(blobGasUsed, block.Header.BlobGasUsed);
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {nameof(BlockHeader.BlobGasUsed)} declared in the block header does not match actual blob gas used: {block.Header.BlobGasUsed} != {blobGasUsed}.");
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
+        ValidateBodyAgainstHeader(header, toBeValidated, out _);
+
+    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? error)
+    {
+        if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
+        {
+            error = BlockErrorMessages.InvalidTxRoot(header.TxRoot, txRoot);
+            return false;
+        }
+
+        if (!ValidateUnclesHashMatches(header, toBeValidated, out _))
+        {
+            error = BlockErrorMessages.InvalidUnclesHash;
+            return false;
+        }
+
+        if (!ValidateWithdrawalsHashMatches(header, toBeValidated, out Hash256? withdrawalsRoot))
+        {
+            error = BlockErrorMessages.InvalidWithdrawalsRoot(header.WithdrawalsRoot, withdrawalsRoot);
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
+    {
+        // n.b. block BAL body is a side-channel property only set by engine API or local production.
+        // It is NOT part of block RLP, so blocks from p2p/fixtures will have null BlockAccessList
+        // even when EIP-7928 is active. We only validate the body if it's present.
+
+        if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
+        {
+            error = BlockErrorMessages.BlockLevelAccessListNotEnabled;
+
+            if (_logger.IsWarn) _logger.Warn($"Block level access list must be null in block {block.Hash} when EIP-7928 not activated.");
+
+            return false;
+        }
+
+        if (block.BlockAccessList is not null)
+        {
+            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))
+            {
+                error = BlockErrorMessages.InvalidBlockLevelAccessListHash(block.Header.BlockAccessListHash, blockLevelAccessListHash);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListHash}");
+
+                return false;
+            }
+
+            if (!ValidateBlockLevelAccessListSize(block, ref error))
+            {
+                return false;
+            }
+
+            if (!ValidateBlockLevelAccessListIndexBounds(block, ref error))
+            {
+                return false;
+            }
+        }
+
+        error = null;
+
+        return true;
+
+    }
+
+    private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
+    {
+        // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
+        // validation reaches this helper after execution with only GeneratedBlockAccessList.
+        ulong itemCount = (ulong)(block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0);
+        ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+
+        if (itemCount > 0 && itemCount > maxBalItems)
+        {
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
+            if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+            return false;
+        }
+
+        return true;
+    }
+
+    // EIP-7928: BlockAccessIndex valid range is [0, txCount + 1]
+    // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
+    private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
+    {
+        ReadOnlyBlockAccessList? bal = block.BlockAccessList;
+        if (bal is null) return true;
+
+        uint maxAllowed = (uint)block.Transactions.Length + 1;
+
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.BalanceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.NonceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.CodeChanges, maxAllowed, ref error)) return false;
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                if (!ValidateBlockLevelAccessListIndexBounds(block, slotChanges.Changes, maxAllowed, ref error)) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, T[] changes, uint maxAllowed, ref string? error)
+        where T : IIndexedChange
+    {
+        for (int i = 0; i < changes.Length; i++)
+        {
+            uint index = changes[i].Index;
+            if (index <= maxAllowed) continue;
+
+            error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(index, maxAllowed);
+            if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool ValidateTxRootMatchesTxs(Block block, bool validateHashes, [NotNullWhen(false)] ref string? errorMessage)
+    {
+        if (validateHashes && !ValidateTxRootMatchesTxs(block.Header, block.Body, out Hash256 txRoot))
+        {
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
+            errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot!, txRoot);
+            return false;
+        }
+
+        return true;
+    }
+
+    public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
+        (txRoot = TxTrie.CalculateRoot(body.Transactions)) == header.TxRoot;
+
+    public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
+        ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
+
+    public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
+        (unclesHash = UnclesHash.Calculate(body.Uncles)) == header.UnclesHash;
+
+    public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
+        ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
+
+    public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
+    {
+        if (body.Withdrawals is null)
+        {
+            withdrawalsRoot = null;
+            return header.WithdrawalsRoot is null;
+        }
+
+        return (withdrawalsRoot = WithdrawalTrie.CalculateRoot(body.Withdrawals)) == header.WithdrawalsRoot;
+    }
+
+    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)
+    {
+        BlockHeader header = block.Header;
+        ReadOnlyBlockAccessList? bal = block.BlockAccessList;
+        if (bal is null)
+        {
+            balRoot = null;
+            return header.BlockAccessListHash is null;
+        }
+
+        balRoot = bal.WireHash ?? new Hash256(ValueKeccak.Compute(block.EncodedBlockAccessList!));
+
+        return balRoot == header.BlockAccessListHash;
+    }
+
+    private static string Invalid(Block block) => $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
+}
