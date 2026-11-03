@@ -90,6 +90,16 @@ test('a profile file switches the portal and explorer to another network and rej
   assert.equal(result.index.legacy, 'unavailable');
 });
 
+test('ENTRY_POINT must agree with a profile file and is unchecked without one', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'network-profile-'));
+  t.after(() => rm(directory, {recursive:true, force:true}));
+  const file = join(directory, 'network.json');
+  await writeFile(file, JSON.stringify(alternative));
+  assert.throws(() => loadNetworkProfile({DAISUGI_NETWORK_PROFILE:file, ENTRY_POINT:legacy.entryPoint}), /ENTRY_POINT does not match/);
+  assert.deepEqual({...loadNetworkProfile({DAISUGI_NETWORK_PROFILE:file, ENTRY_POINT:alternative.entryPoint.toUpperCase().replace('0X', '0x')})}, alternative);
+  assert.equal(loadNetworkProfile({ENTRY_POINT:legacy.entryPoint}), DAISUGI_PROFILE);
+});
+
 test('an invalid profile file stops startup', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'network-profile-'));
   t.after(() => rm(directory, {recursive:true, force:true}));

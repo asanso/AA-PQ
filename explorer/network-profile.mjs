@@ -37,7 +37,12 @@ export function parseNetworkProfile(profile) {
 
 export function loadNetworkProfile(env = process.env) {
   const file = env.DAISUGI_NETWORK_PROFILE;
-  return file ? parseNetworkProfile(JSON.parse(readFileSync(file, 'utf8'))) : DAISUGI_PROFILE;
+  if (!file) return DAISUGI_PROFILE;
+  const profile = parseNetworkProfile(JSON.parse(readFileSync(file, 'utf8')));
+  // ENTRY_POINT predates the profile; a value left over from the current network must not mix into another one.
+  if (env.ENTRY_POINT && env.ENTRY_POINT.toLowerCase() !== profile.entryPoint.toLowerCase())
+    throw Error('ENTRY_POINT does not match the network profile entryPoint.');
+  return profile;
 }
 
 export const NETWORK = loadNetworkProfile();
