@@ -1,0 +1,44 @@
+{
+  "source": {
+    "nethermind": "NethermindEth/nethermind feature/eip8288-lean 0260e692fcf8e6b8bcb41289d877e0d5e380b5cd",
+    "capture": "disposable devnet from tools/daisugi-devnet (branch daisugi/devnet-handoff), proof.sh send; blocks via debug_getRawBlock",
+    "blockHashVector": "Nethermind Eip8288CrossClientVectorTests, shared with the Lighthouse overlay tests"
+  },
+  "chainId": 1337,
+  "wrapper": {
+    "file": "wrapper.rlp",
+    "txHash": "0xe0d9608c31f33da2e404ed34b7c658be78f2cdd22ff54ac7e496ff415e69d4ea",
+    "signatureHash": "0xac6416e177bc74a6fa156a82862ffda0a6b4e2071c785b1e8aab27e61d6fad21",
+    "depsHash": "0x734df3b61e637d6f6d19cfd7de771b0c95390c8cf979041de61ad81b55527d7c",
+    "response": "accepted by eth_sendProofWrapper"
+  },
+  "rejectedWrappers": {
+    "leansig-witness-corrupted": "a wrapper dependency proof failed verification",
+    "leansig-witness-for-other-message": "a wrapper dependency proof failed verification",
+    "leanstark-witness-swapped-for-leansig": "a wrapper dependency proof failed verification",
+    "secp256k1-signature-corrupted": "transaction invalid, frame transaction SECP256K1 signer does not match the recovered address"
+  },
+  "blocks": {
+    "preFork": {
+      "number": 95,
+      "file": "block-95.rlp",
+      "hash": "0x42d569accb38b2b4c09347bb106064c34240deff7a21809e57d1c9dcf6f87f74"
+    },
+    "firstFork": {
+      "number": 96,
+      "file": "block-96.rlp",
+      "hash": "0x4260937dd68859b3313b1ddd0e9ebd4e80b639c427152cdbe6af490d2e48e722"
+    },
+    "proof": {
+      "number": 252,
+      "file": "block-252.rlp",
+      "hash": "0xe1b98fed649d12a421490ef60015c67b700dcc8b86e65127168a59042d02bccf",
+      "transaction": "0xe0d9608c31f33da2e404ed34b7c658be78f2cdd22ff54ac7e496ff415e69d4ea"
+    },
+    "laterEmpty": {
+      "number": 253,
+      "file": "block-253.rlp",
+      "hash": "0xa0c62c0b85b48f7b0099f3632178dea7b73db548e71c6a81c986b95b99eff290"
+    }
+  }
+}
