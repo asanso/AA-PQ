@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "activation": "disabled",
+  "nethermind": {
+    "repository": "NethermindEth/nethermind",
+    "branch": "feature/eip8288-lean",
+    "revision": "0260e692fcf8e6b8bcb41289d877e0d5e380b5cd",
+    "revisionStatus": "interim",
+    "revisionNote": "Integration commit for this overlay, not the deployable release. Standard Nethermind artifacts at this revision omit the native Lean library (libnethermind_lean.so); a later feature/eip8288-lean commit that takes it from a pinned NuGet package replaces this pin.",
+    "archiveSha256": "02df09b559ba8d56e081e4e148daec9994a4304f891e2b1c39d2695636fe9fa0",
+    "overlay": null,
+    "dependencyMode": 4,
+    "dependencyCommitment": "BLAKE2s-256 over sorted, deduplicated (data_hash || key) entries; with any leanSTARK dependency, BLAKE2s-256(leanSPHINCS list hash || leanSTARK list hash || \"eip8288/leanstark-deps\" zero-padded to 32 bytes)",
+    "proofHeaderCommitment": "keccak256(stark_proof)",
+    "nativeAbi": 9,
+    "leanvmRepository": "Marchhill/leanVM",
+    "leanvmRevision": "e2bc4212013087c0823188e975b224ade286d878"
+  },
+  "lighthouse": {
+    "repository": "sigp/lighthouse",
+    "revision": "e423a66763bb1bd780492d635123f208d80c3538",
+    "archiveSha256": "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c",
+    "fork": "Daisugi",
+    "sszForkTag": 8,
+    "activationEpoch": null,
+    "activationVersion": null,
+    "reproducibleBuild": {
+      "dockerfile": "Dockerfile.reproducible",
+      "sourceDate": 1787008455,
+      "features": "jemalloc-unprefixed,portable",
+      "amd64": {
+        "rustImage": "rust:1.91-bookworm@sha256:8322627e69ba7780b54f39e9f4d3758c006a3ae0123ea01d63b91f0626169891",
+        "binarySha256": "2e709e64cb111070fb4846d98f928dffd0d646904574a07478ffcb02aa390bcb"
+      },
+      "arm64": {
+        "rustImage": "rust:1.91-bookworm@sha256:20262682d0201e219012287e8c1e6a7a14b6ebd46bb2b280714f23c06678c285",
+        "binarySha256": null
+      }
+    }
+  },
+  "guestVerificationKey": "417152e8bd83e0dfb6f3e2bb8991e948f62c7f15d74b693b55979a40b239efa1",
+  "recommendedMaxConsensusPayloadBytes": 20971520,
+  "maxStarkProofBytes": 1310720
+}

@@ -1,0 +1,4 @@
+/lighthouse/
+/.private/
+__pycache__/
+*.pyc

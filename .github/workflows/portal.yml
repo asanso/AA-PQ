@@ -59,6 +59,7 @@ jobs:
           npm test --prefix aggregation/frames/extension
           node aggregation/frames/wallet/test.mjs frontend/package.json
           python3 -m unittest discover -s aggregation/frames/consensus/fork -p 'test_*.py' -v
+          python3 -m unittest discover -s aggregation/frames/consensus/eip8288-lean -p 'test_*.py' -v
       - name: Build the aggregation wallet with an inactive test profile
         env:
           NICETRY_RPC_URL: https://staging.invalid/rpc

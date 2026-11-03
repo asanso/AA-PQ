@@ -1,0 +1,129 @@
+# Daisugi Lighthouse for upstream EIP-8288 (`feature/eip8288-lean`)
+
+Status: source package, inactive by default. It does not install clients, schedule
+a fork or replace the live Daisugi deployment. The live chain keeps using
+[`../fork`](../fork), which this package leaves unchanged.
+
+## What this is
+
+A Lighthouse overlay for the EIP-8288 format implemented upstream in Nethermind's
+`feature/eip8288-lean` branch, pinned in `sources.lock.json`. **Nethermind needs no
+overlay**: build that branch commit as is. The legacy Nethermind overlay in
+`../fork` is for the live chain only.
+
+The pinned Nethermind commit is **interim** (`revisionStatus` in the lock): it is
+the commit this overlay was validated against, not the deployable release. Its
+standard artifacts don't include the native Lean library yet (see
+[Fresh genesis](#fresh-genesis)). Once Nethermind takes that library from a pinned
+NuGet package, a later `feature/eip8288-lean` commit replaces this pin, and the
+acceptance steps below run again against it.
+
+The overlay starts from `../fork`'s Lighthouse overlay (same base, Lighthouse
+v8.2.2 `e423a667`, same `Daisugi` fork, SSZ tag 8) and changes it as follows.
+
+| | `../fork` (live Daisugi) | This package |
+| --- | --- | --- |
+| Engine payload field | `recursiveStarkProof` + `recursiveStarkBlockDepsHash` | `starkProof` only |
+| Header commitment | proof and dependency hash in the payload | derived by the EL: `keccak256(stark_proof)` and `block_deps_hash` (BLAKE2s, `eip8288/leanstark-deps` domain) |
+| Proof when a block has no dependencies | 12-byte empty-set envelope | empty bytes |
+| Block hash in Lighthouse | header rebuilt from the payload's proof and payload-supplied dependency hash | header rebuilt from `keccak256(starkProof)` and a dependency hash Lighthouse derives from the frame transactions (`execution_layer/src/daisugi_block_hash.rs`); an undecodable frame transaction makes the block hash check fail |
+| Rebuilt payload bodies (`engine_getPayloadBodies*`) | proof carried | proof carried and checked against the stored header root |
+| Aggregate-payload helpers (`aggregate_block_hash.rs`, `aggregate_json.rs`) | present | removed |
+| `Dockerfile.reproducible` | upstream v8.2.2 (bullseye, no longer builds) | v8.3.2 bookworm backport, static zlib, `portable` BLS, fixed `SOURCE_DATE` |
+
+This format is **not compatible with the live chain**. It needs a fresh EL and CL
+genesis.
+
+## Source preparation
+
+From this directory, with a pristine snapshot of the pinned Lighthouse revision in
+`./lighthouse` (archive sha256 in `sources.lock.json`):
+
+```sh
+python3 -m unittest discover -p 'test_*.py'
+python3 apply.py lighthouse ./lighthouse --check
+python3 apply.py lighthouse ./lighthouse
+```
+
+The tool checks every anchor and file hash before writing and never runs Git.
+
+## Tests
+
+```sh
+cd lighthouse
+cargo test --release --locked -p execution_layer daisugi
+cargo test --release --locked -p lighthouse_network --lib daisugi
+cargo test --release --locked -p execution_layer -p types
+```
+
+The `daisugi_block_hash` tests reproduce Nethermind's cross-client vector and two
+real devnet blocks, one of them proof-bearing (`src/test_fixtures`).
+
+The `beacon_chain` suite on the Daisugi fork:
+
+```sh
+FORK_NAME=daisugi cargo test --release --locked --features fork_from_env,slasher/lmdb -p beacon_chain --no-fail-fast
+```
+
+437 tests pass. Four fail with the same errors on `../fork`, so they come from the
+existing overlay's test harness, not this format:
+`check_all_blocks_from_altair_to_fulu`, `verify_block_for_gossip_slashing_detection`,
+`rpc_blobs_with_invalid_header_signature` and
+`range_sync_block_construction_fails_with_wrong_blob_count`.
+
+## Reproducible image
+
+```sh
+cd lighthouse
+docker build -f Dockerfile.reproducible --platform linux/amd64 \
+  --build-arg RUST_TARGET=x86_64-unknown-linux-gnu -t lighthouse:eip8288-lean-amd64 .
+docker build -f Dockerfile.reproducible --platform linux/arm64 \
+  --build-arg RUST_TARGET=aarch64-unknown-linux-gnu \
+  --build-arg RUST_IMAGE="rust:1.91-bookworm@sha256:20262682d0201e219012287e8c1e6a7a14b6ebd46bb2b280714f23c06678c285" \
+  -t lighthouse:eip8288-lean-arm64 .
+```
+
+Build each architecture on a host of that architecture. Two `--no-cache` builds
+must produce the same `/lighthouse` sha256. The image is distroless; the
+entrypoint is `/lighthouse`.
+
+`SOURCE_DATE` defaults to the commit time of the pinned Lighthouse revision, because
+the source archive has no `.git` for the Makefile to read it from.
+
+## Fresh genesis
+
+Execution (Geth-style `genesis.json` for Nethermind `feature/eip8288-lean`):
+- Prague active at genesis;
+- `eip8141PrototypeTime` at genesis;
+- `eip8288PrototypeTime` at the Daisugi fork boundary;
+- no `osakaTime`, `amsterdamTime` or `bogotaTime`;
+- no `daisugiLegacyFrames`.
+
+Nethermind options:
+- `--TxPool.FrameTxMaxVerifyGas=500000`;
+- `--Blocks.SecondsPerSlot` equal to the CL slot;
+- the `Eth` JSON-RPC module, for `eth_sendProofWrapper`.
+
+Nethermind also needs its native Lean library (`libnethermind_lean.so`) next to
+the binary. At the interim commit, the standard Dockerfile and release artifacts
+don't include it: build it from `tools/lean-ffi` (`cargo build --release --locked`)
+or with `-p:BuildLeanFfi=true`, and copy it beside the binary.
+
+Consensus (`config.yaml`):
+- Electra at genesis;
+- `DAISUGI_FORK_VERSION` unique to the network;
+- `DAISUGI_FORK_EPOCH` equal to the EL `eip8288PrototypeTime` boundary;
+- Fulu and Gloas unscheduled: a scheduled Fulu would replace the Daisugi payload format;
+- `MAX_PAYLOAD_SIZE` large enough for the proof plus transactions (20 MiB recommended).
+
+Beacon nodes that must accept peers need `--target-peers` above 0.
+
+## Acceptance
+
+On a disposable network, never against the shared Daisugi endpoints:
+
+1. Genesis: the EL genesis hash equals the CL genesis state's execution block hash, and Nethermind passes its EIP-8288 startup check.
+2. Fork boundary: the last pre-fork block is `electra` with a 21-field header; the first fork block is `daisugi` with a 25-field header and an empty `starkProof`, at the timestamp equal to `eip8288PrototypeTime`.
+3. Proof-bearing block: a frame transaction with leanSig and leanSTARK dependencies, submitted with `eth_sendProofWrapper`, is included with a non-empty `starkProof`. Corrupted wrappers are rejected.
+4. Independent validation: an empty Nethermind and Lighthouse pair syncs over P2P to the same block hashes, state roots, receipts and proof bytes. The chain finalizes past the proof-bearing block.
+5. Lighthouse and Nethermind logs show no invalid-block or Engine errors after startup.
