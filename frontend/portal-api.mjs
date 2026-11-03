@@ -1,7 +1,8 @@
 import {addTransactionInput} from './transaction-input.mjs';
 import {createTransactionDetails} from './transaction-details.mjs';
+import {NETWORK} from '../explorer/network-profile.mjs';
 
-const EXPECTED_CHAIN = 1337;
+const EXPECTED_CHAIN = NETWORK.chainId;
 const overviewPattern = /^overview$/;
 const detailPattern = /^(?:block\/\d{1,12}|(?:tx|op)\/0x[0-9a-fA-F]{64}|address\/0x[0-9a-fA-F]{40})$/;
 
@@ -13,7 +14,7 @@ export function createPortalApi({provider, bundlerUrl, explorerUrl, entryPoint, 
     if (pending) return pending;
     pending = (async () => {
       const [chain, block] = await Promise.all([provider.getNetwork(), provider.getBlock('latest')]);
-      if (Number(chain.chainId) !== EXPECTED_CHAIN) throw new Error('The RPC is not connected to Daisugi (chain 1337).');
+      if (Number(chain.chainId) !== EXPECTED_CHAIN) throw new Error(`The RPC is not connected to ${NETWORK.name} (chain ${EXPECTED_CHAIN}).`);
       if (!block) throw new Error('The latest Daisugi block is unavailable.');
       let bundler = 'unavailable';
       try {
@@ -23,11 +24,11 @@ export function createPortalApi({provider, bundlerUrl, explorerUrl, entryPoint, 
           signal:AbortSignal.timeout(3000)
         });
         const data = await response.json();
-        bundler = response.ok && typeof data.result === 'string' && BigInt(data.result) === 1337n ? 'available' : 'unavailable';
+        bundler = response.ok && typeof data.result === 'string' && BigInt(data.result) === BigInt(EXPECTED_CHAIN) ? 'available' : 'unavailable';
       } catch {}
       const blockAge = Math.max(0, Math.floor(now()/1000) - block.timestamp);
       cached = {
-        chainId:EXPECTED_CHAIN, network:'Daisugi', rpc:'available', bundler,
+        chainId:EXPECTED_CHAIN, network:NETWORK.name, rpc:'available', bundler,
         status:blockAge > 45 ? 'delayed' : bundler === 'available' ? 'operational' : 'degraded',
         blockNumber:block.number, blockTimestamp:block.timestamp,
         baseFeePerGas:block.baseFeePerGas?.toString() ?? null,

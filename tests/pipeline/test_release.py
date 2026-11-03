@@ -87,6 +87,36 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "health checks failed"):
                 release.health(self.config(), COMMIT)
 
+    def chain_health(self, config, chain_id):
+        from unittest.mock import MagicMock
+        config["health_checks"] = [{"kind": "chain", "url": "http://127.0.0.1:3004/api/network"}]
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.read.return_value = json.dumps({"chainId": chain_id}).encode()
+        with patch.object(release.urllib.request, "urlopen", return_value=response), patch.object(release.time, "sleep"):
+            release.health(config, COMMIT)
+
+    def test_chain_health_defaults_to_daisugi_and_follows_configured_chain(self):
+        self.chain_health(self.config(), 1337)
+        with self.assertRaisesRegex(RuntimeError, "health checks failed"):
+            self.chain_health(self.config(), 7357)
+        self.chain_health({**self.config(), "chain_id": 7357}, 7357)
+        with self.assertRaisesRegex(RuntimeError, "health checks failed"):
+            self.chain_health({**self.config(), "chain_id": 7357}, 1337)
+
+    @unittest.skipIf(sys.platform == "win32", "Deployment configuration is Linux-specific")
+    def test_invalid_chain_id_is_rejected(self):
+        config = self.config()
+        config["node"] = sys.executable
+        config["npm_cli"] = sys.executable
+        path = self.root / "staging.json"
+        for chain_id in ("1337", 0, True):
+            path.write_text(json.dumps({**config, "chain_id": chain_id}))
+            path.chmod(0o600)
+            with self.assertRaisesRegex(ValueError, "chain_id"):
+                release.read_config(path, "staging")
+
     @unittest.skipIf(sys.platform == "win32", "Atomic directory symlink replacement requires Linux")
     def test_failed_rollback_reports_operator_intervention(self):
         self.previous()

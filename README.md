@@ -68,6 +68,7 @@ fallback key in its source.
 | `FAUCET_RPC_URL` | Optional separate RPC for faucet submission; defaults to `RPC_URL` |
 | `EXPLORER_URL` | Native indexer API; defaults to `http://127.0.0.1:3001` |
 | `FACTORY_ADDRESS` | Deployed factory used by the retained AA helper and original integration test |
+| `DAISUGI_NETWORK_PROFILE` | Optional path to a complete network profile JSON (chain ID, genesis hash, frame activation block, contract addresses; fields in `explorer/network-profile.mjs`). Unset: the current Daisugi network. Release health checks read the matching `chain_id` from the host configuration (default 1337). |
 
 The faucet RPC must support transaction submission, nonce and fee queries. The
 restricted public read proxy is not a replacement for that connection. Public

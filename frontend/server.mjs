@@ -6,6 +6,7 @@ import { ethers } from "ethers";
 import {createPortalApi, createFaucetLimiter} from "./portal-api.mjs";
 import {isPortalPage, publicSiteConfig, siteConfigScript} from "./site-config.mjs";
 import {createRpcProxy, RPC_BODY_LIMIT} from './rpc-policy.mjs';
+import {NETWORK} from '../explorer/network-profile.mjs';
 
 const root = fileURLToPath(new URL("./public", import.meta.url));
 const port = Number(process.env.PORT || 3000);
@@ -109,8 +110,8 @@ async function faucetSend(req, res) {
     if (value <= 0n || value > ethers.parseEther('10')) {
       return json(res, 400, {error:'The amount must be greater than 0 and at most 10 ETH.'});
     }
-    if (Number((await faucetProvider.getNetwork()).chainId) !== 1337) {
-      return json(res, 503, {error:'The faucet is only available on Daisugi (chain 1337).'});
+    if (Number((await faucetProvider.getNetwork()).chainId) !== NETWORK.chainId) {
+      return json(res, 503, {error:`The faucet is only available on ${NETWORK.name} (chain ${NETWORK.chainId}).`});
     }
     const retryAfter = claimFaucet(payload.address);
     if (retryAfter) {

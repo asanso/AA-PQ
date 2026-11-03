@@ -20,6 +20,8 @@ SHA = re.compile(r"[0-9a-f]{40}")
 DIGEST = re.compile(r"[0-9a-f]{64}")
 MAX_BYTES = 32 * 1024 * 1024
 MAX_FILES = 2000
+# Chain the "chain" health check expects when the host configuration sets no chain_id.
+DAISUGI_CHAIN_ID = 1337
 REQUIRED = {
     "frontend/server.mjs", "frontend/package.json", "frontend/package-lock.json",
     "frontend/public/index.html", "explorer/server.mjs", "explorer/package.json",
@@ -155,6 +157,8 @@ def read_config(path, environment):
                 and not url.username and not url.password and not url.fragment,
                 "Health checks must use loopback HTTP")
         require(check.get("kind") in ("release", "chain", "json"), "Unknown health check kind")
+    chain_id = config.get("chain_id", DAISUGI_CHAIN_ID)
+    require(type(chain_id) is int and chain_id > 0, "Invalid chain_id")
     return config
 
 
@@ -195,7 +199,7 @@ def health(config, revision):
                 if check["kind"] == "release":
                     require(data.get("commit") == revision, "Running release does not match")
                 elif check["kind"] == "chain":
-                    require(data.get("chainId") == 1337, "Unexpected chain")
+                    require(data.get("chainId") == config.get("chain_id", DAISUGI_CHAIN_ID), "Unexpected chain")
             return
         except (OSError, ValueError) as error:
             last_error = error
