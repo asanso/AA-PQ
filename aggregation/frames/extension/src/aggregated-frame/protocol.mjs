@@ -1,7 +1,8 @@
 import { createProfile } from './account-profile.mjs';
 
-export function createProtocol(e) {
-  const p = createProfile(e);
+export function createProtocol(e, format) {
+  const p = createProfile(e, format);
+  const lean = p.format === 'eip8288-lean';
   const { getAddress, getBytes, getCreate2Address, keccak256, concat, encodeRlp, toBeHex, Interface, ZeroHash } = e;
   const abi = new Interface(['function createAccount(bytes32,bytes32,bytes32) returns(address)',
     'function getAddress(bytes32,bytes32,bytes32) view returns(address)', 'function ACCOUNT_IMPL() view returns(address)']);
@@ -12,6 +13,7 @@ export function createProtocol(e) {
     if (BigInt(nonce) < 0n || BigInt(value) < 0n || BigInt(priorityFee) < 0n || BigInt(maxFee) < BigInt(priorityFee)) throw Error('Invalid transaction quantity.');
     if (BigInt(callGas) < 21000n || BigInt(callGas) > 5000000n || BigInt(stateGas) < 0n || BigInt(stateGas) > 5000000n) throw Error('Unsupported call gas budget.');
     const key = p.keyHash(pkSeed, pkRoot), sender = accountAddress(config, pkSeed, pkRoot);
+    const dependencyKey = lean ? p.publicKey(pkSeed, pkRoot) : key;
     const frame = (mode, flags, target, executionGas, stateGas, value, data) => ({ mode, flags, target,
       executionGas: executionGas.toString(), stateGas: stateGas.toString(), value: value.toString(), data });
     const frames = [];
@@ -24,8 +26,8 @@ export function createProtocol(e) {
     const transaction = { chainId: '1337', nonce: BigInt(nonce).toString(), nonceKeys: ['0'], sender, frames,
       maxPriorityFee: BigInt(priorityFee).toString(), maxFee: BigInt(maxFee).toString(), maxBlobFee: '0' };
     const digest = p.digest(transaction, key);
-    frames[dependencyIndex].data = concat([p.word(16), digest, key]);
-    return { transaction, digest, keyHash: key, pkSeed, pkRoot, dependencyIndex };
+    frames[dependencyIndex].data = concat([p.word(16), digest, dependencyKey]);
+    return { transaction, digest, keyHash: key, dependencyKey, pkSeed, pkRoot, dependencyIndex };
   }
   function encode(transaction) {
     return '0x06' + encodeRlp([quantity(transaction.chainId), ['0x'], quantity(transaction.nonce), transaction.sender,
@@ -36,11 +38,11 @@ export function createProtocol(e) {
   function signedRequest(prepared, signature) {
     if (getBytes(signature).length !== 6176) throw Error('Unexpected SPHINCS signature length.');
     if (p.digest(prepared.transaction, prepared.keyHash) !== prepared.digest) throw Error('Transaction changed after preparation.');
-    const dependency = concat([p.word(16), prepared.digest, prepared.keyHash]);
+    const dependency = concat([p.word(16), prepared.digest, lean ? p.publicKey(prepared.pkSeed, prepared.pkRoot) : prepared.keyHash]);
     if (prepared.transaction.frames[prepared.dependencyIndex].data !== dependency) throw Error('Dependency changed after preparation.');
     const witness = concat(['0x' + prepared.pkRoot.slice(2, 34), '0x' + prepared.pkSeed.slice(2, 34), signature]);
     const raw = encode(prepared.transaction), hash = keccak256(raw);
-    const wrapper = encodeRlp([[raw], '0x', [dependency, [witness]]]);
+    const wrapper = encodeRlp([[raw], '0x', lean ? [[dependency], [witness]] : [dependency, [witness]]]);
     return { raw, hash, wrapper, method: 'eth_sendProofWrapper', params: [wrapper] };
   }
   return { ...p, abi, accountAddress, prepare, encode, signedRequest };

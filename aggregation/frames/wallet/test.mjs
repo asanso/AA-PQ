@@ -161,4 +161,39 @@ await check('Expired preparation during admission retry prevents another send', 
   assert.equal(c.calls.filter(call => call.method === 'eth_sendProofWrapper').length, 1);
 });
 
+const lean = createProtocol(e, 'eip8288-lean');
+await check('eip8288-lean declares the raw key in a dependency list and keeps the intent and account', () => {
+  const legacy = p.prepare(options), prepared = lean.prepare(options), request = lean.signedRequest(prepared, signed.signature);
+  const rawKey = lean.publicKey(key.backupPkSeed, key.backupPkRoot);
+  assert.equal(rawKey, '0x' + '22'.repeat(16) + '11'.repeat(16));
+  assert.equal(prepared.digest, legacy.digest);
+  assert.equal(prepared.transaction.sender, legacy.transaction.sender);
+  assert.equal(prepared.keyHash, e.keccak256(rawKey));
+  const dependency = e.concat([p.word(16), prepared.digest, rawKey]);
+  assert.equal(prepared.transaction.frames[prepared.dependencyIndex].data, dependency);
+  const [[typed], mode, [dependencies, witnesses]] = e.decodeRlp(request.wrapper);
+  assert.equal(typed, request.raw); assert.equal(mode, '0x');
+  assert.deepEqual(dependencies, [dependency]);
+  assert.equal(witnesses.length, 1); assert.equal(e.dataSlice(witnesses[0], 0, 32), rawKey);
+});
+await check('eip8288-lean account runtime differs only by hashing the declared key', () => {
+  const legacyRuntime = e.getBytes(p.implementationRuntime()), leanRuntime = e.getBytes(lean.implementationRuntime());
+  // The current network's deployed implementation must not change.
+  assert.equal(e.keccak256(legacyRuntime), '0xd489c81ebe91f1a94a9b6caf284532fd6aaf14b95f59a1925f28cd2146ef994b');
+  assert.equal(leanRuntime.length, legacyRuntime.length + 20);
+  // Both frame-count paths load the dependency key, then MSTORE it at 3072 and KECCAK256 those 32 bytes.
+  const hashing = e.hexlify(new Uint8Array([0x61, 0x0c, 0x00, 0x52, 0x60, 0x20, 0x61, 0x0c, 0x00, 0x20])).slice(2);
+  assert.equal(e.hexlify(leanRuntime).split(hashing).length - 1, 2);
+  assert.equal(e.hexlify(legacyRuntime).includes(hashing), false);
+  assert.throws(() => createProtocol(e, 'eip8288-unknown'), /Unknown EIP-8288 format/);
+});
+await check('A client pins the runtime of its configured format', () => {
+  const leanConfig = { ...config, eip8288Format: 'eip8288-lean', implementationCodeHash: e.keccak256(lean.implementationRuntime()) };
+  createClient(e, { config: leanConfig, rpc: async () => {}, receiptOutcome: () => {} });
+  assert.throws(() => createClient(e, { config: { ...leanConfig, implementationCodeHash: config.implementationCodeHash },
+    rpc: async () => {}, receiptOutcome: () => {} }), /Unsupported account profile/);
+  assert.throws(() => createClient(e, { config: { ...config, eip8288Format: 'eip8288-lean' }, rpc: async () => {}, receiptOutcome: () => {} }),
+    /Unsupported account profile/);
+});
+
 console.log(JSON.stringify({ passed: checked, liveRequests: 0 }));

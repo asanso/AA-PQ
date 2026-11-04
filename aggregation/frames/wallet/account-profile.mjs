@@ -1,13 +1,18 @@
 // Experimental clone account policy for the pinned EIP-8288 client.
-export function createProfile(e) {
+// eip8288-lean (upstream Nethermind feature/eip8288-lean) verifies leanSPHINCS against the raw 32-byte public key, so
+// the dependency carries that key and the account checks its hash; daisugi-v1 carries the hash itself.
+export const EIP8288_FORMATS = Object.freeze(['daisugi-v1', 'eip8288-lean']);
+export function createProfile(e, format = 'daisugi-v1') {
+  if (!EIP8288_FORMATS.includes(format)) throw Error('Unknown EIP-8288 format.');
   const { keccak256, concat, toBeHex, zeroPadValue, getBytes, hexlify, toUtf8Bytes, getAddress } = e;
   const domain = keccak256(toUtf8Bytes('Daisugi.AggregatedFrameAccount.v2'));
   const word = value => zeroPadValue(toBeHex(BigInt(value)), 32);
   const selector = keccak256(toUtf8Bytes('createAccount(bytes32,bytes32,bytes32)')).slice(0, 10);
   const keyHash = (seed, root) => {
     for (const key of [seed, root]) if (!/^0x[0-9a-f]{32}0{32}$/i.test(key)) throw Error('Invalid SPHINCS public-key encoding.');
-    return keccak256(concat(['0x' + root.slice(2, 34), '0x' + seed.slice(2, 34)]));
+    return keccak256(publicKey(seed, root));
   };
+  const publicKey = (seed, root) => concat(['0x' + root.slice(2, 34), '0x' + seed.slice(2, 34)]);
   const cloneRuntime = (implementation, key) => concat(['0x363d3d373d3d3d363d73', getAddress(implementation),
     '0x5af43d82803e903d91602b57fd5bf3', key]);
   const initCode = (implementation, key) => concat(['0x3d604d80600a3d3981f3', cloneRuntime(implementation, key)]);
@@ -94,7 +99,9 @@ export function createProfile(e) {
       frame(dep, 1); equal(3000); frame(dep, 9); equal(0);
       frame(body, 2); equal(2); frame(body, 3); equal(0);
       push(4096); frame(body, 4); op(0x11, 0x15); requireTrue();
-      load(dep, 0); equal(16); load(dep, 64); key(); op(0x14); requireTrue();
+      load(dep, 0); equal(16); load(dep, 64);
+      if (format === 'eip8288-lean') { push(3072); op(0x52); push(32); push(3072); op(0x20); }
+      key(); op(0x14); requireTrue();
       push(49999); frame(verify, 1); op(0x11); requireTrue();
       push(0); push(0); push(32); push(32); op(0x30); push(2000); op(0xfa, 0x15); requireTrue();
       let offset = 0;
@@ -123,5 +130,5 @@ export function createProfile(e) {
     }
     return hexlify(new Uint8Array(code));
   }
-  return { domain, word, keyHash, cloneRuntime, initCode, digest, implementationRuntime };
+  return { format, domain, word, keyHash, publicKey, cloneRuntime, initCode, digest, implementationRuntime };
 }

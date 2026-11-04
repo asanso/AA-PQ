@@ -12,6 +12,12 @@
     "depsHash": "0x734df3b61e637d6f6d19cfd7de771b0c95390c8cf979041de61ad81b55527d7c",
     "response": "accepted by eth_sendProofWrapper"
   },
+  "walletWrapper": {
+    "file": "wallet-wrapper.rlp",
+    "txHash": "0x0e029466c16f27b2b464daca97b03ce3728f32b29710f4da1a4678b1b7e2c9ff",
+    "capture": "AA-PQ wallet (eip8288-lean) through the RPC gateway, deployed account, included with status 1",
+    "response": "accepted by eth_sendProofWrapper"
+  },
   "rejectedWrappers": {
     "leansig-witness-corrupted": "a wrapper dependency proof failed verification",
     "leansig-witness-for-other-message": "a wrapper dependency proof failed verification",

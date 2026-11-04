@@ -7,14 +7,21 @@ const integer = v => v === '0x' ? 0n : BigInt(v);
 
 // The gateway accepts the wallet's bounded direct-witness profile. The node
 // performs cryptographic verification, account authorization and pool admission.
+// daisugi-v1 wraps one bare dependency and declares the key hash; eip8288-lean (upstream Nethermind
+// feature/eip8288-lean, MempoolWrapperDecoder) wraps a dependency list and declares the raw public key.
 export function validateProofWrapper(raw, format = NETWORK.eip8288Format) {
-  if (format === 'eip8288-lean') return validateLeanProofWrapper(raw);
+  const lean = format === 'eip8288-lean';
   if (!bytes(raw) || raw.length > 96 * 1024) throw Error('Invalid or oversized proof wrapper.');
-  const wrapper = decodeRlp(raw);
+  let wrapper;
+  try { wrapper = decodeRlp(raw); } catch { throw Error('Invalid proof wrapper encoding.'); }
   if (!Array.isArray(wrapper) || wrapper.length !== 3 || encodeRlp(wrapper).toLowerCase() !== raw.toLowerCase()
       || !Array.isArray(wrapper[0]) || wrapper[0].length !== 1 || wrapper[1] !== '0x'
       || !Array.isArray(wrapper[2]) || wrapper[2].length !== 2) throw Error('Expected one direct-witness transaction.');
-  const [dependency, witnesses] = wrapper[2], typed = wrapper[0][0];
+  let [dependency, witnesses] = wrapper[2], typed = wrapper[0][0];
+  if (lean) {
+    if (!Array.isArray(dependency) || dependency.length !== 1) throw Error('Expected one wallet dependency.');
+    [dependency] = dependency;
+  }
   if (!bytes(typed) || !typed.startsWith('0x06') || !bytes(dependency) || dependency.length !== 194
       || !Array.isArray(witnesses) || witnesses.length !== 1 || !bytes(witnesses[0]) || witnesses[0].length !== 12418)
     throw Error('Invalid dependency or signature witness encoding.');
@@ -35,32 +42,9 @@ export function validateProofWrapper(raw, format = NETWORK.eip8288Format) {
   const dep = frames[frames.length-3];
   if (frames.length === 4 && (frames[0][0] !== '0x' || frames[0][1] !== '0x' || frames[0][4] !== '0x')) throw Error('Invalid creation frame.');
   if (dep[0] !== '0x04' || dep[1] !== '0x' || dep[4] !== '0x' || dep[5].toLowerCase() !== dependency.toLowerCase()
-      || integer('0x'+dependency.slice(2,66)) !== 16n || keccak256('0x'+witnesses[0].slice(2,66)) !== '0x'+dependency.slice(130).toLowerCase()
+      || integer('0x'+dependency.slice(2,66)) !== 16n
+      || (lean ? '0x'+witnesses[0].slice(2,66).toLowerCase() : keccak256('0x'+witnesses[0].slice(2,66))) !== '0x'+dependency.slice(130).toLowerCase()
       || frames.at(-2)[0] !== '0x01' || frames.at(-2)[1] !== '0x03' || frames.at(-1)[0] !== '0x02')
     throw Error('The declared dependency does not match this wallet profile.');
   return keccak256(typed);
-}
-
-// Upstream Nethermind feature/eip8288-lean (MempoolWrapperDecoder): [[tx...], mode, [[dep...], [witness...]]].
-// The gateway checks structure and keeps its policy of one direct-witness transaction; the node verifies the rest.
-const MAX_WRAPPER_BYTES = 2 * 1024 * 1024;
-function validateLeanProofWrapper(raw) {
-  if (!bytes(raw) || raw.length > 2 + 2 * MAX_WRAPPER_BYTES) throw Error('Invalid or oversized proof wrapper.');
-  let wrapper;
-  try { wrapper = decodeRlp(raw); } catch { throw Error('Invalid proof wrapper encoding.'); }
-  if (!Array.isArray(wrapper) || wrapper.length !== 3 || encodeRlp(wrapper).toLowerCase() !== raw.toLowerCase())
-    throw Error('Invalid proof wrapper encoding.');
-  const [transactions, mode, content] = wrapper;
-  if (!Array.isArray(transactions) || transactions.length !== 1 || !bytes(transactions[0]) || !transactions[0].startsWith('0x06'))
-    throw Error('Expected one frame transaction.');
-  if (mode !== '0x') throw Error(mode === '0x01' ? 'Only direct-witness wrappers are accepted.' : 'Unknown proof wrapper mode.');
-  if (!Array.isArray(content) || content.length !== 2 || !Array.isArray(content[0]) || !content[0].length)
-    throw Error('Expected a dependency list.');
-  for (const triple of content[0]) if (!bytes(triple) || triple.length !== 194 || !/^0x0{62}1[01]/.test(triple))
-    throw Error('Invalid dependency encoding.');
-  if (!Array.isArray(content[1]) || !content[1].length || !content[1].every(bytes)) throw Error('Expected a witness list.');
-  const tx = decodeRlp('0x'+transactions[0].slice(4));
-  if (!Array.isArray(tx) || ![7, 8].includes(tx.length) || tx[0] !== chainIdRlp)
-    throw Error(`Expected a chain ${NETWORK.chainId} frame transaction.`);
-  return keccak256(transactions[0]);
 }

@@ -4,8 +4,8 @@ import { createProtocol } from './protocol.mjs';
 // The caller supplies HTTPS transport and the existing frame-receipt parser.
 export function createClient(e, { config: input, rpc, receiptOutcome, now = Date.now,
   delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)) }) {
-  const p = createProtocol(e);
   const config = Object.freeze({ ...input });
+  const p = createProtocol(e, config.eip8288Format);
   const hash = /^0x[0-9a-f]{64}$/i;
   for (const field of ['genesisHash', 'factoryCodeHash', 'implementationCodeHash']) {
     if (!hash.test(config[field] ?? '')) throw Error('Missing pinned network or contract identity.');
