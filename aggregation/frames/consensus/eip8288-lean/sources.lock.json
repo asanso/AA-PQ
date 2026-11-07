@@ -20,6 +20,73 @@
     "repository": "sigp/lighthouse",
     "revision": "e423a66763bb1bd780492d635123f208d80c3538",
     "archiveSha256": "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c",
+    "patchSeries": {
+      "pristineTree": "ab477c0379d547f44498a3e67de42ae3b44ba010",
+      "patchedTree": "adcc0b7592016683ccc5829298530629721eb916",
+      "provenance": {
+        "inherited": {
+          "patches": [
+            "0001-Add-the-Daisugi-consensus-fork-imported-AA-PQ-overla.patch"
+          ],
+          "source": "asanso/AA-PQ a4b1d73b843987412f8423ae601b531e4c83bce7 aggregation/frames/consensus/fork/overlays/lighthouse/files",
+          "introducedBy": "3bfba0706b22393b3bae32ad1e2b2c433083ff31"
+        },
+        "eip8288Lean": {
+          "patches": [
+            "0002-feat-daisugi-carry-the-EIP-8288-starkProof-of-the-cu.patch",
+            "0003-feat-daisugi-check-the-Daisugi-block-hash-with-the-E.patch",
+            "0004-test-daisugi-reproduce-a-real-devnet-block-hash-and-.patch",
+            "0005-test-daisugi-reproduce-the-hash-of-a-proof-bearing-d.patch",
+            "0006-test-daisugi-reject-a-reconstructed-payload-body-wit.patch",
+            "0007-build-daisugi-build-the-reproducible-image-on-bookwo.patch",
+            "0008-fix-daisugi-reject-the-zero-block-hash-of-an-undecod.patch"
+          ],
+          "originalCommits": [
+            "20712977998f25ba9aedd05c58a42d0f932869df",
+            "d4a14a025b8f7a35578e85faa2afc9b3abb2cbaa",
+            "d8f106e07b687ca4eb9929b56b8593f596de6dd2",
+            "db4536d4e3add011256d1370548fa726ea5ab500",
+            "0e5db88e568ebb0a1f7bb4583ad66a3d73f16afa",
+            "17dd930dc5a5fcdf1bc9744f9c03b766478040da",
+            "be498c6615e79672ece8ba7256d90ce5f59052b2"
+          ]
+        }
+      },
+      "patches": [
+        {
+          "file": "0001-Add-the-Daisugi-consensus-fork-imported-AA-PQ-overla.patch",
+          "sha256": "327c20fe18c26e9de80c09de9db9996748d076f43e827955f301fb4edb6d8c36"
+        },
+        {
+          "file": "0002-feat-daisugi-carry-the-EIP-8288-starkProof-of-the-cu.patch",
+          "sha256": "90ecc582919b73fd6c2fbac59574cd223f76c11d0f79438a5c61451e6b04945a"
+        },
+        {
+          "file": "0003-feat-daisugi-check-the-Daisugi-block-hash-with-the-E.patch",
+          "sha256": "0d3239961cb264bdbbe71b11c8eade1092ff885275969faa94168672340f9271"
+        },
+        {
+          "file": "0004-test-daisugi-reproduce-a-real-devnet-block-hash-and-.patch",
+          "sha256": "67405fa71651efe93d4dc8d6386542f2b03f0880084c39d9fad1b0590ee1cdf3"
+        },
+        {
+          "file": "0005-test-daisugi-reproduce-the-hash-of-a-proof-bearing-d.patch",
+          "sha256": "f8a0c56be4c70001ab1597333ca956c0863c248b5567bdeab42ff5c4bdd82ef0"
+        },
+        {
+          "file": "0006-test-daisugi-reject-a-reconstructed-payload-body-wit.patch",
+          "sha256": "3d4c56a5753f4af2c942ee23892196aff8a6b183bb9f79003e5e90eb99a0970d"
+        },
+        {
+          "file": "0007-build-daisugi-build-the-reproducible-image-on-bookwo.patch",
+          "sha256": "c6a6a5fff0bd19de25b505d47cf0671dbe8fc138b66055cd4344cdef716b5403"
+        },
+        {
+          "file": "0008-fix-daisugi-reject-the-zero-block-hash-of-an-undecod.patch",
+          "sha256": "71a02c142e67ada3489214758f4109139e189a39942f2d6ecd601178483fa6ab"
+        }
+      ]
+    },
     "fork": "Daisugi",
     "sszForkTag": 8,
     "activationEpoch": null,

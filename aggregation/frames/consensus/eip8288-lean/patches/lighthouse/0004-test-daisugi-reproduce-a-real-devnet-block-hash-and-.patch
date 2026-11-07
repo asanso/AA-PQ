@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Manuel Arto <manuel.arto@nethermind.io>
+Date: Mon, 2 Nov 2026 16:21:02 +0100
+Subject: [PATCH 4/8] test(daisugi): reproduce a real devnet block hash and
+ record vector provenance
+
+---
+ .../execution_layer/src/daisugi_block_hash.rs | 39 ++++++++++++++++++-
+ .../daisugi_devnet_first_block.json           | 28 +++++++++++++
+ 2 files changed, 65 insertions(+), 2 deletions(-)
+ create mode 100644 beacon_node/execution_layer/src/test_fixtures/daisugi_devnet_first_block.json
+
+diff --git a/beacon_node/execution_layer/src/daisugi_block_hash.rs b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+index 580e7e28e10d25e1e0634b562962ce8142fa0774..c04b19b7dc8c86de7e787294838db1b2f2bb2659 100644
+--- a/beacon_node/execution_layer/src/daisugi_block_hash.rs
++++ b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+@@ -165,8 +165,10 @@ fn string_payload(encoded: &[u8]) -> Result<&[u8], alloy_rlp::Error> {
+     Ok(rest)
+ }
+ 
+-/// Vectors emitted by the Nethermind `feature/eip8288-lean` prototype (`FrameDependency.ForBlock`,
+-/// `HeaderDecoder`) for a Prague-based header with an EIP-8288 commitment.
++/// Vectors emitted by the Nethermind `feature/eip8288-lean` prototype for a Prague-based header with an
++/// EIP-8288 commitment. Source: `Eip8288CrossClientVectorTests` (Nethermind.Blockchain.Test), which
++/// asserts the same values and writes them to `tools/daisugi-devnet/vectors/eip8288-block-hash.json`
++/// on the Nethermind branch `test/daisugi-devnet`, based on `feature/eip8288-lean` at `c34b09d229`.
+ #[cfg(test)]
+ mod test {
+     use super::*;
+@@ -278,3 +280,36 @@ mod test {
+         );
+     }
+ }
++
++/// The first Daisugi block of a local devnet (Nethermind `c07cd8bf18` with the Lean backend, this
++/// Lighthouse at `d4a14a025`), as the beacon API served it: the block hash Nethermind assigned must be
++/// reproduced from the payload alone.
++#[cfg(test)]
++mod devnet_test {
++    use crate::calculate_execution_block_hash;
++    use serde::Deserialize;
++    use types::{
++        ExecutionPayloadDaisugi, ExecutionPayloadRef, ExecutionRequests, Hash256, MainnetEthSpec,
++    };
++
++    #[derive(Deserialize)]
++    struct Block {
++        payload: ExecutionPayloadDaisugi<MainnetEthSpec>,
++        parent_beacon_block_root: Hash256,
++        execution_requests: ExecutionRequests<MainnetEthSpec>,
++    }
++
++    #[test]
++    fn first_devnet_block_hash_is_reproduced() {
++        let block: Block = serde_json::from_str(include_str!(
++            "test_fixtures/daisugi_devnet_first_block.json"
++        ))
++        .unwrap();
++        let (hash, _) = calculate_execution_block_hash(
++            ExecutionPayloadRef::Daisugi(&block.payload),
++            Some(block.parent_beacon_block_root),
++            Some(&block.execution_requests),
++        );
++        assert_eq!(hash, block.payload.block_hash);
++    }
++}
+diff --git a/beacon_node/execution_layer/src/test_fixtures/daisugi_devnet_first_block.json b/beacon_node/execution_layer/src/test_fixtures/daisugi_devnet_first_block.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..22e490bd86f9213798a0a6791b608d4af91f3bc9
+--- /dev/null
++++ b/beacon_node/execution_layer/src/test_fixtures/daisugi_devnet_first_block.json
+@@ -0,0 +1,28 @@
++{
++  "payload": {
++    "parent_hash": "0xb3fedb2c8a702e78c997c03f7662a7e1196da5c166336da9673db4e217305a53",
++    "fee_recipient": "0x8943545177806ed17b9f23f0a21ee5948ecaa776",
++    "state_root": "0xbfdfef1f28e7fff43ad07936524133e3281dd05434ac40d1d54bca3aaa57abc2",
++    "receipts_root": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
++    "logs_bloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
++    "prev_randao": "0xffb9568da6ba44e69e4f14cfef6a7f874deda28cf2ffeedb5cdfbca111a4aa2f",
++    "block_number": "74",
++    "gas_limit": "60000000",
++    "gas_used": "0",
++    "timestamp": "1793632523",
++    "extra_data": "0x4e65746865726d696e642076322e332e3061",
++    "base_fee_per_gas": "51124",
++    "block_hash": "0xeffa8ee2c6814872fea12a4fbeed0883ea63366cceb9de6ea151cfc802ab5755",
++    "transactions": [],
++    "withdrawals": [],
++    "blob_gas_used": "0",
++    "excess_blob_gas": "0",
++    "recursive_stark_proof": "0x"
++  },
++  "parent_beacon_block_root": "0x1a245e04078f851b6e325db503bfd7b435605114efa8a563f0b926742a73384c",
++  "execution_requests": {
++    "deposits": [],
++    "withdrawals": [],
++    "consolidations": []
++  }
++}

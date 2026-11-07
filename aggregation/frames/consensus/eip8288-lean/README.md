@@ -6,19 +6,19 @@ a fork or replace the live Daisugi deployment. The live chain keeps using
 
 ## What this is
 
-A Lighthouse overlay for the EIP-8288 format implemented upstream in Nethermind's
+A Lighthouse patch series for the EIP-8288 format implemented upstream in Nethermind's
 `feature/eip8288-lean` branch, pinned in `sources.lock.json`. **Nethermind needs no
 overlay**: build that branch commit as is. The legacy Nethermind overlay in
 `../fork` is for the live chain only.
 
 The pinned Nethermind commit is **interim** (`revisionStatus` in the lock): it is
-the commit this overlay was validated against, not the deployable release. Its
+the commit this patch series was validated against, not the deployable release. Its
 standard artifacts don't include the native Lean library yet (see
 [Fresh genesis](#fresh-genesis)). Once Nethermind takes that library from a pinned
 NuGet package, a later `feature/eip8288-lean` commit replaces this pin, and the
 acceptance steps below run again against it.
 
-The overlay starts from `../fork`'s Lighthouse overlay (same base, Lighthouse
+The series starts from `../fork`'s Lighthouse overlay (same base, Lighthouse
 v8.2.2 `e423a667`, same `Daisugi` fork, SSZ tag 8) and changes it as follows.
 
 | | `../fork` (live Daisugi) | This package |
@@ -36,16 +36,60 @@ genesis.
 
 ## Source preparation
 
-From this directory, with a pristine snapshot of the pinned Lighthouse revision in
-`./lighthouse` (archive sha256 in `sources.lock.json`):
+The patches in `patches/lighthouse` apply to the pinned Lighthouse source archive.
+`sources.lock.json` pins the archive sha256, each patch's sha256 and the Git tree
+ids before and after the series. Requirements: Python 3.12 or later and Git.
+
+From this directory:
 
 ```sh
 python3 -m unittest discover -p 'test_*.py'
-python3 apply.py lighthouse ./lighthouse --check
-python3 apply.py lighthouse ./lighthouse
+revision=$(jq -r .lighthouse.revision sources.lock.json)
+curl -fsSL -o lighthouse.tar.gz "https://github.com/sigp/lighthouse/archive/$revision.tar.gz"
+python3 apply.py lighthouse lighthouse.tar.gz ./lighthouse --check
+python3 apply.py lighthouse lighthouse.tar.gz ./lighthouse
 ```
 
-The tool checks every anchor and file hash before writing and never runs Git.
+`apply.py`:
+- refuses an archive whose sha256 differs from the lock;
+- refuses patches that differ from the lock and patches the lock doesn't list;
+- refuses archive members that are absolute, contain `..` or leave the top
+  directory; Git refuses patch paths outside the tree, under `.git` or through a
+  symlink;
+- extracts the archive into a staging directory next to the output and checks
+  its tree against `pristineTree`;
+- applies each patch with `git apply`, ignoring the user's and the system's Git
+  configuration: no fuzz, no three-way merge, no rejects;
+- checks the result against `patchedTree`, then renames the staging tree to the
+  output. Any failure removes the staging directory and leaves the output absent;
+- reports `already-patched` and changes nothing when the output already holds
+  `patchedTree`, and refuses an output with any other content.
+
+Tree ids are computed like `git write-tree` from the files alone (contents, the
+executable bit, symlinks; no `.git`, no ignore rules, no line-ending conversion),
+so `git rev-parse <commit>^{tree}` gives the same value for the commit the series
+reproduces.
+
+### Provenance
+
+- `0001` imports `../fork`'s Lighthouse overlay verbatim from AA-PQ `a4b1d73`
+  (introduced by GianlucaFelli in `3bfba07`), attributed to that author.
+- `0002`-`0008` are the EIP-8288 changes, with their original authors and
+  messages. `sources.lock.json` maps each one to its original commit.
+
+### Updating the series
+
+1. Recreate the series as commits on the pinned revision: `git am --keep-cr
+   patches/lighthouse/*.patch` on a checkout of `e423a667` (`--keep-cr` keeps the
+   CRLF lines that `0001` carries).
+2. Add or amend commits.
+3. Export: `git format-patch --binary --full-index --zero-commit --no-signature
+   -o patches/lighthouse <revision>..HEAD`, after removing the old files.
+4. Update `sources.lock.json`: each patch's sha256 and `patchedTree`
+   (`git rev-parse HEAD^{tree}`). Add a new upstream revision, its
+   `archiveSha256` and `pristineTree` together.
+5. Run the unit tests, `apply.py` on the archive, and the acceptance steps below.
+   A source change that alters the build also changes the image hash below.
 
 ## Tests
 

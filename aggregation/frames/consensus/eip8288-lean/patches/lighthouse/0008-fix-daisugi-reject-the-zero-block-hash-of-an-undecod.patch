@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Manuel Arto <manuelartociao@gmail.com>
+Date: Tue, 3 Nov 2026 13:10:45 +0100
+Subject: [PATCH 8/8] fix(daisugi): reject the zero block hash of an
+ undecodable frame transaction
+
+calculate_execution_block_hash returns zero when a Daisugi payload's frame
+transactions don't decode, so a payload claiming the zero hash passed
+verify_payload_block_hash during optimistic import. A computed zero hash is
+now a mismatch.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ beacon_node/execution_layer/src/block_hash.rs |  2 +-
+ .../execution_layer/src/daisugi_block_hash.rs | 20 +++++++++++++++++++
+ .../src/engine_api/new_payload_request.rs     |  4 +++-
+ 3 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/beacon_node/execution_layer/src/block_hash.rs b/beacon_node/execution_layer/src/block_hash.rs
+index 9fd2886efbdf6056ca718ab7f26c4eb0fc53c0a2..f5d21c41563c2be7d93aa77faa79fa91e06a8e5e 100644
+--- a/beacon_node/execution_layer/src/block_hash.rs
++++ b/beacon_node/execution_layer/src/block_hash.rs
+@@ -59,7 +59,7 @@ pub fn calculate_execution_block_hash<E: EthSpec>(
+         let Ok(deps_hash) = crate::daisugi_block_hash::block_deps_hash(
+             daisugi.transactions.iter().map(|txn_bytes| &**txn_bytes),
+         ) else {
+-            // A frame transaction that does not decode has no commitment; no payload hash matches zero.
++            // A frame transaction that does not decode has no commitment; `verify_payload_block_hash` rejects zero.
+             return (ExecutionBlockHash::zero(), rlp_transactions_root);
+         };
+         let mut content = alloy_rlp::Header::decode(&mut rlp_block_header.as_slice())
+diff --git a/beacon_node/execution_layer/src/daisugi_block_hash.rs b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+index dd3b9831e52dea7ed85edb89c1685705768cdedf..f9fe856574602138a877b79cb1055b6b677f5470 100644
+--- a/beacon_node/execution_layer/src/daisugi_block_hash.rs
++++ b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+@@ -172,7 +172,9 @@ fn string_payload(encoded: &[u8]) -> Result<&[u8], alloy_rlp::Error> {
+ #[cfg(test)]
+ mod test {
+     use super::*;
++    use crate::Error;
+     use crate::calculate_execution_block_hash;
++    use crate::engine_api::{NewPayloadRequest, NewPayloadRequestDaisugi};
+     use std::str::FromStr;
+     use types::{
+         Address, ExecutionBlockHash, ExecutionPayloadDaisugi, ExecutionPayloadRef,
+@@ -228,6 +230,24 @@ mod test {
+         let mut tx = transactions()[0].clone();
+         tx.truncate(tx.len() - 1);
+         assert!(block_deps_hash([tx.as_slice()]).is_err());
++
++        // The zero hash the payload hashes to must not verify a payload that claims it.
++        let payload = ExecutionPayloadDaisugi::<MainnetEthSpec> {
++            transactions: vec![tx.try_into().unwrap()].try_into().unwrap(),
++            block_hash: ExecutionBlockHash::zero(),
++            ..Default::default()
++        };
++        let execution_requests = ExecutionRequests::default();
++        let request = NewPayloadRequest::Daisugi(NewPayloadRequestDaisugi {
++            execution_payload: &payload,
++            versioned_hashes: vec![],
++            parent_beacon_block_root: Hash256::ZERO,
++            execution_requests: &execution_requests,
++        });
++        assert!(matches!(
++            request.verify_payload_block_hash(),
++            Err(Error::BlockHashMismatch { .. })
++        ));
+     }
+ 
+     #[test]
+diff --git a/beacon_node/execution_layer/src/engine_api/new_payload_request.rs b/beacon_node/execution_layer/src/engine_api/new_payload_request.rs
+index 140d56a6cc4a75f531556d986b1ab2d9e122918f..2e5d32f319efd9de03d6bab05b9be8e9cc2a169a 100644
+--- a/beacon_node/execution_layer/src/engine_api/new_payload_request.rs
++++ b/beacon_node/execution_layer/src/engine_api/new_payload_request.rs
+@@ -154,7 +154,9 @@ impl<'block, E: EthSpec> NewPayloadRequest<'block, E> {
+             self.execution_requests().ok().copied(),
+         );
+ 
+-        if header_hash != self.block_hash() {
++        // Zero is what `calculate_execution_block_hash` returns for a Daisugi payload whose frame transactions do not
++        // decode, so it must not match a payload that claims it.
++        if header_hash == ExecutionBlockHash::zero() || header_hash != self.block_hash() {
+             return Err(Error::BlockHashMismatch {
+                 computed: header_hash,
+                 payload: payload.block_hash(),
