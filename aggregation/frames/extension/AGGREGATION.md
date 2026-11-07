@@ -2,7 +2,8 @@
 
 This is a separate development variant of the unified NiceTry wallet. The
 original interface, SPHINCS-G signing module and ERC-4337 implementation are
-retained. Native mode uses the `Daisugi.AggregatedFrameAccount.v2` account policy,
+retained. Native mode uses the `Daisugi.AggregatedFrameAccount.v2` account policy
+(`Daisugi.AggregatedFrameAccount.eip8288-lean.v1` for `eip8288-lean`),
 keyed nonce zero and `eth_sendProofWrapper` transport.
 
 The default deployment profile remains inactive. The required client fork and
@@ -36,7 +37,7 @@ This produces the inactive preview. An activated build additionally requires
 `active`, `chainId`, `genesisHash`, `factory`, `implementation`, `factoryCodeHash`,
 `implementationCodeHash`, `profile` and `maxFeePerGas`, plus `eip8288Format`
 (`daisugi-v1` when omitted, or `eip8288-lean`). `profile` is the exact
-account-domain hash, not a display name. The build's only network takes its chain
+account-domain hash for its format, not a display name. The build's only network takes its chain
 ID and genesis from this profile. ERC-4337 setup stays pinned to chain 1337 and is
 unavailable on any other network. Never substitute synthetic test addresses
 or enable the profile before its contracts and client fork are verified.

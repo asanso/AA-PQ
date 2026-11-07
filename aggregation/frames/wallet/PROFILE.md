@@ -35,7 +35,8 @@ DEP_VERIFY uses 3000 execution gas and zero state gas. VERIFY requires at least
 
 The digest is Keccak-256 over consecutive 32-byte words, in this order:
 
-1. `keccak256("Daisugi.AggregatedFrameAccount.v2")`.
+1. `keccak256("Daisugi.AggregatedFrameAccount.v2")`, or
+   `keccak256("Daisugi.AggregatedFrameAccount.eip8288-lean.v1")` for `eip8288-lean`.
 2. Chain ID, sender address, immutable authorized-key hash and transaction type 6.
 3. Nonce sequence and the client commitment to the single zero nonce key.
 4. Max priority fee, max fee, zero max blob fee and frame count.

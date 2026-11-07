@@ -5,7 +5,8 @@ export const EIP8288_FORMATS = Object.freeze(['daisugi-v1', 'eip8288-lean']);
 export function createProfile(e, format = 'daisugi-v1') {
   if (!EIP8288_FORMATS.includes(format)) throw Error('Unknown EIP-8288 format.');
   const { keccak256, concat, toBeHex, zeroPadValue, getBytes, hexlify, toUtf8Bytes, getAddress } = e;
-  const domain = keccak256(toUtf8Bytes('Daisugi.AggregatedFrameAccount.v2'));
+  // Each format has its own account domain, so an intent signed for one cannot authorize the other's account.
+  const domain = keccak256(toUtf8Bytes(format === 'eip8288-lean' ? 'Daisugi.AggregatedFrameAccount.eip8288-lean.v1' : 'Daisugi.AggregatedFrameAccount.v2'));
   const word = value => zeroPadValue(toBeHex(BigInt(value)), 32);
   const selector = keccak256(toUtf8Bytes('createAccount(bytes32,bytes32,bytes32)')).slice(0, 10);
   const keyHash = (seed, root) => {

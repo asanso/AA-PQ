@@ -175,11 +175,10 @@ await check('Expired preparation during admission retry prevents another send', 
 });
 
 const lean = createProtocol(e, 'eip8288-lean');
-await check('eip8288-lean declares the raw key in a dependency list and keeps the intent and account', () => {
+await check('eip8288-lean declares the raw key in a dependency list and keeps the account address', () => {
   const legacy = p.prepare(options), prepared = lean.prepare(options), request = lean.signedRequest(prepared, signed.signature);
   const rawKey = lean.publicKey(key.backupPkSeed, key.backupPkRoot);
   assert.equal(rawKey, '0x' + '22'.repeat(16) + '11'.repeat(16));
-  assert.equal(prepared.digest, legacy.digest);
   assert.equal(prepared.transaction.sender, legacy.transaction.sender);
   assert.equal(prepared.keyHash, e.keccak256(rawKey));
   const dependency = e.concat([p.word(16), prepared.digest, rawKey]);
@@ -189,11 +188,30 @@ await check('eip8288-lean declares the raw key in a dependency list and keeps th
   assert.deepEqual(dependencies, [dependency]);
   assert.equal(witnesses.length, 1); assert.equal(e.dataSlice(witnesses[0], 0, 32), rawKey);
 });
-await check('eip8288-lean account runtime differs only by hashing the declared key', () => {
+await check('Each format signs under its own account domain, also on the same chain', () => {
+  assert.equal(p.domain, e.keccak256(e.toUtf8Bytes('Daisugi.AggregatedFrameAccount.v2')));
+  assert.equal(lean.domain, e.keccak256(e.toUtf8Bytes('Daisugi.AggregatedFrameAccount.eip8288-lean.v1')));
+  const legacy = p.prepare(options), prepared = lean.prepare(options);
+  assert.equal(prepared.transaction.chainId, legacy.transaction.chainId);
+  assert.notEqual(prepared.digest, legacy.digest);
+  // The same transaction and key hash to different digests under the two domains.
+  assert.notEqual(lean.digest(prepared.transaction, prepared.keyHash), p.digest(prepared.transaction, prepared.keyHash));
+  // A dependency carrying the other format's digest is refused before signing is accepted.
+  const swapped = structuredClone(prepared);
+  swapped.digest = legacy.digest;
+  swapped.transaction.frames[swapped.dependencyIndex].data = e.concat([lean.word(16), legacy.digest, prepared.dependencyKey]);
+  assert.throws(() => lean.signedRequest(swapped, signed.signature), /changed after preparation/);
+  // Each account runtime reconstructs the digest with its own domain only.
+  const legacyRuntime = p.implementationRuntime().toLowerCase(), leanRuntime = lean.implementationRuntime().toLowerCase();
+  assert.ok(legacyRuntime.includes('7f' + p.domain.slice(2)) && !legacyRuntime.includes(lean.domain.slice(2)));
+  assert.ok(leanRuntime.includes('7f' + lean.domain.slice(2)) && !leanRuntime.includes(p.domain.slice(2)));
+});
+await check('eip8288-lean account runtime differs only by hashing the declared key and its domain', () => {
   const legacyRuntime = e.getBytes(p.implementationRuntime()), leanRuntime = e.getBytes(lean.implementationRuntime());
   // The current network's deployed implementation must not change.
   assert.equal(e.keccak256(legacyRuntime), '0xd489c81ebe91f1a94a9b6caf284532fd6aaf14b95f59a1925f28cd2146ef994b');
   assert.equal(leanRuntime.length, legacyRuntime.length + 20);
+  assert.equal(e.keccak256(leanRuntime), '0xa0fa54dffc48a5c423206cd198c7b3459baaa8b2728b7d8e7665bce52f20db13');
   // Both frame-count paths load the dependency key, then MSTORE it at 3072 and KECCAK256 those 32 bytes.
   const hashing = e.hexlify(new Uint8Array([0x61, 0x0c, 0x00, 0x52, 0x60, 0x20, 0x61, 0x0c, 0x00, 0x20])).slice(2);
   assert.equal(e.hexlify(leanRuntime).split(hashing).length - 1, 2);
@@ -201,8 +219,10 @@ await check('eip8288-lean account runtime differs only by hashing the declared k
   assert.throws(() => createProtocol(e, 'eip8288-unknown'), /Unknown EIP-8288 format/);
 });
 await check('A client pins the runtime of its configured format', () => {
-  const leanConfig = { ...config, eip8288Format: 'eip8288-lean', implementationCodeHash: e.keccak256(lean.implementationRuntime()) };
+  const leanConfig = { ...config, eip8288Format: 'eip8288-lean', implementationCodeHash: e.keccak256(lean.implementationRuntime()), profile: lean.domain };
   createClient(e, { config: leanConfig, rpc: async () => {}, receiptOutcome: () => {} });
+  assert.throws(() => createClient(e, { config: { ...leanConfig, profile: config.profile }, rpc: async () => {}, receiptOutcome: () => {} }),
+    /Unsupported account profile/);
   assert.throws(() => createClient(e, { config: { ...leanConfig, implementationCodeHash: config.implementationCodeHash },
     rpc: async () => {}, receiptOutcome: () => {} }), /Unsupported account profile/);
   assert.throws(() => createClient(e, { config: { ...config, eip8288Format: 'eip8288-lean' }, rpc: async () => {}, receiptOutcome: () => {} }),
