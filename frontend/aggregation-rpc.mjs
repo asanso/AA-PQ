@@ -25,7 +25,9 @@ export function validateProofWrapper(raw, format = NETWORK.eip8288Format) {
   if (!bytes(typed) || !typed.startsWith('0x06') || !bytes(dependency) || dependency.length !== 194
       || !Array.isArray(witnesses) || witnesses.length !== 1 || !bytes(witnesses[0]) || witnesses[0].length !== 12418)
     throw Error('Invalid dependency or signature witness encoding.');
-  const tx = decodeRlp('0x'+typed.slice(4));
+  let tx;
+  try { tx = decodeRlp('0x'+typed.slice(4)); } catch { throw Error('Invalid frame transaction encoding.'); }
+  if (encodeRlp(tx).slice(2) !== typed.slice(4).toLowerCase()) throw Error('Invalid frame transaction encoding.');
   if (!Array.isArray(tx) || tx.length !== 8 || tx[0] !== chainIdRlp || !Array.isArray(tx[1]) || tx[1].length !== 1
       || tx[1][0] !== '0x' || !quantity(tx[2]) || integer(tx[2]) >= 1n << 64n || !address(tx[3]))
     throw Error(`Expected a chain ${NETWORK.chainId} frame transaction with nonce key zero.`);

@@ -132,6 +132,12 @@ test('G2: the gateway refuses wrappers outside the wallet profile', () => {
     'a triple that is not the dependency frame': [/wallet profile/, w => { w[2][0][0] = flip(w[2][0][0].slice(0, 130)) + w[2][0][0].slice(130); }],
     'another chain': [/chain 1337/, w => { const t = tx(w); t[0] = '0x01'; setTx(w, t); }],
     'a non-frame transaction': [/witness encoding/, w => { w[0][0] = vector.transactions[2]; }],
+    'a truncated transaction': [/Invalid frame transaction encoding\.$/, w => { w[0][0] = w[0][0].slice(0, -2); }],
+    'trailing bytes after the transaction': [/Invalid frame transaction encoding\.$/, w => { w[0][0] += '00'; }],
+    // Nonce 2 written as the one-byte string 0x8102 instead of 0x02.
+    'a non-canonical transaction': [/Invalid frame transaction encoding\.$/, w => {
+      assert.equal(w[0][0].slice(0, 16), '0x06f8ee820539c180'.slice(0, 16));
+      w[0][0] = '0x06f8ef820539c1808102' + w[0][0].slice(20); }],
   };
   for (const [name, [reason, mutate]] of Object.entries(cases)) {
     const w = parts(); mutate(w);
