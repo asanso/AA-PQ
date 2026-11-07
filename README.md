@@ -152,6 +152,8 @@ configuration, verification and rollback behavior.
 
 These steps create infrastructure and deploy the repository's baseline contracts.
 They are not needed when updating the portal on an already provisioned network.
+For a local EIP-8288 devnet with the `eip8288-lean` wallet, see
+[docs/LOCAL-DEVNET.md](docs/LOCAL-DEVNET.md).
 
 ### Start the network
 
