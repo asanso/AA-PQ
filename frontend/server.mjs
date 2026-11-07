@@ -16,7 +16,7 @@ const nativeFramesEnabled = process.env.NATIVE_FRAME_RPC_ENABLED === 'true';
 const aggregationEnabled = process.env.NATIVE_AGGREGATION_RPC_ENABLED === 'true';
 const publicRpc = createRpcProxy({url:rpcUrl,nativeFramesEnabled,aggregationEnabled});
 const bundlerUrl = process.env.BUNDLER_URL || "http://127.0.0.1:4337";
-const entryPoint = process.env.ENTRY_POINT || "";
+const entryPoint = process.env.ENTRY_POINT || NETWORK.entryPoint;
 const faucetKey = process.env.FAUCET_PRIVATE_KEY;
 // Public RPC proxies may accept only one JSON-RPC request per HTTP call.
 const provider = new ethers.JsonRpcProvider(rpcUrl, undefined, {batchMaxCount:1});

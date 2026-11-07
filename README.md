@@ -63,7 +63,7 @@ fallback key in its source.
 | --- | --- |
 | `RPC_URL` | Backend RPC used for chain reads |
 | `BUNDLER_URL` | Bundler upstream |
-| `ENTRY_POINT` | EntryPoint deployed on this chain |
+| `ENTRY_POINT` | Optional. Defaults to the network profile's EntryPoint; any other value stops startup. |
 | `FAUCET_PRIVATE_KEY` | Funded server-side test account used by the faucet |
 | `FAUCET_RPC_URL` | Optional separate RPC for faucet submission; defaults to `RPC_URL` |
 | `EXPLORER_URL` | Native indexer API; defaults to `http://127.0.0.1:3001` |
