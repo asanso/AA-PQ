@@ -5,10 +5,14 @@ import { sendCall as sendFrame } from '../native-frame/send.js';
 import { sendCall as sendUserOperation } from '../erc4337/send.js';
 import { accountAddress as frameAddress } from '../aggregated-frame/address.js';
 import { accountAddress as aaAddress, ENTRY_POINT_ABI } from '../erc4337/protocol.js';
+import { ERC4337_AVAILABLE } from '../config/chain-defaults.js';
 
 const adapters = Object.freeze({
   frame: { ...frameClient, accountAddress: frameAddress, sendCall: sendFrame },
-  aa: { ...aaClient, accountAddress: aaAddress, sendCall: sendUserOperation },
+  aa: { ...aaClient, sendCall: sendUserOperation, accountAddress(...args) {
+    if (!ERC4337_AVAILABLE) throw Error('ERC-4337 is not deployed on this network. Account creation is unavailable.');
+    return aaAddress(...args);
+  } },
 });
 
 export function activeProtocol() {

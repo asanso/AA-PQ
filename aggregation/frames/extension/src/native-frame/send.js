@@ -5,6 +5,7 @@ import { prepareCall, submitCall, refreshRecord } from './client.js';
 import { withSigningLock } from '../transactions/signing-lock.js';
 import { createTransactionActivity } from '../transactions/transaction-activity.js';
 import { busy, smartAddr, chainId } from '../ui/store.js';
+import { DEFAULT_CHAIN_ID } from '../config/chain-defaults.js';
 import { log } from '../ui/logger.js';
 
 export async function sendCall({ to, value = 0n, data = '0x', reviewed, activity, details = {}, expectedNonce, onPhase = () => {} }) {
@@ -19,12 +20,12 @@ export async function sendCall({ to, value = 0n, data = '0x', reviewed, activity
   const assertContext = () => {
     if (!vaultManager.isUnlocked() || vaultManager.sessionEpoch !== epoch || vaultManager.getTransactionMode() !== 'frame' || vaultManager.getActiveAccountIndex() !== account ||
         vaultManager.getHdKeyring()?.getIdentityAddress(account) !== fingerprint ||
-        smartAddr.value !== address || BigInt(chainId.value) !== 1337n)
+        smartAddr.value !== address || BigInt(chainId.value) !== BigInt(DEFAULT_CHAIN_ID))
       throw Error('Wallet account changed or was locked. Review the transaction again.');
   };
   to = getAddress(to);
   const history = activity || createTransactionActivity({ to, amount: formatEther(value), smartAddr: address,
-    chainId: '0x539', accountIndex: account, mode: 'SPHINCS', transactionType: 6, ...details });
+    chainId: DEFAULT_CHAIN_ID, accountIndex: account, mode: 'SPHINCS', transactionType: 6, ...details });
   busy.value = true;
   log('Transaction started', 'step');
   try {

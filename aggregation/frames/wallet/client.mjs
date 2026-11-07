@@ -10,6 +10,7 @@ export function createClient(e, { config: input, rpc, receiptOutcome, now = Date
   for (const field of ['genesisHash', 'factoryCodeHash', 'implementationCodeHash']) {
     if (!hash.test(config[field] ?? '')) throw Error('Missing pinned network or contract identity.');
   }
+  if (!Number.isSafeInteger(config.chainId) || config.chainId <= 0) throw Error('Missing pinned network or contract identity.');
   e.getAddress(config.factory); e.getAddress(config.implementation);
   if (config.profile !== p.domain || e.keccak256(p.implementationRuntime()) !== config.implementationCodeHash)
     throw Error('Unsupported account profile.');
@@ -22,7 +23,7 @@ export function createClient(e, { config: input, rpc, receiptOutcome, now = Date
       rpc('eth_getCode', [config.factory, 'latest']), rpc('eth_getCode', [config.implementation, 'latest']),
       rpc('eth_call', [{ to: config.factory, data: p.abi.encodeFunctionData('ACCOUNT_IMPL') }, 'latest']),
     ]);
-    if (BigInt(chain) !== 1337n || genesis?.hash !== config.genesisHash) throw Error('Unexpected network. Sending is disabled.');
+    if (BigInt(chain) !== BigInt(config.chainId) || genesis?.hash !== config.genesisHash) throw Error('Unexpected network. Sending is disabled.');
     if (e.keccak256(factoryCode) !== config.factoryCodeHash || e.keccak256(implementationCode) !== config.implementationCodeHash
         || e.getAddress(p.abi.decodeFunctionResult('ACCOUNT_IMPL', implementation)[0]) !== e.getAddress(config.implementation))
       throw Error('Contract identity does not match this wallet build. Sending is disabled.');

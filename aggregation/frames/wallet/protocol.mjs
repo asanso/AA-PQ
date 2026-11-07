@@ -23,7 +23,7 @@ export function createProtocol(e, format) {
     frames.push(frame(4, 0, null, 3000, 0, 0, concat([p.word(16), p.word(0), key])));
     frames.push(frame(1, 3, null, 100000, 0, 0, '0x'));
     frames.push(frame(2, 0, getAddress(recipient), callGas, stateGas, value, data));
-    const transaction = { chainId: '1337', nonce: BigInt(nonce).toString(), nonceKeys: ['0'], sender, frames,
+    const transaction = { chainId: String(config.chainId), nonce: BigInt(nonce).toString(), nonceKeys: ['0'], sender, frames,
       maxPriorityFee: BigInt(priorityFee).toString(), maxFee: BigInt(maxFee).toString(), maxBlobFee: '0' };
     const digest = p.digest(transaction, key);
     frames[dependencyIndex].data = concat([p.word(16), digest, dependencyKey]);

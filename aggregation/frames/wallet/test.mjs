@@ -8,7 +8,7 @@ const e = createRequire(resolve(process.argv[2] ?? 'frontend/package.json'))('et
 const p = createProtocol(e);
 const key = { backupPkSeed: '0x' + '11'.repeat(16) + '00'.repeat(16), backupPkRoot: '0x' + '22'.repeat(16) + '00'.repeat(16) };
 const config = { factory: '0x0000000000000000000000000000000000000010', implementation: '0x0000000000000000000000000000000000000020',
-  genesisHash: '0x' + '33'.repeat(32), factoryCodeHash: e.keccak256('0x6000'),
+  chainId: 1337, genesisHash: '0x' + '33'.repeat(32), factoryCodeHash: e.keccak256('0x6000'),
   implementationCodeHash: e.keccak256(p.implementationRuntime()), profile: p.domain, maxFeePerGas: '100000000000' };
 const recipient = '0x0000000000000000000000000000000000000040';
 const options = { config, pkSeed: key.backupPkSeed, pkRoot: key.backupPkRoot, nonce: 0, recipient, value: 1,
@@ -16,7 +16,7 @@ const options = { config, pkSeed: key.backupPkSeed, pkRoot: key.backupPkRoot, no
 const signed = { ...key, signature: '0x' + '55'.repeat(6176) }; // Transport-only fixture, not a valid signature.
 let checked = 0;
 async function check(name, run) { await run(); checked++; console.log('PASS ' + name); }
-function context(overrides = {}) {
+function context(overrides = {}, clientConfig = config) {
   const calls = [], journals = [], delays = [];
   let timestamp = 100000;
   const state = { nonce: '0x0', code: '0x', chainId: '0x539', ...overrides };
@@ -36,7 +36,7 @@ function context(overrides = {}) {
     if (method === 'eth_getTransactionReceipt') return null;
     throw Error('Unexpected method: ' + method);
   };
-  const client = createClient(e, { config, rpc, delay: async ms => { delays.push(ms); }, now: () => timestamp, receiptOutcome: () => ({ status: 'pending' }) });
+  const client = createClient(e, { config: clientConfig, rpc, delay: async ms => { delays.push(ms); }, now: () => timestamp, receiptOutcome: () => ({ status: 'pending' }) });
   return { state, calls, journals, delays, client, expire: () => { timestamp += 240001; }, persist: async record => journals.push({ ...record }) };
 }
 
@@ -70,6 +70,19 @@ await check('Network identity must be pinned', () => assert.throws(() => createC
 await check('Fork-unavailable RPC fails closed', async () => {
   const c = context({ handler(method) { if (method === 'eth_getProofWrapper') { const error = Error('Unavailable'); error.rpcCode = -32601; throw error; } } });
   await assert.rejects(c.client.prepareCall(key, recipient, 1), /Unavailable/);
+});
+await check('Chain ID must be pinned as a positive integer', () => {
+  for (const chainId of [undefined, '1337', 0, 1.5])
+    assert.throws(() => createClient(e, { config: { ...config, chainId }, rpc() {}, receiptOutcome() {} }), /pinned network/);
+});
+await check('Another chain signs its own chain ID and refuses Daisugi', async () => {
+  const other = { ...config, chainId: 7357 };
+  const quote = await context({ chainId: '0x1cbd' }, other).client.prepareCall(key, recipient, 1);
+  assert.equal(e.decodeRlp('0x' + p.encode(quote.payload.transaction).slice(4))[0], '0x1cbd');
+  const { transaction, keyHash } = quote.payload;
+  assert.equal(quote.digest, p.digest(transaction, keyHash));
+  assert.notEqual(quote.digest, p.digest({ ...transaction, chainId: '1337' }, keyHash));
+  await assert.rejects(context({}, other).client.prepareCall(key, recipient, 1), /Unexpected network/);
 });
 await check('Wrong chain prevents signing preparation', async () => {
   const c = context({ chainId: '0xaa36a7' }); await assert.rejects(c.client.prepareCall(key, recipient, 1), /Unexpected network/);

@@ -34,8 +34,11 @@ npm run build -- --outDir nicetry-aggregation-preview
 This produces the inactive preview. An activated build additionally requires
 `NICETRY_AGGREGATION_PROFILE=/absolute/path/to/reviewed-deployment.json` containing:
 `active`, `chainId`, `genesisHash`, `factory`, `implementation`, `factoryCodeHash`,
-`implementationCodeHash`, `profile` and `maxFeePerGas`. `profile` is the exact
-account-domain hash, not a display name. Never substitute synthetic test addresses
+`implementationCodeHash`, `profile` and `maxFeePerGas`, plus `eip8288Format`
+(`daisugi-v1` when omitted, or `eip8288-lean`). `profile` is the exact
+account-domain hash, not a display name. The build's only network takes its chain
+ID and genesis from this profile. ERC-4337 setup stays pinned to chain 1337 and is
+unavailable on any other network. Never substitute synthetic test addresses
 or enable the profile before its contracts and client fork are verified.
 
 The build validates pin completeness. Sending verifies the actual chain, genesis,

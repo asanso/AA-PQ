@@ -25,7 +25,7 @@ The complete factory address and creation arguments are signed. The account is
 created before the dependency/authorization frames. A failed authorization rolls
 back the transaction. Smart-contract destinations are supported.
 
-The prototype restricts chain 1337 in the wallet, one zero nonce key, no envelope
+The prototype restricts the build profile's chain in the wallet, one zero nonce key, no envelope
 signatures, no blobs, no recent-root references and at most 4096 calldata bytes
 in the SENDER frame. The account binds the actual chain ID rather than a constant.
 DEP_VERIFY uses 3000 execution gas and zero state gas. VERIFY requires at least
@@ -70,6 +70,11 @@ The wallet submits the upstream RLP wrapper:
   [dependency triple, [pkRoot16 || pkSeed16 || sphincsSignature6176]]
 ]
 ```
+
+With `eip8288Format: eip8288-lean` (upstream Nethermind `feature/eip8288-lean`), the
+dependency triple carries the raw key `pkRoot16 || pkSeed16` instead of its hash,
+the account compares its keccak256 with the clone's key hash, and the third wrapper
+element is `[[dependency triple], [witness]]`.
 
 The typed transaction encodes `[chainId, [0], nonceSequence, sender, frames,
 [], [priorityFee, maxFee, 0], []]` after its `0x06` prefix. Its hash excludes the
