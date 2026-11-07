@@ -87,9 +87,10 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "health checks failed"):
                 release.health(self.config(), COMMIT)
 
-    def chain_health(self, config, chain_id):
+    def chain_health(self, chain_id):
         from unittest.mock import MagicMock
-        config["health_checks"] = [{"kind": "chain", "url": "http://127.0.0.1:3004/api/network"}]
+        config = self.config()
+        config["health_checks"] = [{"kind": "chain", "url": "http://127.0.0.1:3004/api/config"}]
         response = MagicMock()
         response.__enter__.return_value = response
         response.status = 200
@@ -97,25 +98,30 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(release.urllib.request, "urlopen", return_value=response), patch.object(release.time, "sleep"):
             release.health(config, COMMIT)
 
-    def test_chain_health_defaults_to_daisugi_and_follows_configured_chain(self):
-        self.chain_health(self.config(), 1337)
-        with self.assertRaisesRegex(RuntimeError, "health checks failed"):
-            self.chain_health(self.config(), 7357)
-        self.chain_health({**self.config(), "chain_id": 7357}, 7357)
-        with self.assertRaisesRegex(RuntimeError, "health checks failed"):
-            self.chain_health({**self.config(), "chain_id": 7357}, 1337)
+    def test_chain_health_accepts_the_chain_the_portal_verified_against_its_profile(self):
+        for chain_id in (1337, 7357):
+            self.chain_health(chain_id)
+        for chain_id in (None, "1337", 0, True):
+            with self.assertRaisesRegex(RuntimeError, "health checks failed"):
+                self.chain_health(chain_id)
 
     @unittest.skipIf(sys.platform == "win32", "Deployment configuration is Linux-specific")
-    def test_invalid_chain_id_is_rejected(self):
+    def test_chain_health_must_use_a_profile_checked_portal_endpoint(self):
         config = self.config()
         config["node"] = sys.executable
         config["npm_cli"] = sys.executable
         path = self.root / "staging.json"
-        for chain_id in ("1337", 0, True):
-            path.write_text(json.dumps({**config, "chain_id": chain_id}))
+        for url, accepted in (("http://127.0.0.1:3004/api/config", True), ("http://127.0.0.1:3004/api/network", True),
+                              ("http://127.0.0.1:3005/api/overview", False)):
+            config["health_checks"] = [{"kind": "release", "url": "http://127.0.0.1:3004/release.json"},
+                                       {"kind": "chain", "url": url}]
+            path.write_text(json.dumps(config))
             path.chmod(0o600)
-            with self.assertRaisesRegex(ValueError, "chain_id"):
-                release.read_config(path, "staging")
+            if accepted:
+                self.assertEqual(release.read_config(path, "staging"), config)
+            else:
+                with self.assertRaisesRegex(ValueError, "Chain health checks"):
+                    release.read_config(path, "staging")
 
     @unittest.skipIf(sys.platform == "win32", "Atomic directory symlink replacement requires Linux")
     def test_failed_rollback_reports_operator_intervention(self):

@@ -1,4 +1,4 @@
-import {site} from './routes.js';
+import {site, chainId} from './routes.js';
 import { formatUnits } from '/ethers.js';
 import { renderInputPanel, inputSize } from './input-data.js';
 import {renderTimestamp, formatTimestamp} from './timestamp.js';
@@ -67,7 +67,7 @@ export function renderTransactionDetails(data) {
       ${renderNativeWitnesses(data.nativeFrame)}</div>
       <p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet · Test ETH has no monetary value.</p></div>`;
   }
-  return `<div class="tx-record"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><div class="tx-record-top"><span class="record-tab">Overview</span><span class="network-label">Daisugi Testnet <span class="mono">1337</span></span></div>${errors}` +
+  return `<div class="tx-record"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><div class="tx-record-top"><span class="record-tab">Overview</span><span class="network-label">Daisugi Testnet <span class="mono">${esc(chainId)}</span></span></div>${errors}` +
     section(row('Transaction hash', `<span class="hash-value">${mono(data.hash)}${copy(data.hash)}</span>`, 'Unique identifier of this transaction.') +
       row('Status', `<span class="tx-status ${status === 'Success' ? 'success' : status === 'Failed' ? 'failed' : 'pending'}">${status === 'Success' ? '✓ ' : status === 'Failed' ? '× ' : ''}${esc(status)}</span>`, 'Receipt execution status; distinct from each UserOperation result.') +
       row('Block', blockValue, 'Confirmations include the containing block, using the latest observed chain height.') +
