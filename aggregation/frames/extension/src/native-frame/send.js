@@ -1,9 +1,9 @@
 import { formatEther, getAddress } from 'ethers';
 import { vaultManager } from '../vault/VaultManager.js';
 import { publicKey, signDigest } from './keys.js';
-import { prepareCall, submitCall, refreshRecord } from './client.js';
+import { prepareCall, submitCall, refreshRecord, recoverRecord, journalKey as journalKeyFor } from './client.js';
 import { withSigningLock } from '../transactions/signing-lock.js';
-import { createTransactionActivity } from '../transactions/transaction-activity.js';
+import { createTransactionActivity, settleActivity } from '../transactions/transaction-activity.js';
 import { busy, smartAddr, chainId } from '../ui/store.js';
 import { DEFAULT_CHAIN_ID } from '../config/chain-defaults.js';
 import { log } from '../ui/logger.js';
@@ -32,12 +32,13 @@ export async function sendCall({ to, value = 0n, data = '0x', reviewed, activity
     return await withSigningLock('native-frame-send', async (assertLock = () => {}) => {
       const guard = () => { assertContext(); assertLock(); };
       guard();
-      const journalKey = 'nt_frame_pending_' + address.toLowerCase();
+      const journalKey = journalKeyFor(address);
       const previous = (await chrome.storage.local.get(journalKey))[journalKey];
       if (previous) {
-        const resolved = await refreshRecord(previous);
+        const resolved = await recoverRecord(previous, { rebroadcast: true });
         if (resolved.status === 'pending') throw Error('A previous submission remains unresolved: ' + previous.hash);
         await chrome.storage.local.remove(journalKey);
+        await settleActivity(previous.hash, resolved);
       }
       onPhase('connecting');
       const key = await publicKey(account);
@@ -62,10 +63,20 @@ export async function sendCall({ to, value = 0n, data = '0x', reviewed, activity
           published = true;
         }
       }, guard);
+      if (record.rejected) {
+        // Nothing was admitted for this nonce, so the journal no longer protects anything.
+        await chrome.storage.local.remove(journalKey);
+        throw Object.assign(Error(record.message), { submissionRejected: true, transactionHash: record.hash });
+      }
       await history.submitted({ txHash: record.hash });
       log('Tx: ' + record.hash, 'data'); onPhase('destroying');
       for (let attempt = 0; attempt < 90; attempt++) {
-        const result = await refreshRecord(record);
+        // An uncertain submission is recovered as the poller does: same signed bytes, re-sent every 30 s.
+        const result = record.message ? await recoverRecord(record, { rebroadcast: attempt % 15 === 14 }) : await refreshRecord(record);
+        if (result.rejected) {
+          await chrome.storage.local.remove(journalKey);
+          throw Object.assign(Error(result.message), { submissionRejected: true, transactionHash: record.hash });
+        }
         if (result.status !== 'pending') {
           await history.included({ txHash: record.hash, success: result.status === 'confirmed' });
           await chrome.storage.local.remove(journalKey);

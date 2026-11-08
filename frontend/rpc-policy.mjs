@@ -54,7 +54,8 @@ export function createRpcProxy({url,nativeFramesEnabled = false,aggregationEnabl
   let identity, expires = 0;
   async function upstream(payload) {
     const response = await fetchImpl(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
-    const data = await response.json();
+    // Past this point the request may have been forwarded: no error may look like a refusal before forwarding.
+    const data = await response.json().catch(() => { throw new Error('The upstream RPC returned an invalid response.'); });
     if (!response.ok) throw new Error('The upstream RPC is unavailable.');
     return data;
   }
@@ -73,7 +74,9 @@ export function createRpcProxy({url,nativeFramesEnabled = false,aggregationEnabl
   return async payload => {
     try {validateRpcRequest(payload,{nativeFramesEnabled,aggregationEnabled});}
     catch(error) {error.status=400;error.rpcCode=-32602;throw error;}
-    if (payload.method === 'eth_sendRawTransaction' || payload.method === 'eth_sendProofWrapper') await verifyIdentity();
+    // 503 tells wallets that nothing was forwarded; 502 stays for upstream failures whose outcome is unknown.
+    if (payload.method === 'eth_sendRawTransaction' || payload.method === 'eth_sendProofWrapper')
+      await verifyIdentity().catch(error => { error.status = 503; throw error; });
     return upstream(payload.params === undefined ? {...payload,params:[]} : payload);
   };
 }
