@@ -88,6 +88,8 @@ await check('An ambiguous submission stays pending with its signed wrapper', asy
   for (const error of [Error('fetch failed'), rpcError('The upstream RPC is unavailable.', -32000, 502),
     rpcError('already known', -32000), rpcError('AlreadyKnown', -32010), rpcError('keyed nonce sequence not current', -32000),
     rpcError('replacement transaction underpriced', -32000), rpcError('Internal error', -32603),
+    rpcError('eth_sendProofWrapper request was canceled due to enabled timeout.', -32016),
+    rpcError('Request was canceled due to enabled timeout.', -32016),
     Object.assign(Error('RPC returned HTTP 502.'), { httpStatus: 502 })]) {
     const c = context({ handler(method) { if (method === 'eth_sendProofWrapper') throw error; } });
     const quote = await c.client.prepareCall(key, recipient, 1);
@@ -117,6 +119,17 @@ await check('Recovery reads the nonce before the receipt and finds an included t
   assert.equal((await r.recover({ rebroadcast: true })).status, 'confirmed');
   assert.deepEqual(r.calls.map(call => call.method), ['eth_getTransactionCount', 'eth_getTransactionReceipt']);
   assert.equal(r.calls[0].params[1], 'finalized');
+});
+await check('Without a finalized nonce only the receipt resolves a record', async () => {
+  for (const finalized of [() => { throw rpcError('unknown block: finalized', -32001); }, () => null]) {
+    let r = await recovery(method => method === 'eth_getTransactionCount' ? finalized() : method === 'eth_getTransactionReceipt' ? { status: '0x1' } : undefined,
+      receipt => receipt ? { status: 'confirmed', receipt } : { status: 'pending' });
+    assert.equal((await r.recover()).status, 'confirmed');
+    r = await recovery(method => method === 'eth_getTransactionCount' ? finalized() : undefined);
+    const outcome = await r.recover({ rebroadcast: true });
+    assert.equal(outcome.status, 'pending'); assert.equal(outcome.rejected, undefined);
+    assert.deepEqual(r.calls.filter(call => call.method === 'eth_sendProofWrapper').map(call => call.params), [[r.record.wrapper]]);
+  }
 });
 await check('A refused re-send never resolves the record: the first copy may still be admitted', async () => {
   for (const error of [rpcError('Proof admission is busy; retry later.', -32010), rpcError('a wrapper dependency proof failed verification', -32000),

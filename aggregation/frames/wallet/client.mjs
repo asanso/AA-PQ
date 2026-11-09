@@ -18,10 +18,11 @@ export function createClient(e, { config: input, rpc, receiptOutcome, now = Date
   if (typeof rpc !== 'function' || typeof receiptOutcome !== 'function') throw Error('Transport and receipt parser are required.');
   // The transport sets rpcCode on JSON-RPC errors and httpStatus on non-2xx replies. A JSON-RPC error answering the
   // submission itself proves the wrapper was not admitted: the node answered, or the gateway refused before forwarding
-  // (4xx, or 503 for its network check). Other 5xx replies, internal errors (-32603), timeouts, transport failures, and
-  // errors that a transaction already holding this nonce could cause (known, nonce, replacement, underpriced) leave it open.
+  // (4xx, or 503 for its network check). Other 5xx replies, internal errors (-32603), timeouts (-32016 or by message),
+  // transport failures, and errors that a transaction already holding this nonce could cause (known, nonce, replacement,
+  // underpriced) leave it open.
   const submit = (method, params) => rpc(method, params).catch(error => { error.submission = true; throw error; });
-  const rejected = error => error?.submission === true && Number.isInteger(error.rpcCode) && error.rpcCode !== -32603
+  const rejected = error => error?.submission === true && Number.isInteger(error.rpcCode) && ![-32603, -32016].includes(error.rpcCode)
     && !(error.httpStatus >= 500 && error.httpStatus !== 503)
     && !/already ?known|timed out|nonce|replace|underpriced/i.test(error.message ?? '');
 
@@ -139,14 +140,15 @@ export function createClient(e, { config: input, rpc, receiptOutcome, now = Date
     return result.status === 'pending' ? record : { ...record, ...result };
   }
   // Resolves a journaled submission, only by its receipt or by its nonce being used in a finalized block. The finalized
-  // nonce is read before the receipt, so a transaction included in between is found by its receipt. A re-send of the
-  // signed wrapper can help an unbroadcast submission land, but its own errors prove nothing about the first copy.
+  // nonce is read before the receipt, so a transaction included in between is found by its receipt. Without a finalized
+  // nonce (no finality yet, or the read failed) only the receipt can resolve it. A re-send of the signed wrapper can help
+  // an unbroadcast submission land, but its own errors prove nothing about the first copy.
   async function recoverRecord(record, { rebroadcast = false } = {}) {
     if (record.rejected) return { ...record, status: 'failed' };
-    const nonce = BigInt(await rpc('eth_getTransactionCount', [record.sender, 'finalized']));
+    const finalized = await rpc('eth_getTransactionCount', [record.sender, 'finalized']).catch(() => null);
     const result = await refreshRecord(record);
     if (result.status !== 'pending') return result;
-    if (nonce > BigInt(record.nonce))
+    if (finalized != null && BigInt(finalized) > BigInt(record.nonce))
       return { ...record, status: 'failed', rejected: true, message: 'Not included: another transaction used its nonce.' };
     if (!rebroadcast || !record.wrapper || e.keccak256(e.decodeRlp(record.wrapper)[0][0]) !== record.hash.toLowerCase()) return record;
     await rpc('eth_sendProofWrapper', [record.wrapper]).catch(() => {});

@@ -3,6 +3,7 @@ import {test as check} from 'node:test';
 import * as e from 'ethers';
 import { createProtocol } from '../src/aggregated-frame/protocol.mjs';
 import { createClient } from '../src/aggregated-frame/client.mjs';
+import { transportErrors } from './rpc-transport.mjs';
 
 const p = createProtocol(e);
 const key = { backupPkSeed: '0x' + '11'.repeat(16) + '00'.repeat(16), backupPkRoot: '0x' + '22'.repeat(16) + '00'.repeat(16) };
@@ -85,11 +86,37 @@ await check('An ambiguous submission stays pending with its signed wrapper', asy
   for (const error of [Error('fetch failed'), rpcError('The upstream RPC is unavailable.', -32000, 502),
     rpcError('already known', -32000), rpcError('AlreadyKnown', -32010), rpcError('keyed nonce sequence not current', -32000),
     rpcError('replacement transaction underpriced', -32000), rpcError('Internal error', -32603),
+    rpcError('eth_sendProofWrapper request was canceled due to enabled timeout.', -32016),
+    rpcError('Request was canceled due to enabled timeout.', -32016),
     Object.assign(Error('RPC returned HTTP 502.'), { httpStatus: 502 })]) {
     const c = context({ handler(method) { if (method === 'eth_sendProofWrapper') throw error; } });
     const quote = await c.client.prepareCall(key, recipient, 1);
     const record = await c.client.submitCall(quote, signed, c.persist);
     assert.equal(record.status, 'pending'); assert.equal(record.rejected, undefined); assert.match(record.message, /uncertain/);
+    assert.equal(e.keccak256(e.decodeRlp(c.journals[0].wrapper)[0][0]), record.hash);
+  }
+});
+await check('The extension transport keeps refusals definite and every unknown outcome open', async () => {
+  const reply = (status, code, message) => ({ status, body: JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code, message } }) });
+  const cases = [
+    [reply(200, -32000, 'a wrapper dependency proof failed verification'), 'failed'],
+    [reply(400, -32602, 'Native aggregation is not enabled on this endpoint.'), 'failed'],
+    [reply(503, -32000, 'Frame submission requires the configured Daisugi chain and genesis.'), 'failed'],
+    [reply(200, -32016, 'eth_sendProofWrapper request was canceled due to enabled timeout.'), 'pending'],
+    [reply(200, -32016, 'Proof wrapper admission timed out.'), 'pending'],
+    [reply(200, -32603, 'Internal error'), 'pending'],
+    [reply(502, -32000, 'The upstream RPC returned an invalid response.'), 'pending'],
+    [reply(502, -32000, 'The upstream RPC is unavailable.'), 'pending'],
+    [{ status: 504, body: '<html>Gateway Timeout</html>' }, 'pending'],
+    [{ status: 200, body: 'not json' }, 'pending'],
+    [{ fetchError: 'TimeoutError' }, 'pending'],
+    [{ fetchError: 'NetworkError' }, 'pending']];
+  const errors = transportErrors(cases.map(([fetched]) => fetched));
+  assert.deepEqual([errors[0].rpcCode, errors[0].httpStatus, errors[8].rpcCode, errors[8].httpStatus], [-32000, 200, undefined, 504]);
+  for (const [index, [, status]] of cases.entries()) {
+    const c = context({ handler(method) { if (method === 'eth_sendProofWrapper') throw errors[index]; } });
+    const record = await c.client.submitCall(await c.client.prepareCall(key, recipient, 1), signed, c.persist);
+    assert.equal(record.status, status, JSON.stringify(cases[index][0]));
     assert.equal(e.keccak256(e.decodeRlp(c.journals[0].wrapper)[0][0]), record.hash);
   }
 });
@@ -114,6 +141,17 @@ await check('Recovery reads the nonce before the receipt and finds an included t
   assert.equal((await r.recover({ rebroadcast: true })).status, 'confirmed');
   assert.deepEqual(r.calls.map(call => call.method), ['eth_getTransactionCount', 'eth_getTransactionReceipt']);
   assert.equal(r.calls[0].params[1], 'finalized');
+});
+await check('Without a finalized nonce only the receipt resolves a record', async () => {
+  for (const finalized of [() => { throw rpcError('unknown block: finalized', -32001); }, () => null]) {
+    let r = await recovery(method => method === 'eth_getTransactionCount' ? finalized() : method === 'eth_getTransactionReceipt' ? { status: '0x1' } : undefined,
+      receipt => receipt ? { status: 'confirmed', receipt } : { status: 'pending' });
+    assert.equal((await r.recover()).status, 'confirmed');
+    r = await recovery(method => method === 'eth_getTransactionCount' ? finalized() : undefined);
+    const outcome = await r.recover({ rebroadcast: true });
+    assert.equal(outcome.status, 'pending'); assert.equal(outcome.rejected, undefined);
+    assert.deepEqual(r.calls.filter(call => call.method === 'eth_sendProofWrapper').map(call => call.params), [[r.record.wrapper]]);
+  }
 });
 await check('A refused re-send never resolves the record: the first copy may still be admitted', async () => {
   for (const error of [rpcError('Proof admission is busy; retry later.', -32010), rpcError('a wrapper dependency proof failed verification', -32000),
