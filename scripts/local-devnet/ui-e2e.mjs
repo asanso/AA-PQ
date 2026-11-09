@@ -37,8 +37,9 @@ async function launch(ext) {
   const close = async () => { await ctx?.close(); rmSync(profile, { recursive: true, force: true }); };
   try {
     ctx = await chromium.launchPersistentContext(profile, { executablePath: process.env.CHROMIUM ?? '/usr/bin/chromium',
-      headless: false, viewport: { width: 420, height: 720 },
-      args: ['--headless=new', `--disable-extensions-except=${ext}`, `--load-extension=${ext}`, ...BROWSER_ARGS] });
+      // HEADED=1 shows the window; SLOW_MO=<ms> slows each browser action so a person can follow it.
+      headless: false, viewport: { width: 420, height: 720 }, slowMo: Number(process.env.SLOW_MO ?? 0),
+      args: [...(process.env.HEADED === '1' ? [] : ['--headless=new']), `--disable-extensions-except=${ext}`, `--load-extension=${ext}`, ...BROWSER_ARGS] });
     let [worker] = ctx.serviceWorkers();
     worker ??= await ctx.waitForEvent('serviceworker', { timeout: 20000 });
     return { ctx, id: new URL(worker.url()).host, close };
