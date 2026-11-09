@@ -1,4 +1,5 @@
 import {decodeRlp, encodeRlp, keccak256} from 'ethers';
+import {NETWORK, chainIdRlp} from '../explorer/network-profile.mjs';
 const bytes = v => typeof v === 'string' && /^0x(?:[0-9a-f]{2})*$/i.test(v);
 const quantity = v => bytes(v) && v.length <= 66 && (v === '0x' || !v.slice(2).startsWith('00'));
 const address = v => /^0x[0-9a-f]{40}$/i.test(v || '');
@@ -17,9 +18,9 @@ export function validateProofWrapper(raw) {
       || !Array.isArray(witnesses) || witnesses.length !== 1 || !bytes(witnesses[0]) || witnesses[0].length !== 12418)
     throw Error('Invalid dependency or signature witness encoding.');
   const tx = decodeRlp('0x'+typed.slice(4));
-  if (!Array.isArray(tx) || tx.length !== 8 || tx[0] !== '0x0539' || !Array.isArray(tx[1]) || tx[1].length !== 1
+  if (!Array.isArray(tx) || tx.length !== 8 || tx[0] !== chainIdRlp || !Array.isArray(tx[1]) || tx[1].length !== 1
       || tx[1][0] !== '0x' || !quantity(tx[2]) || integer(tx[2]) >= 1n << 64n || !address(tx[3]))
-    throw Error('Expected a chain 1337 frame transaction with nonce key zero.');
+    throw Error(`Expected a chain ${NETWORK.chainId} frame transaction with nonce key zero.`);
   const frames = tx[4];
   if (!Array.isArray(frames) || ![3,4].includes(frames.length) || !Array.isArray(tx[5]) || tx[5].length
       || !Array.isArray(tx[6]) || tx[6].length !== 3 || !tx[6].every(quantity) || integer(tx[6][0]) > integer(tx[6][1])

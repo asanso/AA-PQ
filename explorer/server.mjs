@@ -9,6 +9,7 @@ import {join} from 'node:path';
 import {createFrameIndex} from './frame-index.mjs';
 import {isFrameTransaction, nativeFrameDetails} from './native-frame.mjs';
 import {loadBlockProof} from './aggregation-proof.mjs';
+import {NETWORK} from './network-profile.mjs';
 
 const port = Number(process.env.PORT || 3001);
 const portalProxy = createPortalProxy({origin:process.env.PORTAL_ORIGIN});
@@ -22,9 +23,9 @@ async function indexFrames() {
 }
 void indexFrames();
 const addBlockTimestamps = createBlockTimestampReader(provider);
-const entryPoint = process.env.ENTRY_POINT || '0x433709009B8330FDa32311DF1C2AFA402eD8D009';
+const entryPoint = process.env.ENTRY_POINT || NETWORK.entryPoint;
 // Count native deployments from the same immutable factory used by NiceTry.
-const nativeFactory = '0xd07fcbdca6dea83b523faf95386cea236e32d989';
+const nativeFactory = NETWORK.nativeFactory.toLowerCase();
 const aggregateFactory = process.env.NATIVE_AGGREGATION_FACTORY || null;
 if (aggregateFactory && !ethers.isAddress(aggregateFactory)) throw Error('Invalid aggregation factory address');
 const aggregateIface = new ethers.Interface(['event AccountCreated(address indexed account,bytes32 indexed salt,bytes32 keyHash)']);

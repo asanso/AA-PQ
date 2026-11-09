@@ -1,5 +1,6 @@
 // Read-only capability probe. This command never funds, deploys or sends a transaction.
 import {DAISUGI_GENESIS} from '../explorer/native-frame.mjs';
+import {chainIdHex} from '../explorer/network-profile.mjs';
 
 const endpoint = new URL(process.argv[2] || '');
 if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash)
@@ -17,7 +18,7 @@ async function read(method, params = []) {
 const [client,chain,genesis,wrapper] = await Promise.all([
   read('web3_clientVersion'),read('eth_chainId'),read('eth_getBlockByNumber',['0x0',false]),read('eth_getProofWrapper'),
 ]);
-const identityMatches = chain.result === '0x539' && genesis.result?.hash === DAISUGI_GENESIS;
+const identityMatches = chain.result === chainIdHex && genesis.result?.hash === DAISUGI_GENESIS;
 const wrapperMethodAvailable = Object.hasOwn(wrapper,'result') || (wrapper.error?.code === -32000 &&
   wrapper.error.message === 'Proof wrapper is not ready; retry after the next background cycle.');
 console.log(JSON.stringify({endpoint:endpoint.href,clientVersion:client.result??null,chainId:chain.result??null,
