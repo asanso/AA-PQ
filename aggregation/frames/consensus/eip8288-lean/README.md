@@ -70,6 +70,22 @@ executable bit, symlinks; no `.git`, no ignore rules, no line-ending conversion)
 so `git rev-parse <commit>^{tree}` gives the same value for the commit the series
 reproduces.
 
+### Archive hash mismatch
+
+GitHub generates source archives on request and has changed their compression
+before. If `apply.py` reports `Source archive differs from sources.lock.json`,
+check whether only the packaging changed:
+
+```sh
+mkdir archive-check && tar -xzf lighthouse.tar.gz -C archive-check
+python3 -c 'import sys, pathlib, apply; print(apply.tree_hash(pathlib.Path(sys.argv[1])))' \
+  "archive-check/lighthouse-$revision"
+```
+
+- The output equals `pristineTree`: the source is unchanged. Update
+  `archiveSha256` in its own reviewed commit, with the old and new sha256.
+- Any other output: the source differs. Do not update the lock.
+
 ### Provenance
 
 - `0001` imports `../fork`'s Lighthouse overlay verbatim from AA-PQ `a4b1d73`
