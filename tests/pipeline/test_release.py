@@ -90,7 +90,7 @@ class ReleaseTests(unittest.TestCase):
     def chain_health(self, chain_id):
         from unittest.mock import MagicMock
         config = self.config()
-        config["health_checks"] = [{"kind": "chain", "url": "http://127.0.0.1:3004/api/config"}]
+        config["health_checks"] = [{"kind": "chain", "url": "http://127.0.0.1:3004/api/network"}]
         response = MagicMock()
         response.__enter__.return_value = response
         response.status = 200
@@ -111,7 +111,7 @@ class ReleaseTests(unittest.TestCase):
         config["node"] = sys.executable
         config["npm_cli"] = sys.executable
         path = self.root / "staging.json"
-        for url, accepted in (("http://127.0.0.1:3004/api/config", True), ("http://127.0.0.1:3004/api/network", True),
+        for url, accepted in (("http://127.0.0.1:3004/api/network", True), ("http://127.0.0.1:3004/api/config", False),
                               ("http://127.0.0.1:3005/api/overview", False)):
             config["health_checks"] = [{"kind": "release", "url": "http://127.0.0.1:3004/release.json"},
                                        {"kind": "chain", "url": url}]
@@ -122,6 +122,29 @@ class ReleaseTests(unittest.TestCase):
             else:
                 with self.assertRaisesRegex(ValueError, "Chain health checks"):
                     release.read_config(path, "staging")
+
+    @unittest.skipIf(sys.platform == "win32", "Atomic directory symlink replacement requires Linux")
+    def test_rollback_to_a_release_before_the_profile_fails_on_a_new_chain(self):
+        # The previous release hardcodes chain 1337: on a 7357 RPC its /api/config still answers 200, /api/network 503.
+        from unittest.mock import MagicMock
+        self.previous()
+        target = self.root / "releases" / COMMIT
+        target.mkdir()
+        config = self.config()
+        config["health_checks"].append({"kind": "chain", "url": "http://127.0.0.1:3004/api/network"})
+        def portal(request, timeout):
+            path = release.urllib.parse.urlsplit(request.full_url).path
+            if path == "/api/network":
+                raise release.urllib.error.HTTPError(request.full_url, 503, "Service Unavailable", {}, None)
+            response = MagicMock()
+            response.__enter__.return_value = response
+            response.status = 200
+            response.read.return_value = json.dumps({"commit": (self.root / "current").resolve().name}).encode()
+            return response
+        with patch.object(release, "restart", side_effect=[RuntimeError("new release crashed"), None]), \
+                patch.object(release.urllib.request, "urlopen", side_effect=portal), patch.object(release.time, "sleep"):
+            with self.assertRaisesRegex(RuntimeError, "operator intervention"):
+                release.activate(config, target)
 
     @unittest.skipIf(sys.platform == "win32", "Atomic directory symlink replacement requires Linux")
     def test_failed_rollback_reports_operator_intervention(self):

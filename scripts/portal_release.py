@@ -155,8 +155,9 @@ def read_config(path, environment):
                 and not url.username and not url.password and not url.fragment,
                 "Health checks must use loopback HTTP")
         require(check.get("kind") in ("release", "chain", "json"), "Unknown health check kind")
-        require(check["kind"] != "chain" or url.path in ("/api/config", "/api/network"),
-                "Chain health checks must use the portal's /api/config or /api/network")
+        # Releases before the network profile served any RPC chain on /api/config, so a rollback could pass on it.
+        require(check["kind"] != "chain" or url.path == "/api/network",
+                "Chain health checks must use the portal's /api/network")
     return config
 
 
@@ -197,8 +198,7 @@ def health(config, revision):
                 if check["kind"] == "release":
                     require(data.get("commit") == revision, "Running release does not match")
                 elif check["kind"] == "chain":
-                    # These portal endpoints answer only when the RPC serves the network profile's chain.
-                    # Before the profile, only /api/network checked the chain, so rollbacks should use it.
+                    # /api/network answers only when the RPC serves the release's own chain, in every release.
                     chain_id = data.get("chainId")
                     require(type(chain_id) is int and chain_id > 0, "Unexpected chain")
             return
