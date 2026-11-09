@@ -10,7 +10,7 @@ import {NETWORK} from '../explorer/network-profile.mjs';
 
 const root = fileURLToPath(new URL("./public", import.meta.url));
 const port = Number(process.env.PORT || 3000);
-const siteSettings = {...publicSiteConfig(), chainId:NETWORK.chainId};
+const siteSettings = {...publicSiteConfig(), chainId:NETWORK.chainId, entryPoint:NETWORK.entryPoint};
 const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:18545";
 const nativeFramesEnabled = process.env.NATIVE_FRAME_RPC_ENABLED === 'true';
 const aggregationEnabled = process.env.NATIVE_AGGREGATION_RPC_ENABLED === 'true';

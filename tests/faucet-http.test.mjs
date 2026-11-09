@@ -129,7 +129,9 @@ test('the browser and /api/config get the chain ID from the network profile', as
   for (const [profile, rpcChain, expected, name] of [[undefined, '0x539', 1337, 'Daisugi'], [alternative, '0x1cbd', 7357, 'Daisugi Next']]) {
     const f = await fixture(t, {chainId: rpcChain, profile});
     const siteConfig = await (await fetch(f.url + '/site-config.js')).text();
-    assert.equal(JSON.parse(siteConfig.match(/Object\.freeze\((.*)\);/)[1]).chainId, expected);
+    const browser = JSON.parse(siteConfig.match(/Object\.freeze\((.*)\);/)[1]);
+    assert.equal(browser.chainId, expected);
+    assert.equal(browser.entryPoint, (profile ?? {entryPoint: legacyEntryPoint}).entryPoint);
     const config = await (await fetch(f.url + '/api/config')).json();
     assert.equal(config.chainId, expected);
     assert.equal(config.networkName, name);

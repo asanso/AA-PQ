@@ -1,4 +1,4 @@
-import {site, chainId} from '/routes.js';
+import {site, chainId, entryPoint} from '/routes.js';
 import {formatUnits, isAddress} from '/ethers.js';
 import './faucet.js';
 import {renderTransactionDetails,attachTransactionDetailEvents} from './transaction-view.js';
@@ -8,6 +8,7 @@ import {renderInputPanel as dataPanel,clearInputPanels,attachInputPanelEvents} f
 
 const $ = id => document.getElementById(id);
 for (const node of document.querySelectorAll('[data-chain-id]')) node.textContent = chainId ?? '';
+for (const node of document.querySelectorAll('[data-entry-point]')) node.textContent = entryPoint ?? '';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hashPattern = /^0x[0-9a-fA-F]{64}$/;
 const short = (value, size = 8) => String(value).length > size * 2 + 3 ? String(value).slice(0,size + 2) + '…' + String(value).slice(-size) : String(value);
