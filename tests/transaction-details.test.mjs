@@ -59,6 +59,12 @@ test('trace reads coalesce and cache while confirmations refresh independently',
  const first=await Promise.all([read(tx),read(tx)]);assert.equal(calls,1);assert.equal(first[0].confirmations,11);head=25;
  assert.equal((await read(tx)).confirmations,16);assert.equal(calls,1);
 });
+test('a frame transaction read through ethers takes its max_fee budget from the raw RPC result',async()=>{
+ const sent=[];const read=createTransactionDetails({provider:{...provider,send:async(method,params)=>{sent.push([method,...params]);return{maxFee:'0xc6f3b43a26e40'};}},
+  rpcUrl:'http://rpc.local',fetchImpl:async()=>({ok:true,json:async()=>({result:frame(A,B,'0x0')})})});
+ const d=await read({...tx,type:6,maxFeePerGas:null});assert.equal(d.maxFeeWei,'3500000049000000');assert.deepEqual(sent,[['eth_getTransactionByHash',H]]);
+ assert.equal((await read(tx)).maxFeeWei,null);assert.equal(sent.length,1);
+});
 test('failed receipt/block reads leave values unavailable instead of clearing the record',async()=>{
  const read=createTransactionDetails({provider:{getTransactionReceipt:async()=>{throw new Error('offline');},getBlock:async()=>{throw new Error('offline');},getBlockNumber:async()=>{throw new Error('offline');}}});
  const d=await read(tx);assert.equal(d.hash,H);assert.equal(d.transactionFeeWei,null);assert.equal(d.timestamp,null);assert.equal(d.errors.length,3);assert.equal(d.internalTransfers.status,'unavailable');
