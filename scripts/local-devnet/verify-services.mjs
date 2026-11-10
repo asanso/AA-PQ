@@ -18,8 +18,8 @@ const EL = process.env.EL_RPC ?? 'http://127.0.0.1:28545', CL = process.env.CL_A
 const params = JSON.parse(readFileSync(join(run, 'params.json'), 'utf8'));
 const wallet = JSON.parse(readFileSync(join(run, 'aa-pq/wallet-profile.json'), 'utf8'));
 const network = JSON.parse(readFileSync(join(run, 'aa-pq/network-profile.json'), 'utf8'));
-const LEAN_RUNTIME_HASH = '0xa0fa54dffc48a5c423206cd198c7b3459baaa8b2728b7d8e7665bce52f20db13';
-const LEAN_DOMAIN = '0x921d40cefd1cb6cc36d6c4a57637e6ff75f895719fc2879118b5ec9104423d78';
+const LEAN_RUNTIME_HASH = '0x0b882e19e2b9d99498fec4d6c7df7d308c190b5e73a4ffd2542d0aef1d11b467';
+const LEAN_DOMAIN = '0xf85581336272cf62a5b94ecfef7281f771727d40ba797c1780191b82537e0768';
 const chainHex = '0x' + params.chainId.toString(16);
 const ok = (name, detail = '') => console.log('PASS', name, detail);
 // The HTTPS front is checked as https://daisugi.test:8443 with only the run's own certificate trusted.

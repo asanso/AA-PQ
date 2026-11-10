@@ -148,9 +148,9 @@ What it does:
 
 | Item | Value |
 |---|---|
-| Account domain | `Daisugi.AggregatedFrameAccount.eip8288-lean.v1` = `0x921d40cefd1cb6cc36d6c4a57637e6ff75f895719fc2879118b5ec9104423d78` |
-| Implementation runtime keccak | `0xa0fa54dffc48a5c423206cd198c7b3459baaa8b2728b7d8e7665bce52f20db13` (1671 bytes) |
-| Factory creation code keccak | `0x329de436092df862fd9473201e2aa108bdfaa24d8ef22d9eddc4a15593f3a5a1` |
+| Account domain | `Daisugi.AggregatedFrameAccount.eip8288-lean.v2` = `0xf85581336272cf62a5b94ecfef7281f771727d40ba797c1780191b82537e0768` |
+| Implementation runtime keccak | `0x0b882e19e2b9d99498fec4d6c7df7d308c190b5e73a4ffd2542d0aef1d11b467` (1646 bytes) |
+| Factory creation code keccak | `0x20b2c6800593acfdccbd46aa34420792b734993e1ca4d4867971194f30315462` |
 | Implementation address | `CREATE(factory, 1)` |
 | Factory code hash | depends on the deployment (embeds `ACCOUNT_IMPL`); recorded in `wallet-profile.json` |
 | Account address | `CREATE2(factory, 0x00…00, keccak256(0x3d604d80600a3d3981f3 ‖ 0x363d3d373d3d3d363d73 ‖ implementation ‖ 0x5af43d82803e903d91602b57fd5bf3 ‖ keccak256(pkRoot16 ‖ pkSeed16)))` |

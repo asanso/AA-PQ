@@ -16,10 +16,10 @@ const e = createRequire(join(repo, 'frontend/package.json'))('ethers');
 const solc = createRequire(join(repo, 'frame-account/package.json'))('solc');
 const { createProtocol } = await import(join(repo, 'aggregation/frames/wallet/protocol.mjs'));
 
-// The lean account domain and runtime this checkout must produce (AA-PQ A2, eip8288-lean.v1 domain).
-const LEAN_DOMAIN = '0x921d40cefd1cb6cc36d6c4a57637e6ff75f895719fc2879118b5ec9104423d78';
-const LEAN_RUNTIME_HASH = '0xa0fa54dffc48a5c423206cd198c7b3459baaa8b2728b7d8e7665bce52f20db13';
-const LEAN_FACTORY_CREATION_HASH = '0x329de436092df862fd9473201e2aa108bdfaa24d8ef22d9eddc4a15593f3a5a1';
+// The lean account domain and runtime this checkout must produce (AA-PQ A2, eip8288-lean.v2 domain).
+const LEAN_DOMAIN = '0xf85581336272cf62a5b94ecfef7281f771727d40ba797c1780191b82537e0768';
+const LEAN_RUNTIME_HASH = '0x0b882e19e2b9d99498fec4d6c7df7d308c190b5e73a4ffd2542d0aef1d11b467';
+const LEAN_FACTORY_CREATION_HASH = '0x20b2c6800593acfdccbd46aa34420792b734993e1ca4d4867971194f30315462';
 
 const p = createProtocol(e, 'eip8288-lean');
 assert.equal(p.domain, LEAN_DOMAIN, 'unexpected lean account domain');
