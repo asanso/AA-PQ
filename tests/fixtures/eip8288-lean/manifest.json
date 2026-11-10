@@ -1,22 +1,23 @@
 {
   "source": {
-    "nethermind": "NethermindEth/nethermind feature/eip8288-lean 0260e692fcf8e6b8bcb41289d877e0d5e380b5cd",
-    "capture": "disposable devnet from tools/daisugi-devnet (branch daisugi/devnet-handoff), proof.sh send; blocks via debug_getRawBlock",
-    "blockHashVector": "Nethermind Eip8288CrossClientVectorTests, shared with the Lighthouse overlay tests"
+    "nethermind": "NethermindEth/nethermind feature/eip8288-lean b0e83c01bf61669f8d0d30531afcc9ea364ef0d5 (head of #15721)",
+    "lighthouse": "AA-PQ eip8288-lean patch series 0001-0010",
+    "capture": "disposable devnet from tools/daisugi-devnet (branch daisugi/devnet-handoff), proof.sh send with the current EIP-8141 envelope; blocks via debug_getRawBlock",
+    "blockHashVector": "port of Nethermind Eip8288CrossClientVectorTests with the current EIP-8141 rules, shared with the Lighthouse series tests"
   },
   "chainId": 1337,
   "wrapper": {
     "file": "wrapper.rlp",
-    "txHash": "0xe0d9608c31f33da2e404ed34b7c658be78f2cdd22ff54ac7e496ff415e69d4ea",
-    "signatureHash": "0xac6416e177bc74a6fa156a82862ffda0a6b4e2071c785b1e8aab27e61d6fad21",
-    "depsHash": "0x734df3b61e637d6f6d19cfd7de771b0c95390c8cf979041de61ad81b55527d7c",
+    "txHash": "0xff4864d02d67dc69bb751eb6b71fd87d79b50d43cb1976daa3dd86e34ed461ff",
+    "signatureHash": "0x3c447a061c61a0bc705029094c1ccf20147517f11d6b4d15ad7545ea21820065",
+    "depsHash": "0x6c17ebc04b5a84f7db3678aee430035df1b481d59de24ff45e30431c6c974283",
     "response": "accepted by eth_sendProofWrapper"
   },
   "walletWrapper": {
     "file": "wallet-wrapper.rlp",
-    "txHash": "0x0e029466c16f27b2b464daca97b03ce3728f32b29710f4da1a4678b1b7e2c9ff",
-    "capture": "AA-PQ wallet (eip8288-lean) through the RPC gateway, deployed account, included with status 1",
-    "accountDomain": "Daisugi.AggregatedFrameAccount.v2, before eip8288-lean had its own domain; the gateway checks its structure only",
+    "txHash": "0xb7bcf2858cbe7a6a404af59592350073f31f9f0c973212dee0e3438f20711676",
+    "capture": "AA-PQ wallet client (eip8288-lean, eip8288-lean.v2 account) with a real SPHINCS-G signature through the RPC gateway, deployed account, included with status 1",
+    "accountDomain": "Daisugi.AggregatedFrameAccount.eip8288-lean.v2",
     "response": "accepted by eth_sendProofWrapper"
   },
   "rejectedWrappers": {
@@ -29,23 +30,23 @@
     "preFork": {
       "number": 95,
       "file": "block-95.rlp",
-      "hash": "0x42d569accb38b2b4c09347bb106064c34240deff7a21809e57d1c9dcf6f87f74"
+      "hash": "0x8c934a900bd29f08b83d3f5c501b74ab1205cd900f585917ec0164c334090a2f"
     },
     "firstFork": {
       "number": 96,
       "file": "block-96.rlp",
-      "hash": "0x4260937dd68859b3313b1ddd0e9ebd4e80b639c427152cdbe6af490d2e48e722"
+      "hash": "0xbf717e7aba0254574c2de791a32426ca5bd5a9863828e3e6494124005d4ac27e"
     },
     "proof": {
-      "number": 252,
-      "file": "block-252.rlp",
-      "hash": "0xe1b98fed649d12a421490ef60015c67b700dcc8b86e65127168a59042d02bccf",
-      "transaction": "0xe0d9608c31f33da2e404ed34b7c658be78f2cdd22ff54ac7e496ff415e69d4ea"
+      "number": 222,
+      "file": "block-222.rlp",
+      "hash": "0xc260befcfdd027bfa416a8716895c11cf75d3109e8b21069355fbb046da48ee1",
+      "transaction": "0xff4864d02d67dc69bb751eb6b71fd87d79b50d43cb1976daa3dd86e34ed461ff"
     },
     "laterEmpty": {
-      "number": 253,
-      "file": "block-253.rlp",
-      "hash": "0xa0c62c0b85b48f7b0099f3632178dea7b73db548e71c6a81c986b95b99eff290"
+      "number": 223,
+      "file": "block-223.rlp",
+      "hash": "0xfb2884d35ec8cdacc13131e85b5de8b7ca2b4f96743fa016a9291e136ecd2b9d"
     }
   }
 }

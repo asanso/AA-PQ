@@ -27,7 +27,7 @@ test('E1: the proof-bearing upstream block commits to its body proof and BLAKE2s
   const {file, hash, transaction} = manifest.blocks.proof;
   const result = decode(raw(file), hash, transaction);
   assert.equal(result.status, 'available');
-  assert.equal(result.proofBytes, 325792);
+  assert.equal(result.proofBytes, 326624);
   assert.equal(result.commitment, manifest.wrapper.depsHash);
   assert.equal(result.commitmentMatches, true);
   assert.equal(result.claimCount, 2);
@@ -136,8 +136,12 @@ test('G2: the gateway refuses wrappers outside the wallet profile', () => {
     'trailing bytes after the transaction': [/Invalid frame transaction encoding\.$/, w => { w[0][0] += '00'; }],
     // Nonce 2 written as the one-byte string 0x8102 instead of 0x02.
     'a non-canonical transaction': [/Invalid frame transaction encoding\.$/, w => {
-      assert.equal(w[0][0].slice(0, 16), '0x06f8ee820539c180'.slice(0, 16));
-      w[0][0] = '0x06f8ef820539c1808102' + w[0][0].slice(20); }],
+      assert.equal(w[0][0].slice(0, 18), '0x06f8cf820539c002');
+      w[0][0] = '0x06f8d0820539c08102' + w[0][0].slice(18); }],
+    // The current EIP-8141 envelope: empty nonce keys select the account nonce, fees = [max_fee, max_priority_fee_per_gas].
+    'nonce key zero': [/the account nonce/, w => { const t = tx(w); t[1] = ['0x']; setTx(w, t); }],
+    'a three-item fee list': [/envelope/, w => { const t = tx(w); t[6] = [t[6][1], t[6][0], '0x']; setTx(w, t); }],
+    'a priority fee above max_fee': [/envelope/, w => { const t = tx(w); t[6] = [t[6][1], t[6][0]]; setTx(w, t); }],
   };
   for (const [name, [reason, mutate]] of Object.entries(cases)) {
     const w = parts(); mutate(w);
@@ -168,5 +172,5 @@ test('G3: the gateway accepts only wallet wrappers signed for the profile chain'
     console.log(JSON.stringify([check(process.argv[1]), check(process.argv[2])]));`;
   const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', probe, other.wrapper, wrapper],
     {cwd: new URL('..', import.meta.url), env: {...process.env, DAISUGI_NETWORK_PROFILE: file}, maxBuffer: 1 << 20});
-  assert.deepEqual(JSON.parse(stdout), [other.hash, 'Expected a chain 7357 frame transaction with nonce key zero.']);
+  assert.deepEqual(JSON.parse(stdout), [other.hash, 'Expected a chain 7357 frame transaction with the account nonce.']);
 });

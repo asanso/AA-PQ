@@ -19,6 +19,11 @@ test('legacy, pending and missing fee data do not become fabricated zero values'
  assert.equal(pending.status,'Pending');assert.equal(pending.transactionFeeWei,null);assert.equal(pending.effectiveGasPriceWei,null);assert.equal(pending.confirmations,null);
  const missing=transactionMetrics(tx,{...receipt,gasPrice:null},block,null);assert.equal(missing.transactionFeeWei,null);assert.equal(missing.confirmations,null);
 });
+test('an EIP-8141 frame transaction reports its max_fee budget instead of a per-gas cap',()=>{
+ const frame=transactionMetrics({...tx,type:6,maxFeePerGas:null,maxFee:3500000049000000n},receipt,block,20);
+ assert.equal(frame.maxFeeWei,'3500000049000000');assert.equal(frame.maxFeePerGasWei,null);assert.equal(frame.transactionFeeWei,'252000');
+ assert.equal(transactionMetrics(tx,receipt,block,20).maxFeeWei,null);
+});
 test('blob transaction totals include blob fee, or remain unknown when that component is missing',()=>{
  const d=transactionMetrics({...tx,type:3},{...receipt,blobGasUsed:100n,blobGasPrice:2n},block,20);
  assert.equal(d.executionFeeWei,'252000');assert.equal(d.blobFeeWei,'200');assert.equal(d.transactionFeeWei,'252200');
