@@ -12,7 +12,11 @@ overlay**: build that branch commit as is. The legacy Nethermind overlay in
 `../fork` is for the live chain only.
 
 The pinned Nethermind commit is **interim** (`revisionStatus` in the lock): it is
-the commit this patch series was validated against, not the deployable release. Its
+the commit this patch series was validated against, not the deployable release. It
+is the merge of NethermindEth/nethermind#15721, which keeps EIP-7843 off unless it is
+scheduled, so a Prague-based chain keeps the zero slot placeholder. Its Git tree
+equals the PR head `b0e83c01bf` that the series was validated against. `previouslyValidated` keeps the earlier pin, `0260e692fc`, whose
+EIP-8141 rules differ (see [EIP-8141 rules](#eip-8141-rules)). Its
 standard artifacts don't include the native Lean library yet (see
 [Fresh genesis](#fresh-genesis)). Once Nethermind takes that library from a pinned
 NuGet package, a later `feature/eip8288-lean` commit replaces this pin, and the
@@ -33,6 +37,19 @@ v8.2.2 `e423a667`, same `Daisugi` fork, SSZ tag 8) and changes it as follows.
 
 This format is **not compatible with the live chain**. It needs a fresh EL and CL
 genesis.
+
+### EIP-8141 rules
+
+Lighthouse decodes frame transactions in two places: the dependency hash of the block
+hash check (`daisugi_block_hash.rs`) and the blob hashes of optimistic sync
+(`versioned_hashes.rs`). Both follow the pinned Nethermind commit:
+
+- `compute_sig_hash` replaces the signature bytes of empty-`msg` entries with their
+  length (ethereum/EIPs#12502). A zero `data_hash` dependency resolves to this hash.
+- `fees` is `[max_fee, max_priority_fee_per_gas]` (NethermindEth/nethermind#14374).
+
+A block produced under `0260e692fc` (signature bytes elided, three fee items) does
+not reproduce, and this series refuses its frame transactions.
 
 ## Source preparation
 
@@ -90,7 +107,7 @@ python3 -c 'import sys, pathlib, apply; print(apply.tree_hash(pathlib.Path(sys.a
 
 - `0001` imports `../fork`'s Lighthouse overlay verbatim from AA-PQ `a4b1d73`
   (introduced by GianlucaFelli in `3bfba07`), attributed to that author.
-- `0002`-`0008` are the EIP-8288 changes, with their original authors and
+- `0002`-`0010` are the EIP-8288 changes, with their original authors and
   messages. `sources.lock.json` maps each one to its original commit.
 
 ### Updating the series
@@ -117,7 +134,10 @@ cargo test --release --locked -p execution_layer -p types
 ```
 
 The `daisugi_block_hash` tests reproduce Nethermind's cross-client vector and two
-real devnet blocks, one of them proof-bearing (`src/test_fixtures`).
+real devnet blocks, one of them proof-bearing with zero `data_hash` dependencies
+(`src/test_fixtures`), and check that a proof-bearing block hashed under the earlier
+rule no longer reproduces. The `versioned_hashes` tests read the blob hashes of
+Nethermind-encoded frame transactions.
 
 The `beacon_chain` suite on the Daisugi fork:
 

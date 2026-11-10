@@ -4,17 +4,24 @@
   "nethermind": {
     "repository": "NethermindEth/nethermind",
     "branch": "feature/eip8288-lean",
-    "revision": "0260e692fcf8e6b8bcb41289d877e0d5e380b5cd",
+    "revision": "1e5d1fa8a071b0b329a243437d00026e1d4a72df",
     "revisionStatus": "interim",
-    "revisionNote": "Integration commit for this overlay, not the deployable release. Standard Nethermind artifacts at this revision omit the native Lean library (libnethermind_lean.so); a later feature/eip8288-lean commit that takes it from a pinned NuGet package replaces this pin.",
-    "archiveSha256": "02df09b559ba8d56e081e4e148daec9994a4304f891e2b1c39d2695636fe9fa0",
+    "revisionNote": "Merge of NethermindEth/nethermind#15721 into feature/eip8288-lean: EIP-7843 only when scheduled, so a Prague-based chain keeps the zero slot placeholder. Same Git tree as the validated PR head b0e83c01bf61669f8d0d30531afcc9ea364ef0d5. Standard Nethermind artifacts at this revision omit the native Lean library (libnethermind_lean.so); a later feature/eip8288-lean commit that takes it from a pinned NuGet package replaces this pin.",
+    "gitTree": "5127b1b596519981e0ad309d50f022cbaa65b2e7",
     "overlay": null,
     "dependencyMode": 4,
     "dependencyCommitment": "BLAKE2s-256 over sorted, deduplicated (data_hash || key) entries; with any leanSTARK dependency, BLAKE2s-256(leanSPHINCS list hash || leanSTARK list hash || \"eip8288/leanstark-deps\" zero-padded to 32 bytes)",
     "proofHeaderCommitment": "keccak256(stark_proof)",
-    "nativeAbi": 9,
+    "nativeAbi": 10,
     "leanvmRepository": "Marchhill/leanVM",
-    "leanvmRevision": "e2bc4212013087c0823188e975b224ade286d878"
+    "leanvmRevision": "e2bc4212013087c0823188e975b224ade286d878",
+    "frameTransactionRules": "ethereum/EIPs#12502 signature lengths in compute_sig_hash; fees = [max_fee, max_priority_fee_per_gas] (NethermindEth/nethermind#14374); empty nonce_keys selects the account nonce (ethereum/EIPs#12511)",
+    "previouslyValidated": {
+      "revision": "0260e692fcf8e6b8bcb41289d877e0d5e380b5cd",
+      "archiveSha256": "02df09b559ba8d56e081e4e148daec9994a4304f891e2b1c39d2695636fe9fa0",
+      "nativeAbi": 9,
+      "note": "Previously validated baseline: EIP-8141 signature hashes elide signature bytes, fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas], nonce_keys [0] selects the account nonce."
+    }
   },
   "lighthouse": {
     "repository": "sigp/lighthouse",
@@ -22,7 +29,7 @@
     "archiveSha256": "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c",
     "patchSeries": {
       "pristineTree": "ab477c0379d547f44498a3e67de42ae3b44ba010",
-      "patchedTree": "adcc0b7592016683ccc5829298530629721eb916",
+      "patchedTree": "0ba3a4462074193912ccf748defface5d991b5e0",
       "provenance": {
         "inherited": {
           "patches": [
@@ -39,7 +46,9 @@
             "0005-test-daisugi-reproduce-the-hash-of-a-proof-bearing-d.patch",
             "0006-test-daisugi-reject-a-reconstructed-payload-body-wit.patch",
             "0007-build-daisugi-build-the-reproducible-image-on-bookwo.patch",
-            "0008-fix-daisugi-reject-the-zero-block-hash-of-an-undecod.patch"
+            "0008-fix-daisugi-reject-the-zero-block-hash-of-an-undecod.patch",
+            "0009-fix-daisugi-commit-to-signature-lengths-in-the-EIP-8.patch",
+            "0010-fix-daisugi-read-the-two-item-EIP-8141-fee-list-when.patch"
           ],
           "originalCommits": [
             "20712977998f25ba9aedd05c58a42d0f932869df",
@@ -48,7 +57,9 @@
             "db4536d4e3add011256d1370548fa726ea5ab500",
             "0e5db88e568ebb0a1f7bb4583ad66a3d73f16afa",
             "17dd930dc5a5fcdf1bc9744f9c03b766478040da",
-            "be498c6615e79672ece8ba7256d90ce5f59052b2"
+            "be498c6615e79672ece8ba7256d90ce5f59052b2",
+            "422bb14350a3ab934af2044a2464c05c191ea44a",
+            "285238b365640944e8ad2d67999ac8d16add6c60"
           ]
         }
       },
@@ -84,6 +95,14 @@
         {
           "file": "0008-fix-daisugi-reject-the-zero-block-hash-of-an-undecod.patch",
           "sha256": "71a02c142e67ada3489214758f4109139e189a39942f2d6ecd601178483fa6ab"
+        },
+        {
+          "file": "0009-fix-daisugi-commit-to-signature-lengths-in-the-EIP-8.patch",
+          "sha256": "a9d560cf4f3701d304eed0a918d1d3adfe1e2bae8ced6886dba317cc277b8718"
+        },
+        {
+          "file": "0010-fix-daisugi-read-the-two-item-EIP-8141-fee-list-when.patch",
+          "sha256": "ca8cb4318695cca2ac0dbde2d2ca7850f0af4e2c334465eb5104e5e0338b6750"
         }
       ]
     },
@@ -97,7 +116,7 @@
       "features": "jemalloc-unprefixed,portable",
       "amd64": {
         "rustImage": "rust:1.91-bookworm@sha256:8322627e69ba7780b54f39e9f4d3758c006a3ae0123ea01d63b91f0626169891",
-        "binarySha256": "2e709e64cb111070fb4846d98f928dffd0d646904574a07478ffcb02aa390bcb"
+        "binarySha256": "b249885cf90b06d772ce1eb94757e816c0910f514d200610f328991961d88eb2"
       },
       "arm64": {
         "rustImage": "rust:1.91-bookworm@sha256:20262682d0201e219012287e8c1e6a7a14b6ebd46bb2b280714f23c06678c285",

@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Manuel Arto <manuelartociao@gmail.com>
+Date: Tue, 10 Nov 2026 18:34:08 +0100
+Subject: [PATCH 10/10] fix(daisugi): read the two-item EIP-8141 fee list when
+ extracting blob hashes
+
+NethermindEth/nethermind#14374 replaces the frame transaction fee list with
+[max_fee, max_priority_fee_per_gas]. Optimistic sync extracts the blob hashes
+of every frame transaction, so a three-item reader failed on each block with a
+frame transaction and fell back to the execution layer.
+
+The proof-bearing block 447 fixture now also passes the local optimistic sync
+checks, and a Nethermind-encoded frame transaction with a blob hash pins the
+extraction.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../execution_layer/src/daisugi_block_hash.rs | 18 +++++++++++
+ .../execution_layer/src/versioned_hashes.rs   | 31 +++++++++++++++++--
+ 2 files changed, 46 insertions(+), 3 deletions(-)
+
+diff --git a/beacon_node/execution_layer/src/daisugi_block_hash.rs b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+index de70c8950c6c450188f9252be985ff27635e1af1..304b59efd3b2a8566132e98110fe6678d4160390 100644
+--- a/beacon_node/execution_layer/src/daisugi_block_hash.rs
++++ b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+@@ -308,6 +308,7 @@ mod test {
+ #[cfg(test)]
+ mod devnet_test {
+     use crate::calculate_execution_block_hash;
++    use crate::engine_api::{NewPayloadRequest, NewPayloadRequestDaisugi};
+     use serde::Deserialize;
+     use types::{
+         ExecutionPayloadDaisugi, ExecutionPayloadRef, ExecutionRequests, Hash256, MainnetEthSpec,
+@@ -360,4 +361,21 @@ mod devnet_test {
+             "test_fixtures/daisugi_devnet_zero_data_hash_proof_block.json"
+         ));
+     }
++
++    /// Optimistic sync checks the block hash and the versioned hashes locally; the same block must pass
++    /// both without the execution layer.
++    #[test]
++    fn proof_bearing_block_with_signature_lengths_passes_optimistic_sync_checks() {
++        let block: Block = serde_json::from_str(include_str!(
++            "test_fixtures/daisugi_devnet_zero_data_hash_proof_block.json"
++        ))
++        .unwrap();
++        let request = NewPayloadRequest::Daisugi(NewPayloadRequestDaisugi {
++            execution_payload: &block.payload,
++            versioned_hashes: vec![],
++            parent_beacon_block_root: block.parent_beacon_block_root,
++            execution_requests: &block.execution_requests,
++        });
++        request.perform_optimistic_sync_verifications().unwrap();
++    }
+ }
+diff --git a/beacon_node/execution_layer/src/versioned_hashes.rs b/beacon_node/execution_layer/src/versioned_hashes.rs
+index 926b449d38cd3adee5f539807091a053b5da7ac5..683ec071ce9bbe3dfa4f8d2a6170d55a1a2274f4 100644
+--- a/beacon_node/execution_layer/src/versioned_hashes.rs
++++ b/beacon_node/execution_layer/src/versioned_hashes.rs
+@@ -69,8 +69,9 @@ pub fn extract_versioned_hashes_from_transactions<E: EthSpec>(
+     Ok(versioned_hashes)
+ }
+ 
+-/// Extract blob hashes from both historical scalar and keyed-nonce frame envelopes.
+-/// This validates the outer envelope only, not frame execution or signatures.
++/// Extract blob hashes from both scalar and keyed-nonce frame envelopes, whose fee list is
++/// `[max_fee, max_priority_fee_per_gas]`. This validates the outer envelope only, not frame
++/// execution or signatures.
+ fn frame_versioned_hashes(mut encoded: &[u8]) -> Result<Vec<VersionedHash>, alloy_rlp::Error> {
+     use alloy_rlp::{Error as RlpError, Header};
+     let mut fields = Header::decode_bytes(&mut encoded, true)?;
+@@ -90,7 +91,7 @@ fn frame_versioned_hashes(mut encoded: &[u8]) -> Result<Vec<VersionedHash>, allo
+     let _frames = Header::decode_bytes(&mut fields, true)?;
+     let _signatures = Header::decode_bytes(&mut fields, true)?;
+     let mut fees = Header::decode_bytes(&mut fields, true)?;
+-    for _ in 0..3 {
++    for _ in 0..2 {
+         let fee = Header::decode_bytes(&mut fees, false)?;
+         if fee.len() > 32 || fee.first() == Some(&0) {
+             return Err(RlpError::Custom("Invalid frame fee"));
+@@ -184,4 +185,28 @@ mod test {
+             .expect("should get versioned hashes");
+         assert_eq!(versioned_hashes, expected_versioned_hashes);
+     }
++
++    /// Frame transactions encoded by Nethermind `feature/eip8288-lean` at `b0e83c01bf`, whose fee list is
++    /// `[max_fee, max_priority_fee_per_gas]`: one with a blob hash and empty nonce keys, one with a scalar nonce.
++    #[test]
++    fn frame_versioned_hashes_follow_the_two_item_fee_list() {
++        let with_blob = hex::decode("06f850820539c00194475674cb523a0a2736b7f7534390288fce16982ccccb010380c5830186a0808001c0c5830f424001e1a001aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").unwrap();
++        assert_eq!(
++            frame_versioned_hashes(&with_blob[1..]).unwrap(),
++            vec![Hash256::from_slice(
++                &hex::decode("01aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
++                    .unwrap()
++            )]
++        );
++        let without_blob = hex::decode("06f891820539c0809476e68a8696537e4141926f3e528733af9e237d69f86df86b048080c48275308080b8600000000000000000000000000000000000000000000000000000000000000011843b123350af3b9ab648aaf94c99e96eaac7c772f7a62ed71638fc18cc411cdcfb447eee02953c223589c6fcf36eea0b02688593efecd35a0862f4bc47519a08c0c5830f424001c0").unwrap();
++        assert!(
++            frame_versioned_hashes(&without_blob[1..])
++                .unwrap()
++                .is_empty()
++        );
++
++        // The earlier `[max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]` list is refused.
++        let three_fees = hex::decode("06f890820539c180809476e68a8696537e4141926f3e528733af9e237d69f86df86b048080c48275308080b8600000000000000000000000000000000000000000000000000000000000000011843b123350af3b9ab648aaf94c99e96eaac7c772f7a62ed71638fc18cc411cdcfb447eee02953c223589c6fcf36eea0b02688593efecd35a0862f4bc47519a08c0c3010a80c0").unwrap();
++        assert!(frame_versioned_hashes(&three_fees[1..]).is_err());
++    }
+ }
