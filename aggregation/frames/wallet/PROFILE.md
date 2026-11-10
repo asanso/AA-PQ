@@ -36,10 +36,14 @@ DEP_VERIFY uses 3000 execution gas and zero state gas. VERIFY requires at least
 The digest is Keccak-256 over consecutive 32-byte words, in this order:
 
 1. `keccak256("Daisugi.AggregatedFrameAccount.v2")`, or
-   `keccak256("Daisugi.AggregatedFrameAccount.eip8288-lean.v1")` for `eip8288-lean`.
+   `keccak256("Daisugi.AggregatedFrameAccount.eip8288-lean.v2")` for `eip8288-lean`.
 2. Chain ID, sender address, immutable authorized-key hash and transaction type 6.
-3. Nonce sequence and the client commitment to the single zero nonce key.
-4. Max priority fee, max fee, zero max blob fee and frame count.
+3. Nonce sequence and the client commitment to the nonce key set: the single zero
+   key, or for `eip8288-lean` the empty set that selects the account nonce
+   (ethereum/EIPs#12511), `keccak256(bytes32(0))`.
+4. Max priority fee, max fee, zero max blob fee and frame count. For `eip8288-lean`,
+   max fee is the transaction's total fee budget (`max_fee`) and there is no blob fee
+   word: the envelope has no per-gas or blob fee caps, and TXPARAM `0x05` is undefined.
 5. For each frame: resolved target, execution gas, mode, flags, calldata length,
    value, state gas and calldata hash.
 

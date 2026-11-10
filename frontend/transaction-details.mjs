@@ -27,7 +27,7 @@ export function transactionMetrics(tx,receipt,block,head) {
     confirmations:mined&&blockNumber!=null&&head!=null?Math.max(0,Number(head)-Number(blockNumber)+1):null,
     observedHead:head??null,timestamp:block?.timestamp??null,
     valueWei:decimal(tx.value),gasLimit:decimal(limit),gasUsed:decimal(used),gasUsedPercent:percent(used,limit),
-    effectiveGasPriceWei:decimal(price),baseFeePerGasWei:decimal(base),maxFeePerGasWei:decimal(cap),maxPriorityFeePerGasWei:decimal(tx.maxPriorityFeePerGas),
+    effectiveGasPriceWei:decimal(price),baseFeePerGasWei:decimal(base),maxFeePerGasWei:decimal(cap),maxFeeWei:decimal(tx.maxFee),maxPriorityFeePerGasWei:decimal(tx.maxPriorityFeePerGas),
     transactionFeeWei:decimal(fee),executionFeeWei:decimal(execution),burntExecutionFeeWei:decimal(burnt),feeSavingWei:decimal(saving),
     blobGasUsed:decimal(blobUsed),blobGasPriceWei:decimal(blobPrice),blobFeeWei:decimal(blobFee),
     type:tx.type??null,nonce:decimal(tx.nonce),transactionIndex:receipt?.index??receipt?.transactionIndex??tx.index??null,

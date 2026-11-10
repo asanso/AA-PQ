@@ -285,12 +285,13 @@ await check('eip8288-lean declares the raw key in a dependency list and keeps th
 });
 await check('Each format signs under its own account domain, also on the same chain', () => {
   assert.equal(p.domain, e.keccak256(e.toUtf8Bytes('Daisugi.AggregatedFrameAccount.v2')));
-  assert.equal(lean.domain, e.keccak256(e.toUtf8Bytes('Daisugi.AggregatedFrameAccount.eip8288-lean.v1')));
+  assert.equal(lean.domain, e.keccak256(e.toUtf8Bytes('Daisugi.AggregatedFrameAccount.eip8288-lean.v2')));
   const legacy = p.prepare(options), prepared = lean.prepare(options);
   assert.equal(prepared.transaction.chainId, legacy.transaction.chainId);
   assert.notEqual(prepared.digest, legacy.digest);
-  // The same transaction and key hash to different digests under the two domains.
-  assert.notEqual(lean.digest(prepared.transaction, prepared.keyHash), p.digest(prepared.transaction, prepared.keyHash));
+  // Each format refuses the other's envelope, so a transaction signed for one never hashes under the other.
+  assert.throws(() => p.digest(prepared.transaction, prepared.keyHash), /Nonce key zero/);
+  assert.throws(() => lean.digest(legacy.transaction, legacy.keyHash), /empty nonce keys/);
   // A dependency carrying the other format's digest is refused before signing is accepted.
   const swapped = structuredClone(prepared);
   swapped.digest = legacy.digest;
@@ -301,12 +302,17 @@ await check('Each format signs under its own account domain, also on the same ch
   assert.ok(legacyRuntime.includes('7f' + p.domain.slice(2)) && !legacyRuntime.includes(lean.domain.slice(2)));
   assert.ok(leanRuntime.includes('7f' + lean.domain.slice(2)) && !leanRuntime.includes(p.domain.slice(2)));
 });
-await check('eip8288-lean account runtime differs only by hashing the declared key and its domain', () => {
+await check('eip8288-lean account runtime hashes the declared key and reads only the current TXPARAM fields', () => {
   const legacyRuntime = e.getBytes(p.implementationRuntime()), leanRuntime = e.getBytes(lean.implementationRuntime());
   // The current network's deployed implementation must not change.
   assert.equal(e.keccak256(legacyRuntime), '0xd489c81ebe91f1a94a9b6caf284532fd6aaf14b95f59a1925f28cd2146ef994b');
-  assert.equal(leanRuntime.length, legacyRuntime.length + 20);
-  assert.equal(e.keccak256(leanRuntime), '0xa0fa54dffc48a5c423206cd198c7b3459baaa8b2728b7d8e7665bce52f20db13');
+  assert.equal(e.keccak256(leanRuntime), '0x0b882e19e2b9d99498fec4d6c7df7d308c190b5e73a4ffd2542d0aef1d11b467');
+  // TXPARAM 0x05 (max_fee_per_blob_gas) is undefined upstream and halts; empty nonce keys make TXPARAM 0x0E zero.
+  const txparam = (runtime, field) => e.hexlify(runtime).includes(e.hexlify(new Uint8Array([0x60, field, 0xb0])).slice(2));
+  assert.equal(txparam(leanRuntime, 0x05), false); assert.equal(txparam(legacyRuntime, 0x05), true);
+  const nonceKeyCount = value => e.hexlify(new Uint8Array([0x60, 0x0e, 0xb0, 0x60, value, 0x14])).slice(2);
+  assert.ok(e.hexlify(leanRuntime).includes(nonceKeyCount(0)) && !e.hexlify(leanRuntime).includes(nonceKeyCount(1)));
+  assert.ok(e.hexlify(legacyRuntime).includes(nonceKeyCount(1)));
   // Both frame-count paths load the dependency key, then MSTORE it at 3072 and KECCAK256 those 32 bytes.
   const hashing = e.hexlify(new Uint8Array([0x61, 0x0c, 0x00, 0x52, 0x60, 0x20, 0x61, 0x0c, 0x00, 0x20])).slice(2);
   assert.equal(e.hexlify(leanRuntime).split(hashing).length - 1, 2);
@@ -322,6 +328,34 @@ await check('A client pins the runtime of its configured format', () => {
     rpc: async () => {}, receiptOutcome: () => {} }), /Unsupported account profile/);
   assert.throws(() => createClient(e, { config: { ...config, eip8288Format: 'eip8288-lean' }, rpc: async () => {}, receiptOutcome: () => {} }),
     /Unsupported account profile/);
+});
+
+await check('eip8288-lean encodes empty nonce keys and fees = [max_fee, max_priority_fee_per_gas]', () => {
+  const prepared = lean.prepare(options), payload = e.decodeRlp('0x' + lean.signedRequest(prepared, signed.signature).raw.slice(4));
+  assert.deepEqual(prepared.transaction.nonceKeys, []); assert.equal('maxBlobFee' in prepared.transaction, false);
+  assert.deepEqual(payload[1], []); assert.deepEqual(payload[6], [e.toBeHex(options.maxFee), e.toBeHex(options.priorityFee)]);
+  // daisugi-v1 keeps nonce key zero and [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas].
+  const legacy = e.decodeRlp('0x' + p.signedRequest(p.prepare(options), signed.signature).raw.slice(4));
+  assert.deepEqual(legacy[1], ['0x']); assert.deepEqual(legacy[6], [e.toBeHex(options.priorityFee), e.toBeHex(options.maxFee), '0x']);
+});
+await check('eip8288-lean signs the account-nonce key set and refuses the other envelope', () => {
+  const prepared = lean.prepare(options), tx = prepared.transaction, digest = t => lean.digest(t, prepared.keyHash);
+  // The digest commits to TXPARAM 0x0F, keccak256(bytes32(0)) for the account nonce, and to the total max_fee.
+  assert.equal(digest(tx), prepared.digest);
+  assert.notEqual(digest({ ...tx, maxFee: String(BigInt(tx.maxFee) + 1n) }), prepared.digest);
+  assert.throws(() => digest({ ...tx, nonceKeys: ['0'] }), /empty nonce keys/);
+  assert.throws(() => digest({ ...tx, maxBlobFee: '0' }), /Unsupported envelope fields/);
+  assert.throws(() => p.digest({ ...tx, maxBlobFee: '0' }, prepared.keyHash), /Nonce key zero/);
+});
+await check('eip8288-lean signs the reviewed fee reservation as its max_fee budget', async () => {
+  const leanConfig = { ...config, eip8288Format: 'eip8288-lean', implementationCodeHash: e.keccak256(lean.implementationRuntime()), profile: lean.domain };
+  const c = context({}, leanConfig);
+  c.state.handler = (method, params) => method === 'eth_getCode' && params[0] === config.implementation ? lean.implementationRuntime() : undefined;
+  const quote = await c.client.prepareCall(key, recipient, 1n);
+  assert.equal(quote.payload.transaction.maxFee, quote.feeReserve.toString());
+  assert.ok(quote.feeReserve > quote.maxFee * quote.reserveGas - 1n && quote.reserveGas >= 3000000n);
+  const legacy = await context().client.prepareCall(key, recipient, 1n);
+  assert.equal(legacy.payload.transaction.maxFee, legacy.maxFee.toString());
 });
 
 console.log(JSON.stringify({ passed: checked, liveRequests: 0 }));

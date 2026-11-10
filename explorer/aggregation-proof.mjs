@@ -60,10 +60,12 @@ const frameTransaction = typed => {
   if (!Array.isArray(tx) || ![7, 8].includes(tx.length)) throw Error('Malformed frame envelope.');
   return tx;
 };
-/** EIP-8141 signature hash: keccak256(0x06 || rlp(tx)) with the signature bytes of empty-msg entries elided. */
+/** EIP-8141 signature hash: keccak256(0x06 || rlp(tx)) with the signature bytes of empty-msg entries replaced by
+ * their length (ethereum/EIPs#12502). */
 export function frameSignatureHash(typed) {
   const tx = frameTransaction(typed), signatures = tx.length === 8 ? 5 : 4;
-  tx[signatures] = tx[signatures].map(([scheme, signer, msg, signature]) => [scheme, signer, msg, msg === '0x' ? '0x' : signature]);
+  const length = bytes => { const n = ((bytes.length - 2) / 2).toString(16); return n === '0' ? '0x' : '0x'+(n.length % 2 ? '0' : '')+n; };
+  tx[signatures] = tx[signatures].map(([scheme, signer, msg, signature]) => [scheme, signer, msg, msg === '0x' ? length(signature) : signature]);
   return keccak256('0x06'+encodeRlp(tx).slice(2));
 }
 /** Sorted, deduplicated dependencies of 96-byte triples, as upstream canonicalizes them. */

@@ -79,7 +79,9 @@ export function createClient(e, { config: input, rpc, receiptOutcome, now = Date
       throw Error('The reviewed fee changed or expired. Review this transaction again.');
     if (account.balance < BigInt(value) + quote.feeReserve) throw Error('Insufficient test ETH for the call and fee reservation.');
     const payload = p.prepare({ config, pkSeed: key.backupPkSeed, pkRoot: key.backupPkRoot, nonce: account.nonce,
-      recipient, value, data, deployed: account.deployed, maxFee: quote.maxFee, priorityFee: quote.priorityFee,
+      // eip8288-lean signs a total fee budget: the reviewed reservation, which covers the transaction's maximum gas.
+      recipient, value, data, deployed: account.deployed, maxFee: p.format === 'eip8288-lean' ? quote.feeReserve : quote.maxFee,
+      priorityFee: quote.priorityFee,
       callGas: quote.callGas, stateGas: quote.callGas });
     return { ...quote, account, key: { ...key }, recipient: e.getAddress(recipient), value: BigInt(value), data,
       payload, digest: payload.digest, preparedAt: now() };

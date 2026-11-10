@@ -23,17 +23,22 @@ export function createProtocol(e, format) {
     frames.push(frame(4, 0, null, 3000, 0, 0, concat([p.word(16), p.word(0), key])));
     frames.push(frame(1, 3, null, 100000, 0, 0, '0x'));
     frames.push(frame(2, 0, getAddress(recipient), callGas, stateGas, value, data));
-    const transaction = { chainId: String(config.chainId), nonce: BigInt(nonce).toString(), nonceKeys: ['0'], sender, frames,
-      maxPriorityFee: BigInt(priorityFee).toString(), maxFee: BigInt(maxFee).toString(), maxBlobFee: '0' };
+    // eip8288-lean: maxFee is the transaction's total fee budget (EIP-8141 max_fee); daisugi-v1: a per-gas cap.
+    const transaction = lean
+      ? { chainId: String(config.chainId), nonce: BigInt(nonce).toString(), nonceKeys: [], sender, frames,
+        maxPriorityFee: BigInt(priorityFee).toString(), maxFee: BigInt(maxFee).toString() }
+      : { chainId: String(config.chainId), nonce: BigInt(nonce).toString(), nonceKeys: ['0'], sender, frames,
+        maxPriorityFee: BigInt(priorityFee).toString(), maxFee: BigInt(maxFee).toString(), maxBlobFee: '0' };
     const digest = p.digest(transaction, key);
     frames[dependencyIndex].data = concat([p.word(16), digest, dependencyKey]);
     return { transaction, digest, keyHash: key, dependencyKey, pkSeed, pkRoot, dependencyIndex };
   }
   function encode(transaction) {
-    return '0x06' + encodeRlp([quantity(transaction.chainId), ['0x'], quantity(transaction.nonce), transaction.sender,
+    return '0x06' + encodeRlp([quantity(transaction.chainId), lean ? [] : ['0x'], quantity(transaction.nonce), transaction.sender,
       transaction.frames.map(f => [quantity(f.mode), quantity(f.flags), f.target ?? '0x',
         [quantity(f.executionGas), quantity(f.stateGas)], quantity(f.value), f.data]), [],
-      [quantity(transaction.maxPriorityFee), quantity(transaction.maxFee), '0x'], []]).slice(2);
+      lean ? [quantity(transaction.maxFee), quantity(transaction.maxPriorityFee)]
+        : [quantity(transaction.maxPriorityFee), quantity(transaction.maxFee), '0x'], []]).slice(2);
   }
   function signedRequest(prepared, signature) {
     if (getBytes(signature).length !== 6176) throw Error('Unexpected SPHINCS signature length.');

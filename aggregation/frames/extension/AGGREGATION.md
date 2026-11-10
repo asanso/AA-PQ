@@ -3,7 +3,8 @@
 This is a separate development variant of the unified NiceTry wallet. The
 original interface, SPHINCS-G signing module and ERC-4337 implementation are
 retained. Native mode uses the `Daisugi.AggregatedFrameAccount.v2` account policy
-(`Daisugi.AggregatedFrameAccount.eip8288-lean.v1` for `eip8288-lean`),
+(`Daisugi.AggregatedFrameAccount.eip8288-lean.v2` for `eip8288-lean`, which uses
+the account nonce through empty nonce keys and a total `max_fee` budget),
 keyed nonce zero and `eth_sendProofWrapper` transport.
 
 The default deployment profile remains inactive. The required client fork and

@@ -8,7 +8,8 @@ const integer = v => v === '0x' ? 0n : BigInt(v);
 // The gateway accepts the wallet's bounded direct-witness profile. The node
 // performs cryptographic verification, account authorization and pool admission.
 // daisugi-v1 wraps one bare dependency and declares the key hash; eip8288-lean (upstream Nethermind
-// feature/eip8288-lean, MempoolWrapperDecoder) wraps a dependency list and declares the raw public key.
+// feature/eip8288-lean, MempoolWrapperDecoder) wraps a dependency list and declares the raw public key. Its envelope
+// selects the account nonce with empty nonce_keys and carries fees = [max_fee, max_priority_fee_per_gas].
 export function validateProofWrapper(raw, format = NETWORK.eip8288Format) {
   const lean = format === 'eip8288-lean';
   if (!bytes(raw) || raw.length > 96 * 1024) throw Error('Invalid or oversized proof wrapper.');
@@ -28,13 +29,15 @@ export function validateProofWrapper(raw, format = NETWORK.eip8288Format) {
   let tx;
   try { tx = decodeRlp('0x'+typed.slice(4)); } catch { throw Error('Invalid frame transaction encoding.'); }
   if (encodeRlp(tx).slice(2) !== typed.slice(4).toLowerCase()) throw Error('Invalid frame transaction encoding.');
-  if (!Array.isArray(tx) || tx.length !== 8 || tx[0] !== chainIdRlp || !Array.isArray(tx[1]) || tx[1].length !== 1
-      || tx[1][0] !== '0x' || !quantity(tx[2]) || integer(tx[2]) >= 1n << 64n || !address(tx[3]))
-    throw Error(`Expected a chain ${NETWORK.chainId} frame transaction with nonce key zero.`);
+  if (!Array.isArray(tx) || tx.length !== 8 || tx[0] !== chainIdRlp || !Array.isArray(tx[1])
+      || (lean ? tx[1].length !== 0 : tx[1].length !== 1 || tx[1][0] !== '0x')
+      || !quantity(tx[2]) || integer(tx[2]) >= 1n << 64n || !address(tx[3]))
+    throw Error(`Expected a chain ${NETWORK.chainId} frame transaction with ${lean ? 'the account nonce' : 'nonce key zero'}.`);
   const frames = tx[4];
   if (!Array.isArray(frames) || ![3,4].includes(frames.length) || !Array.isArray(tx[5]) || tx[5].length
-      || !Array.isArray(tx[6]) || tx[6].length !== 3 || !tx[6].every(quantity) || integer(tx[6][0]) > integer(tx[6][1])
-      || tx[6][2] !== '0x' || !Array.isArray(tx[7]) || tx[7].length) throw Error('Unsupported aggregate transaction envelope.');
+      || !Array.isArray(tx[6]) || tx[6].length !== (lean ? 2 : 3) || !tx[6].every(quantity)
+      || (lean ? integer(tx[6][1]) > integer(tx[6][0]) : integer(tx[6][0]) > integer(tx[6][1]) || tx[6][2] !== '0x')
+      || !Array.isArray(tx[7]) || tx[7].length) throw Error('Unsupported aggregate transaction envelope.');
   for (const f of frames) {
     if (!Array.isArray(f) || f.length !== 6 || !quantity(f[0]) || !quantity(f[1]) || integer(f[1]) > 3n
         || !(f[2] === '0x' || address(f[2])) || !Array.isArray(f[3]) || f[3].length !== 2
