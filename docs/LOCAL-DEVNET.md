@@ -93,7 +93,7 @@ curl -s --cacert $RUN/aa-pq/tls/cert.pem --resolve daisugi.test:8443:127.0.0.1 h
 - The explorer runs on `:3005`.
 - The portal runs on `:3004`, with the `/rpc` gateway and a faucet funded by the run's second account.
 - An HTTPS front on `:8443` serves `daisugi.test` with a self-signed certificate, because the wallet only accepts HTTPS endpoints that aren't localhost.
-- `/api/network` should show this run's chain ID and genesis hash. Logs are in `$RUN/aa-pq/logs/`.
+- `/api/network` should show this run's chain ID, `"rpc": "available"` and a growing `blockNumber`. Its `"status": "degraded"` only means there is no ERC-4337 bundler. Logs are in `$RUN/aa-pq/logs/`.
 
 ## 5. Use the wallet
 
