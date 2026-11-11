@@ -59,14 +59,6 @@ jobs:
           npm test --prefix aggregation/frames/extension
           node aggregation/frames/wallet/test.mjs frontend/package.json
           python3 -m unittest discover -s aggregation/frames/consensus/fork -p 'test_*.py' -v
-          python3 -m unittest discover -s aggregation/frames/consensus/eip8288-lean -p 'test_*.py' -v
-      - name: Apply the Lighthouse patch series to the pinned upstream archive
-        run: |
-          package=aggregation/frames/consensus/eip8288-lean
-          revision=$(jq -r .lighthouse.revision "$package/sources.lock.json")
-          [[ $revision =~ ^[0-9a-f]{40}$ ]]
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/lighthouse.tar.gz" "https://github.com/sigp/lighthouse/archive/$revision.tar.gz"
-          python3 "$package/apply.py" lighthouse "$RUNNER_TEMP/lighthouse.tar.gz" "$RUNNER_TEMP/lighthouse"
       - name: Build the aggregation wallet with an inactive test profile
         env:
           NICETRY_RPC_URL: https://staging.invalid/rpc

@@ -34,6 +34,9 @@ push or reset published branches to synchronize them.
 
 `.github/workflows/portal.yml` runs on pushes and pull requests targeting the three
 branches. The required status check is named **Portal checks**.
+`.github/workflows/eip8288-lean.yml` checks the Lighthouse patch series against its pinned
+upstream archive only when `aggregation/frames/consensus/eip8288-lean` changes, so an archive
+download failure cannot block a portal release.
 
 Checks use Node 22.23.2, both committed npm lockfiles, JavaScript syntax validation,
 the isolated Node test suite and the Python deployment tests. They do not load
