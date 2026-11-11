@@ -301,6 +301,9 @@ await check('Each format signs under its own account domain, also on the same ch
   const legacyRuntime = p.implementationRuntime().toLowerCase(), leanRuntime = lean.implementationRuntime().toLowerCase();
   assert.ok(legacyRuntime.includes('7f' + p.domain.slice(2)) && !legacyRuntime.includes(lean.domain.slice(2)));
   assert.ok(leanRuntime.includes('7f' + lean.domain.slice(2)) && !leanRuntime.includes(p.domain.slice(2)));
+  // The earlier eip8288-lean.v1 domain signs a different digest, so a v1 intent never matches a v2 account.
+  const v1 = e.keccak256(e.toUtf8Bytes('Daisugi.AggregatedFrameAccount.eip8288-lean.v1'));
+  assert.notEqual(lean.domain, v1); assert.ok(!leanRuntime.includes(v1.slice(2)) && !legacyRuntime.includes(v1.slice(2)));
 });
 await check('eip8288-lean account runtime hashes the declared key and reads only the current TXPARAM fields', () => {
   const legacyRuntime = e.getBytes(p.implementationRuntime()), leanRuntime = e.getBytes(lean.implementationRuntime());
