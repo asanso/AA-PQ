@@ -50,14 +50,14 @@ Hardware, as measured on one host:
 | Component | Source | Revision |
 |---|---|---|
 | Devnet kit | `https://github.com/NethermindEth/nethermind`, branch `daisugi/devnet-handoff` | `ff0d878dbc9b577629e9ed274b46a766873408a2` |
-| Nethermind | same repository, `feature/eip8288-lean` | `0260e692fcf8e6b8bcb41289d877e0d5e380b5cd` (identical source tree) |
+| Nethermind | same repository, `feature/eip8288-lean` | `1e5d1fa8a071b0b329a243437d00026e1d4a72df` (merge of NethermindEth/nethermind#15721); built from its own checkout, not the kit branch |
 | Lighthouse | `https://github.com/sigp/lighthouse` | `e423a66763bb1bd780492d635123f208d80c3538` (v8.2.2), archive sha256 `3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c` |
-| Lighthouse overlay | `https://github.com/asanso/AA-PQ` | `a03100abece8f8ed129c488db50ba89dde11b10a` (`aggregation/frames/consensus/eip8288-lean`) |
+| Lighthouse overlay | `https://github.com/asanso/AA-PQ` | `63fca2aaec49000740f77336f294ae29353c8838` (`aggregation/frames/consensus/eip8288-lean`) |
 | Genesis generator | `ethpandaops/ethereum-genesis-generator` | `sha256:287f596b9a4ee72ae2aff194682f854650a8861542e489259adf0975cc0c9a54` |
 | ethereum-package (Kurtosis) | `github.com/ethpandaops/ethereum-package` | `5795b77e65235ad223d4d3b413b2739190bf60cc` (pinned by the kit) |
 | AA-PQ | this repository | the commit that contains this file |
 
-Images are built locally (section 6); none are published. The Lighthouse binary is reproducible: `/lighthouse` must hash to `2e709e64cb111070fb4846d98f928dffd0d646904574a07478ffcb02aa390bcb`.
+Images are built locally (section 6); none are published. The Lighthouse binary is reproducible: `/lighthouse` must hash to `b249885cf90b06d772ce1eb94757e816c0910f514d200610f328991961d88eb2`.
 
 ## 4. Credentials
 
@@ -81,6 +81,7 @@ Rules for every run:
 export WORK=~/daisugi-devnet && mkdir -p $WORK && cd $WORK
 git clone --filter=blob:none --no-checkout https://github.com/NethermindEth/nethermind nethermind
 git -C nethermind checkout ff0d878dbc9b577629e9ed274b46a766873408a2
+git -C nethermind worktree add ../nethermind-el 1e5d1fa8a071b0b329a243437d00026e1d4a72df   # the client source
 git clone https://github.com/asanso/AA-PQ AA-PQ    # then check out the branch or commit that contains this file
 cd $WORK/AA-PQ
 for d in frontend explorer frame-account aggregation/frames/extension scripts/local-devnet; do
@@ -94,32 +95,33 @@ These are the kit's commands (`tools/daisugi-devnet/README.md`, section 1).
 
 ```bash
 cd $WORK/nethermind
+# The kit's Dockerfile, with the client checkout as the build context.
 docker build -f tools/daisugi-devnet/images/nethermind.Dockerfile \
-  --build-arg COMMIT_HASH=0260e692fcf8e6b8bcb41289d877e0d5e380b5cd -t daisugi/nethermind:0260e692fc .
+  --build-arg COMMIT_HASH=1e5d1fa8a071b0b329a243437d00026e1d4a72df -t daisugi/nethermind:1e5d1fa8a0 ../nethermind-el
 
 B=tools/daisugi-devnet/build; LH=e423a66763bb1bd780492d635123f208d80c3538; mkdir -p $B
 curl -fsSL -o $B/lighthouse.tar.gz https://github.com/sigp/lighthouse/archive/$LH.tar.gz
 echo "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c  $B/lighthouse.tar.gz" | sha256sum -c
 tar -xzf $B/lighthouse.tar.gz -C $B
 git clone -q https://github.com/asanso/AA-PQ $B/AA-PQ
-git -C $B/AA-PQ fetch -q origin a03100abece8f8ed129c488db50ba89dde11b10a && git -C $B/AA-PQ checkout -q FETCH_HEAD
+git -C $B/AA-PQ fetch -q origin 63fca2aaec49000740f77336f294ae29353c8838 && git -C $B/AA-PQ checkout -q FETCH_HEAD
 (cd $B/AA-PQ/aggregation/frames/consensus/eip8288-lean && python3 -m unittest discover -p 'test_*.py' \
   && python3 apply.py lighthouse ../../../../../lighthouse-$LH --check && python3 apply.py lighthouse ../../../../../lighthouse-$LH)
 docker build -f $B/lighthouse-$LH/Dockerfile.reproducible --platform linux/amd64 \
   --build-arg RUST_TARGET=x86_64-unknown-linux-gnu -t daisugi/lighthouse:eip8288-lean $B/lighthouse-$LH
 
 BIN=$(mktemp); cid=$(docker create daisugi/lighthouse:eip8288-lean); docker cp $cid:/lighthouse $BIN; docker rm $cid
-sha256sum $BIN; rm $BIN   # 2e709e64cb111070fb4846d98f928dffd0d646904574a07478ffcb02aa390bcb
+sha256sum $BIN; rm $BIN   # b249885cf90b06d772ce1eb94757e816c0910f514d200610f328991961d88eb2
 ```
 
-`apply.py` prints `"files": 67` and `"activated": false` for the check and the apply. `activated` refers to a live fork schedule, not to the patch.
+`apply.py` prints `"status": "checked"` and then `"status": "patched"`, both with `"activated": false`. `activated` refers to a live fork schedule, not to the patch.
 
 ## 7. Start the devnet (Compose)
 
 ```bash
 cd $WORK/nethermind/tools/daisugi-devnet
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
-export RUN=$WORK/run/devnet NM=daisugi/nethermind:0260e692fc LH=daisugi/lighthouse:eip8288-lean
+export RUN=$WORK/run/devnet NM=daisugi/nethermind:1e5d1fa8a0 LH=daisugi/lighthouse:eip8288-lean
 mkdir -p $WORK/run
 CHAIN_ID=7357 LOCAL=1 ./gen-genesis.sh $RUN $(( $(date +%s) + 30 )) 3
 ./up.sh $RUN $NM $LH
@@ -285,7 +287,7 @@ In a new shell, the defaults below match sections 5 and 7; existing values are k
 
 ```bash
 export WORK=${WORK:-~/daisugi-devnet}; export RUN=${RUN:-$WORK/run/devnet}
-export NM=${NM:-daisugi/nethermind:0260e692fc} LH=${LH:-daisugi/lighthouse:eip8288-lean}
+export NM=${NM:-daisugi/nethermind:1e5d1fa8a0} LH=${LH:-daisugi/lighthouse:eip8288-lean}
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml
 cd $WORK/AA-PQ && scripts/local-devnet/stop-services.sh $RUN
 cd $WORK/nethermind/tools/daisugi-devnet
