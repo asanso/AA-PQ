@@ -1,9 +1,0 @@
-{
-  "name": "aa-pq-local-devnet",
-  "private": true,
-  "description": "Browser end-to-end test of the NiceTry extension and AA-PQ portal on a local EIP-8288 devnet.",
-  "type": "module",
-  "dependencies": {
-    "playwright-core": "1.49.1"
-  }
-}
