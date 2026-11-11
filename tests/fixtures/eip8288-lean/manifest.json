@@ -1,6 +1,6 @@
 {
   "source": {
-    "nethermind": "NethermindEth/nethermind feature/eip8288-lean b0e83c01bf61669f8d0d30531afcc9ea364ef0d5 (head of #15721)",
+    "nethermind": "NethermindEth/nethermind feature/eip8288-lean b0e83c01bf61669f8d0d30531afcc9ea364ef0d5, the head of #15721; same Git tree as its merge 1e5d1fa8a071b0b329a243437d00026e1d4a72df",
     "lighthouse": "AA-PQ eip8288-lean patch series 0001-0010",
     "capture": "disposable devnet from tools/daisugi-devnet (branch daisugi/devnet-handoff), proof.sh send with the current EIP-8141 envelope; blocks via debug_getRawBlock",
     "blockHashVector": "port of Nethermind Eip8288CrossClientVectorTests with the current EIP-8141 rules, shared with the Lighthouse series tests"
