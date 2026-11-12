@@ -1,4 +1,4 @@
-import {site} from './routes.js';
+import {site, chainId} from './routes.js';
 import { formatUnits } from '/ethers.js';
 import { renderInputPanel, inputSize } from './input-data.js';
 import {renderTimestamp, formatTimestamp} from './timestamp.js';
@@ -36,7 +36,9 @@ export function renderTransactionDetails(data) {
   const errors = (d.errors || []).length ? `<div class="inline-notice">${esc(d.errors.join(' '))}</div>` : !data.transactionDetails ? '<div class="inline-notice">Extended RPC details are unavailable. Indexed transaction data is shown below.</div>' : '';
   const fee = d.transactionFeeWei != null ? eth(d.transactionFeeWei) : pending ? '<span class="tx-unavailable">Available after inclusion</span>' : notAvailable;
   const price = d.effectiveGasPriceWei == null ? pending ? '<span class="tx-unavailable">Available after inclusion</span>' : notAvailable : `${esc(amount(d.effectiveGasPriceWei, 9))} Gwei <span class="tx-muted">(${esc(amount(d.effectiveGasPriceWei))} ETH)</span>`;
-  const caps = [['Base', d.baseFeePerGasWei], ['Max', d.maxFeePerGasWei], ['Max priority', d.maxPriorityFeePerGasWei]].map(([name, value]) => `<span><span class="tx-muted">${name}:</span> ${value != null ? esc(amount(value, 9)) + ' Gwei' : '<span class="tx-muted">' + (name !== 'Base' && Number(d.type) < 2 ? 'N/A' : 'Unavailable') + '</span>'}</span>`).join('<span class="fee-divider">|</span>');
+  // An EIP-8141 frame transaction caps its fee with a total max_fee budget instead of a per-gas maximum.
+  const budget = d.maxFeeWei != null ? `<span class="fee-divider">|</span><span><span class="tx-muted">Max fee budget:</span> ${eth(d.maxFeeWei)}</span>` : '';
+  const caps = [['Base', d.baseFeePerGasWei], ...(d.maxFeeWei != null ? [] : [['Max', d.maxFeePerGasWei]]), ['Max priority', d.maxPriorityFeePerGasWei]].map(([name, value]) => `<span><span class="tx-muted">${name}:</span> ${value != null ? esc(amount(value, 9)) + ' Gwei' : '<span class="tx-muted">' + (name !== 'Base' && Number(d.type) < 2 ? 'N/A' : 'Unavailable') + '</span>'}</span>`).join('<span class="fee-divider">|</span>') + budget;
   const gasUsed = d.gasUsed != null ? `${int(d.gasUsed)}${d.gasUsedPercent != null ? ' <span class="tx-muted">(' + esc(d.gasUsedPercent) + '%)</span>' : ''}` : '<span class="tx-unavailable">' + (pending ? 'Pending' : 'Unavailable') + '</span>';
   const attributes = [d.type != null ? badge('Tx type', d.type + ' (' + txType(d.type) + ')') : '', d.nonce != null ? badge('Nonce', int(d.nonce)) : '', d.transactionIndex != null ? badge('Position in block', int(d.transactionIndex)) : ''].join('');
   const input = renderInputPanel({ id: 'transactionInput', title: 'Transaction input data', value: data.inputData, decoded: data.inputDecoded, error: data.inputDataError, selector: true, creation: data.inputIsContractCreation, embedded: true, description: 'Complete transaction input.' });
@@ -67,7 +69,7 @@ export function renderTransactionDetails(data) {
       ${renderNativeWitnesses(data.nativeFrame)}</div>
       <p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet · Test ETH has no monetary value.</p></div>`;
   }
-  return `<div class="tx-record"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><div class="tx-record-top"><span class="record-tab">Overview</span><span class="network-label">Daisugi Testnet <span class="mono">1337</span></span></div>${errors}` +
+  return `<div class="tx-record"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><div class="tx-record-top"><span class="record-tab">Overview</span><span class="network-label">Daisugi Testnet <span class="mono">${esc(chainId)}</span></span></div>${errors}` +
     section(row('Transaction hash', `<span class="hash-value">${mono(data.hash)}${copy(data.hash)}</span>`, 'Unique identifier of this transaction.') +
       row('Status', `<span class="tx-status ${status === 'Success' ? 'success' : status === 'Failed' ? 'failed' : 'pending'}">${status === 'Success' ? '✓ ' : status === 'Failed' ? '× ' : ''}${esc(status)}</span>`, 'Receipt execution status; distinct from each UserOperation result.') +
       row('Block', blockValue, 'Confirmations include the containing block, using the latest observed chain height.') +

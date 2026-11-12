@@ -6,16 +6,17 @@ import { ethers } from "ethers";
 import {createPortalApi, createFaucetLimiter} from "./portal-api.mjs";
 import {isPortalPage, publicSiteConfig, siteConfigScript} from "./site-config.mjs";
 import {createRpcProxy, RPC_BODY_LIMIT} from './rpc-policy.mjs';
+import {NETWORK} from '../explorer/network-profile.mjs';
 
 const root = fileURLToPath(new URL("./public", import.meta.url));
 const port = Number(process.env.PORT || 3000);
-const siteSettings = publicSiteConfig();
+const siteSettings = {...publicSiteConfig(), chainId:NETWORK.chainId};
 const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:18545";
 const nativeFramesEnabled = process.env.NATIVE_FRAME_RPC_ENABLED === 'true';
 const aggregationEnabled = process.env.NATIVE_AGGREGATION_RPC_ENABLED === 'true';
 const publicRpc = createRpcProxy({url:rpcUrl,nativeFramesEnabled,aggregationEnabled});
 const bundlerUrl = process.env.BUNDLER_URL || "http://127.0.0.1:4337";
-const entryPoint = process.env.ENTRY_POINT || "";
+const entryPoint = process.env.ENTRY_POINT || NETWORK.entryPoint;
 const faucetKey = process.env.FAUCET_PRIVATE_KEY;
 // Public RPC proxies may accept only one JSON-RPC request per HTTP call.
 const provider = new ethers.JsonRpcProvider(rpcUrl, undefined, {batchMaxCount:1});
@@ -109,8 +110,8 @@ async function faucetSend(req, res) {
     if (value <= 0n || value > ethers.parseEther('10')) {
       return json(res, 400, {error:'The amount must be greater than 0 and at most 10 ETH.'});
     }
-    if (Number((await faucetProvider.getNetwork()).chainId) !== 1337) {
-      return json(res, 503, {error:'The faucet is only available on Daisugi (chain 1337).'});
+    if (Number((await faucetProvider.getNetwork()).chainId) !== NETWORK.chainId) {
+      return json(res, 503, {error:`The faucet is only available on ${NETWORK.name} (chain ${NETWORK.chainId}).`});
     }
     const retryAfter = claimFaucet(payload.address);
     if (retryAfter) {
@@ -131,7 +132,8 @@ async function faucetSend(req, res) {
 async function config(res) {
   try {
     const network = await provider.getNetwork();
-    json(res, 200, { chainId: Number(network.chainId), rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address, networkName:'Daisugi', publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60, nativeFrameSubmissionEnabled:nativeFramesEnabled, nativeAggregationSubmissionEnabled:aggregationEnabled });
+    if (Number(network.chainId) !== NETWORK.chainId) throw new Error(`The RPC is not connected to ${NETWORK.name} (chain ${NETWORK.chainId}).`);
+    json(res, 200, { chainId: NETWORK.chainId, rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address, networkName:NETWORK.name, publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60, nativeFrameSubmissionEnabled:nativeFramesEnabled, nativeAggregationSubmissionEnabled:aggregationEnabled });
   } catch (error) {
     json(res, 503, { error: error instanceof Error ? error.message : String(error) });
   }

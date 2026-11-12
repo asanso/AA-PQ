@@ -3,14 +3,17 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
+import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const {Transaction} = createRequire(new URL('../frontend/package.json', import.meta.url))('ethers');
 const recipient = digit => '0x' + digit.repeat(40);
 
-async function fixture(t, {chainId = '0x539', rejectFirstBroadcast = false} = {}) {
+async function fixture(t, {chainId = '0x539', rejectFirstBroadcast = false, profile, entryPoint} = {}) {
   const accepted = [], methods = [];
   let nonce = 0, broadcasts = 0;
   const block = {
@@ -66,14 +69,21 @@ async function fixture(t, {chainId = '0x539', rejectFirstBroadcast = false} = {}
   const port = probe.address().port;
   await new Promise(resolve => probe.close(resolve));
   const endpoint = 'http://127.0.0.1:' + rpc.address().port;
+  const network = {};
+  if (profile) {
+    const directory = await mkdtemp(join(tmpdir(), 'faucet-profile-'));
+    t.after(() => rm(directory, {recursive: true, force: true}));
+    network.DAISUGI_NETWORK_PROFILE = join(directory, 'network.json');
+    await writeFile(network.DAISUGI_NETWORK_PROFILE, JSON.stringify(profile));
+  }
   // Every backend points to this loopback fixture. No live RPC or funding key is used.
   const child = spawn(process.execPath, ['frontend/server.mjs'], {
     cwd: projectRoot,
     env: {
       PATH: process.env.PATH, HOST: '127.0.0.1', PORT: String(port),
       RPC_URL: endpoint, FAUCET_RPC_URL: endpoint, BUNDLER_URL: endpoint,
-      EXPLORER_URL: endpoint, ENTRY_POINT: recipient('3'),
-      FAUCET_PRIVATE_KEY: '0x' + '0'.repeat(63) + '1'
+      EXPLORER_URL: endpoint, FAUCET_PRIVATE_KEY: '0x' + '0'.repeat(63) + '1', ...network,
+      ...(entryPoint ? {ENTRY_POINT: entryPoint} : {})
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -96,7 +106,7 @@ async function fixture(t, {chainId = '0x539', rejectFirstBroadcast = false} = {}
     });
   });
   return {
-    accepted, methods,
+    accepted, methods, url: 'http://127.0.0.1:' + port,
     async request(payload) {
       const response = await fetch('http://127.0.0.1:' + port + '/api/faucet', {
         method: 'POST', headers: {'content-type': 'application/json'},
@@ -106,6 +116,44 @@ async function fixture(t, {chainId = '0x539', rejectFirstBroadcast = false} = {}
     }
   };
 }
+
+const alternative = {
+    name: 'Daisugi Next', chainId: 7357, genesisHash: '0x' + '11'.repeat(32), frameActivationBlock: 100,
+    entryPoint: '0x' + '22'.repeat(20), nativeFactory: '0x' + '33'.repeat(20),
+    nativeImplementation: '0x' + '44'.repeat(20), nativeImplementationCodeHash: '0x' + '55'.repeat(32),
+    nativeVerifier: '0x' + '66'.repeat(20), nativeVerifierCodeHash: '0x' + '77'.repeat(32),
+  eip8288Format: 'eip8288-lean'
+};
+const legacyEntryPoint = '0x433709009B8330FDa32311DF1C2AFA402eD8D009';
+
+test('the browser and /api/config get the chain ID from the network profile', async t => {
+  for (const [profile, rpcChain, expected, name] of [[undefined, '0x539', 1337, 'Daisugi'], [alternative, '0x1cbd', 7357, 'Daisugi Next']]) {
+    const f = await fixture(t, {chainId: rpcChain, profile});
+    const siteConfig = await (await fetch(f.url + '/site-config.js')).text();
+    assert.equal(JSON.parse(siteConfig.match(/Object\.freeze\((.*)\);/)[1]).chainId, expected);
+    const config = await (await fetch(f.url + '/api/config')).json();
+    assert.equal(config.chainId, expected);
+    assert.equal(config.networkName, name);
+    assert.equal(config.entryPoint, (profile ?? {entryPoint: legacyEntryPoint}).entryPoint);
+  }
+  // A profile and an RPC that disagree must not look healthy, in either direction.
+  for (const [profile, rpcChain] of [[undefined, '0x1cbd'], [alternative, '0x539']]) {
+    const f = await fixture(t, {chainId: rpcChain, profile});
+    const response = await fetch(f.url + '/api/config');
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /The RPC is not connected to/);
+    assert.equal((await f.request({address: recipient('4'), amount: '1'})).status, 503);
+  }
+});
+
+test('an ENTRY_POINT override must match the network profile', async t => {
+  for (const [profile, rpcChain, entryPoint] of [[undefined, '0x539', legacyEntryPoint.toLowerCase()], [alternative, '0x1cbd', alternative.entryPoint]]) {
+    const f = await fixture(t, {chainId: rpcChain, profile, entryPoint});
+    assert.equal((await (await fetch(f.url + '/api/config')).json()).entryPoint, entryPoint);
+  }
+  for (const [profile, rpcChain, entryPoint] of [[undefined, '0x539', alternative.entryPoint], [alternative, '0x1cbd', legacyEntryPoint]])
+    await assert.rejects(fixture(t, {chainId: rpcChain, profile, entryPoint}), /ENTRY_POINT does not match the network profile entryPoint/);
+});
 
 test('concurrent faucet recipients receive distinct nonces', async t => {
   const f = await fixture(t);
