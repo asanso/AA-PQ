@@ -11,16 +11,13 @@ A Lighthouse patch series for the EIP-8288 format implemented upstream in Nether
 overlay**: build that branch commit as is. The legacy Nethermind overlay in
 `../fork` is for the live chain only.
 
-The pinned Nethermind commit is **interim** (`revisionStatus` in the lock): it is
-the commit this patch series was validated against, not the deployable release. It
-is the merge of NethermindEth/nethermind#15721, which keeps EIP-7843 off unless it is
-scheduled, so a Prague-based chain keeps the zero slot placeholder. Its Git tree
-equals the PR head `b0e83c01bf` that the series was validated against. `previouslyValidated` keeps the earlier pin, `0260e692fc`, whose
-EIP-8141 rules differ (see [EIP-8141 rules](#eip-8141-rules)). Its
-standard artifacts don't include the native Lean library yet (see
-[Fresh genesis](#fresh-genesis)). Once Nethermind takes that library from a pinned
-NuGet package, a later `feature/eip8288-lean` commit replaces this pin, and the
-acceptance steps below run again against it.
+The pinned Nethermind commit is **interim** (`revisionStatus` in the lock): the head
+of NethermindEth/nethermind#15829, under review, that this series was validated
+against. It takes the native Lean backend (ABI 12, upstream leanVM `e4dcb8d5`) from the
+`Nethermind.Crypto.Lean` 0.12.0.21 NuGet package and builds no Rust. Once #15829
+merges, a `feature/eip8288-lean` commit replaces this pin, and the acceptance steps
+below run again against it. `previouslyValidated` keeps the earlier pin, `1e5d1fa8a0`,
+whose BLAKE2s dependency commitment this series rejects.
 
 The series starts from `../fork`'s Lighthouse overlay (same base, Lighthouse
 v8.2.2 `e423a667`, same `Daisugi` fork, SSZ tag 8) and changes it as follows.
@@ -28,15 +25,21 @@ v8.2.2 `e423a667`, same `Daisugi` fork, SSZ tag 8) and changes it as follows.
 | | `../fork` (live Daisugi) | This package |
 | --- | --- | --- |
 | Engine payload field | `recursiveStarkProof` + `recursiveStarkBlockDepsHash` | `starkProof` only |
-| Header commitment | proof and dependency hash in the payload | derived by the EL: `keccak256(stark_proof)` and `block_deps_hash` (BLAKE2s, `eip8288/leanstark-deps` domain) |
+| Header commitment | proof and dependency hash in the payload | derived by the EL: `keccak256(stark_proof)` and `block_deps_hash` (Keccak-256; with any non-`0x10` dependency, the two scheme lists joined under the `eip8288/leanstark-deps` domain) |
 | Proof when a block has no dependencies | 12-byte empty-set envelope | empty bytes |
-| Block hash in Lighthouse | header rebuilt from the payload's proof and payload-supplied dependency hash | header rebuilt from `keccak256(starkProof)` and a dependency hash Lighthouse derives from the frame transactions (`execution_layer/src/daisugi_block_hash.rs`); an undecodable frame transaction makes the block hash check fail |
+| Block hash in Lighthouse | header rebuilt from the payload's proof and payload-supplied dependency hash | header rebuilt from `keccak256(starkProof)` and a dependency hash Lighthouse derives from the frame transactions (`execution_layer/src/daisugi_block_hash.rs`); an undecodable frame transaction makes the block hash check fail. The check runs on every Daisugi block Lighthouse executes (gossip, lookup, range sync with or without the EL, local publish) and a mismatch rejects the block whatever the EL answers. Backfill and checkpoint sync keep Lighthouse's trusted-anchor model: those payloads are bound by the block-root chain, not recomputed |
 | Rebuilt payload bodies (`engine_getPayloadBodies*`) | proof carried | proof carried and checked against the stored header root |
 | Aggregate-payload helpers (`aggregate_block_hash.rs`, `aggregate_json.rs`) | present | removed |
 | `Dockerfile.reproducible` | upstream v8.2.2 (bullseye, no longer builds) | v8.3.2 bookworm backport, static zlib, `portable` BLS, fixed `SOURCE_DATE` |
 
 This format is **not compatible with the live chain**. It needs a fresh EL and CL
 genesis.
+
+Daisugi is experimental. Two choices here follow Nethermind #15829 rather than a
+settled EIP-8288: `DEPS_HASH` is Keccak-256 (the EIP leaves it TBD), and the
+generic leanSTARK scheme `0x11` is accepted beside leanSPHINCS `0x10`, a deviation
+from the EIP; its entries are hashed in a second list under the
+`eip8288/leanstark-deps` domain.
 
 ### EIP-8141 rules
 
@@ -131,12 +134,16 @@ cd lighthouse
 cargo test --release --locked -p execution_layer daisugi
 cargo test --release --locked -p lighthouse_network --lib daisugi
 cargo test --release --locked -p execution_layer -p types
+cargo test --release --locked -p beacon_chain --test beacon_chain_tests daisugi
 ```
 
-The `daisugi_block_hash` tests reproduce Nethermind's cross-client vector and two
-real devnet blocks, one of them proof-bearing with zero `data_hash` dependencies
-(`src/test_fixtures`), and check that a proof-bearing block hashed under the earlier
-rule no longer reproduces. The `versioned_hashes` tests read the blob hashes of
+The `daisugi_block_hash` tests reproduce Nethermind's synthetic block and its pinned
+`ComputeDepsHash` vectors (empty, leanSPHINCS-only, leanSTARK-only, mixed, a scheme
+below `0x10`), and two real Keccak-era devnet blocks, one with a mixed
+leanSPHINCS + leanSTARK recursive proof (`src/test_fixtures`). A flipped proof byte and
+three BLAKE2s-era blocks fail the check. The `beacon_chain` test imports a Daisugi block
+whose proof no longer matches its commitment, with a valid state root and signature,
+while the mock EL answers VALID: gossip, lookup and range sync reject it. The `versioned_hashes` tests read the blob hashes of
 Nethermind-encoded frame transactions.
 
 The `beacon_chain` suite on the Daisugi fork:
@@ -145,7 +152,7 @@ The `beacon_chain` suite on the Daisugi fork:
 FORK_NAME=daisugi cargo test --release --locked --features fork_from_env,slasher/lmdb -p beacon_chain --no-fail-fast
 ```
 
-437 tests pass. Four fail with the same errors on `../fork`, so they come from the
+438 tests pass. Four fail with the same errors on `../fork`, so they come from the
 existing overlay's test harness, not this format:
 `check_all_blocks_from_altair_to_fulu`, `verify_block_for_gossip_slashing_detection`,
 `rpc_blobs_with_invalid_header_signature` and
@@ -184,10 +191,9 @@ Nethermind options:
 - `--Blocks.SecondsPerSlot` equal to the CL slot;
 - the `Eth` JSON-RPC module, for `eth_sendProofWrapper`.
 
-Nethermind also needs its native Lean library (`libnethermind_lean.so`) next to
-the binary. At the interim commit, the standard Dockerfile and release artifacts
-don't include it: build it from `tools/lean-ffi` (`cargo build --release --locked`)
-or with `-p:BuildLeanFfi=true`, and copy it beside the binary.
+Nethermind takes its native Lean library from the pinned `Nethermind.Crypto.Lean`
+package (restored from nugettest at the interim commit); the standard Dockerfile
+includes it and needs no Rust toolchain.
 
 Consensus (`config.yaml`):
 - Electra at genesis;
