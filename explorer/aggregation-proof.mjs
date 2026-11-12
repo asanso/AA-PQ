@@ -1,4 +1,3 @@
-import {createHash} from 'node:crypto';
 import {decodeRlp, encodeRlp, keccak256, sha256, concat} from 'ethers';
 import {NETWORK} from './network-profile.mjs';
 const hex = value => typeof value === 'string' && /^0x(?:[0-9a-f]{2})*$/i.test(value);
@@ -52,8 +51,7 @@ export function decodeBlockProof(raw, expectedHash, transactionHash, format = NE
     message:unique.length ? 'Proof bytes are committed in this block header. The dependency commitment matches the block’s declarations. Cryptographic proof validation belongs to the execution client; it is not repeated by this explorer.' : 'This block declares no signature dependencies. Its empty-set envelope is not an aggregated signature proof.'};
 }
 // Upstream Nethermind feature/eip8288-lean (EIP-8141 signature hash, FrameDependency.cs ComputeDepsHash).
-const LEAN_SPHINCS = 0x10, LEAN_STARK = 0x11;
-const blake2s = (...parts) => '0x'+parts.reduce((h, part) => h.update(Buffer.from(part.slice(2), 'hex')), createHash('blake2s256')).digest('hex');
+const LEAN_SPHINCS = 0x10;
 const LEAN_STARK_DOMAIN = '0x'+Buffer.from('eip8288/leanstark-deps').toString('hex').padEnd(64, '0');
 const frameTransaction = typed => {
   const tx = decodeRlp('0x'+typed.slice(4));
@@ -70,11 +68,13 @@ export function frameSignatureHash(typed) {
 }
 /** Sorted, deduplicated dependencies of 96-byte triples, as upstream canonicalizes them. */
 const canonical = triples => [...new Set(triples.map(t => t.toLowerCase()))].sort();
-/** BLAKE2s-256 over data_hash || key entries; a list holding leanSTARK hashes each scheme's list with a domain. */
+/** Keccak-256 over the data_hash || key entries of the leanSPHINCS list; with any other scheme, Keccak-256 of both
+ * lists' hashes and a domain, every non-leanSPHINCS entry in the second list. */
 export function depsHash(triples) {
-  const list = canonical(triples), entries = items => blake2s(...items.map(t => '0x'+t.slice(66)));
-  const sphincs = list.filter(t => parseInt(t.slice(64, 66), 16) === LEAN_SPHINCS), stark = list.filter(t => parseInt(t.slice(64, 66), 16) === LEAN_STARK);
-  return stark.length ? blake2s(entries(sphincs), entries(stark), LEAN_STARK_DOMAIN) : entries(sphincs);
+  const list = canonical(triples), entries = items => keccak256(concat(items.map(t => '0x'+t.slice(66))));
+  const isSphincs = t => parseInt(t.slice(64, 66), 16) === LEAN_SPHINCS;
+  const sphincs = list.filter(isSphincs), other = list.filter(t => !isSphincs(t));
+  return other.length ? keccak256(concat([entries(sphincs), entries(other), LEAN_STARK_DOMAIN])) : entries(sphincs);
 }
 function decodeLeanBlockProof(raw, expectedHash, transactionHash) {
   if (!hex(raw) || raw.length > 32*1024*1024) throw Error('Invalid or oversized encoded block.');

@@ -1,52 +1,51 @@
 {
   "source": {
-    "nethermind": "NethermindEth/nethermind feature/eip8288-lean b0e83c01bf61669f8d0d30531afcc9ea364ef0d5, the head of #15721; same Git tree as its merge 1e5d1fa8a071b0b329a243437d00026e1d4a72df",
-    "lighthouse": "AA-PQ eip8288-lean patch series 0001-0010",
-    "capture": "disposable devnet from tools/daisugi-devnet (branch daisugi/devnet-handoff), proof.sh send with the current EIP-8141 envelope; blocks via debug_getRawBlock",
-    "blockHashVector": "port of Nethermind Eip8288CrossClientVectorTests with the current EIP-8141 rules, shared with the Lighthouse series tests"
+    "nethermind": "NethermindEth/nethermind#15829 head 215f799b136347109a55f962748068ec0d2fee54 (Keccak-256 block dependency hash), native Lean backend from Nethermind.Crypto.Lean 0.12.0.21 (ABI 12, aggregated VK f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5)",
+    "lighthouse": "AA-PQ eip8288-lean patch series 0001-0014",
+    "capture": "disposable 3-node Kurtosis enclave from tools/daisugi-devnet (kurtosis/run.sh, NODES=3); wrapper from pq.sh with PQ_SCHEME=mixed (one leanSPHINCS and one leanSTARK dependency); blocks via debug_getRawBlock",
+    "blockHashVector": "Lighthouse series synthetic block (daisugi_block_hash.rs block_hash_matches_nethermind) with the Keccak dependency hash"
   },
   "chainId": 1337,
   "wrapper": {
     "file": "wrapper.rlp",
-    "txHash": "0xff4864d02d67dc69bb751eb6b71fd87d79b50d43cb1976daa3dd86e34ed461ff",
-    "signatureHash": "0x3c447a061c61a0bc705029094c1ccf20147517f11d6b4d15ad7545ea21820065",
-    "depsHash": "0x6c17ebc04b5a84f7db3678aee430035df1b481d59de24ff45e30431c6c974283",
+    "txHash": "0x687baf506db83a3268cf7d5609641e31148be7a61eb7ef4128a4e1e00d458313",
+    "signatureHash": "0x08b5c7726de0b85a4661db60bbb3828bd0e77dd9cb7ce9bd786c10968fea8533",
+    "depsHash": "0x49c0a951f6b11e678e17777079bc1dd88dafbc916b413cdff2e3d904cb7fddfc",
     "response": "accepted by eth_sendProofWrapper"
   },
   "walletWrapper": {
     "file": "wallet-wrapper.rlp",
     "txHash": "0xb7bcf2858cbe7a6a404af59592350073f31f9f0c973212dee0e3438f20711676",
-    "capture": "AA-PQ wallet client (eip8288-lean, eip8288-lean.v2 account) with a real SPHINCS-G signature through the RPC gateway, deployed account, included with status 1",
+    "capture": "AA-PQ wallet client (eip8288-lean, eip8288-lean.v2 account) with a real SPHINCS-G signature through the RPC gateway, deployed account, included with status 1; captured on the earlier Nethermind b0e83c01bf devnet (chain 1337): the wallet's signing path is unchanged",
     "accountDomain": "Daisugi.AggregatedFrameAccount.eip8288-lean.v2",
     "response": "accepted by eth_sendProofWrapper"
   },
   "rejectedWrappers": {
     "leansig-witness-corrupted": "a wrapper dependency proof failed verification",
-    "leansig-witness-for-other-message": "a wrapper dependency proof failed verification",
-    "leanstark-witness-swapped-for-leansig": "a wrapper dependency proof failed verification",
-    "secp256k1-signature-corrupted": "transaction invalid, frame transaction SECP256K1 signer does not match the recovered address"
+    "leanstark-witness-corrupted": "a wrapper dependency proof failed verification",
+    "mixed-leanstark-witness-corrupted": "a wrapper dependency proof failed verification"
   },
   "blocks": {
     "preFork": {
       "number": 95,
       "file": "block-95.rlp",
-      "hash": "0x8c934a900bd29f08b83d3f5c501b74ab1205cd900f585917ec0164c334090a2f"
+      "hash": "0xaa79d2a9e1fe44b44121c86533948ff6cfffa7528269f2bccbeb7a1dc289a0d4"
     },
     "firstFork": {
       "number": 96,
       "file": "block-96.rlp",
-      "hash": "0xbf717e7aba0254574c2de791a32426ca5bd5a9863828e3e6494124005d4ac27e"
+      "hash": "0xee0d70e5894f89a11080f51130eba0effd78668b5fcc75e104da3fe47760fe0d"
     },
     "proof": {
-      "number": 222,
-      "file": "block-222.rlp",
-      "hash": "0xc260befcfdd027bfa416a8716895c11cf75d3109e8b21069355fbb046da48ee1",
-      "transaction": "0xff4864d02d67dc69bb751eb6b71fd87d79b50d43cb1976daa3dd86e34ed461ff"
+      "number": 270,
+      "file": "block-270.rlp",
+      "hash": "0x587d1984e9ebd3a8b0164ef11de8b93c760e4a1b4d55dc054904be51970be81b",
+      "transaction": "0x687baf506db83a3268cf7d5609641e31148be7a61eb7ef4128a4e1e00d458313"
     },
     "laterEmpty": {
-      "number": 223,
-      "file": "block-223.rlp",
-      "hash": "0xfb2884d35ec8cdacc13131e85b5de8b7ca2b4f96743fa016a9291e136ecd2b9d"
+      "number": 271,
+      "file": "block-271.rlp",
+      "hash": "0x5e5f8d41bbb3c86d19f9dcf2c5aaa088a62f64303127ac7262d4d97e07f442ba"
     }
   }
 }

@@ -23,11 +23,11 @@ const decode = (block, hash, tx) => decodeBlockProof(block, hash, tx, lean);
 const reencode = block => encodeRlp(block);
 const blockHash = block => keccak256(encodeRlp(block[0]));
 
-test('E1: the proof-bearing upstream block commits to its body proof and BLAKE2s dependency hash', () => {
+test('E1: the proof-bearing upstream block commits to its body proof and Keccak dependency hash', () => {
   const {file, hash, transaction} = manifest.blocks.proof;
   const result = decode(raw(file), hash, transaction);
   assert.equal(result.status, 'available');
-  assert.equal(result.proofBytes, 326624);
+  assert.equal(result.proofBytes, 308068);
   assert.equal(result.commitment, manifest.wrapper.depsHash);
   assert.equal(result.commitmentMatches, true);
   assert.equal(result.claimCount, 2);
@@ -79,6 +79,25 @@ test('E5: dependency and signature hashes match the cross-client vector', () => 
   assert.equal(result.commitment, vector.depsHash);
   assert.equal(result.declarationCount, 4);
   assert.equal(result.claimCount, 3);
+});
+
+// Nethermind FrameDependencyTests (NethermindEth/nethermind#15829): a scheme, a 32-byte data fill and a key counting
+// up from `start` or filled with `fill`.
+const triple = (scheme, data, start, fill) => '0x' + scheme.toString(16).padStart(64, '0') + data.toString(16).padStart(2, '0').repeat(32)
+  + Array.from({length: 32}, (_, i) => (fill ?? start + i).toString(16).padStart(2, '0')).join('');
+
+test('E8: dependency hashes match Nethermind ComputeDepsHash vectors', () => {
+  const a = triple(0x10, 0x07, 0), b = triple(0x10, 0x07, 1), c = triple(0x10, 0x01, 0, 0xff), d = triple(0x10, 0xa5, 0, 0x5a);
+  const g1 = triple(0x11, 0x07, 0), g2 = triple(0x11, 0xa5, 0, 0x5a);
+  for (const [list, expected] of [
+    [[], '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'],
+    [[a], '0x535b1be06804ff1c42441f5b486c07a4f0b788bb24cbd7a3a21c405a869730b5'],
+    [[b, a, c, a], '0xa9cb9f718bf29878fea69d892f229c0a49932e21555106f3bf37044f142262ba'],
+    [[d, a, c, b], '0x43c9b8d263f3c5128d4b200350327b8ff8423c4d2235654c497b281c0efc7a2e'],
+    [[g1], '0x472b9b9746554a2d22de24296cc51b74741f0a369b0355bbbc07dace239e4c49'],
+    [[g2, a, g1, c], '0x82cb3c09f78c3f79ed0f35e6c946c28c79861d6c743468255a828b8ba22fbab9'],
+    [[g2, d], '0x527d30bc3378b13fda7d9d0815b5d31abcb474d1ce10ee338c30be03e3fb8cde'],
+  ]) assert.equal(depsHash(list), expected);
 });
 
 test('E7: upstream proofs are labelled as EIP-8288 recursive STARKs', () => {
