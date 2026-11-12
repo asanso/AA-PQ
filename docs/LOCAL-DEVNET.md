@@ -17,7 +17,7 @@ Run a disposable EIP-8288 Daisugi devnet on one Linux machine, then use the AA-P
 
 | Component | Revision |
 |---|---|
-| Devnet kit | NethermindEth/nethermind `feature/daisugi-devnet-packaged-kurtosis` (#15845, into `daisugi/devnet-handoff`) `869b338147babed0bac866e88c29863ea791c597` |
+| Devnet kit | NethermindEth/nethermind `feature/daisugi-devnet-packaged-kurtosis` (#15845, into `daisugi/devnet-handoff`) `45c559d778c94e0231b2a8fe5ad01f86f1d5cbd4` |
 | Nethermind | NethermindEth/nethermind#15829 `215f799b136347109a55f962748068ec0d2fee54`, native Lean backend from `Nethermind.Crypto.Lean` 0.12.0.21 |
 | Lighthouse | sigp/lighthouse v8.2.2 `e423a66763bb1bd780492d635123f208d80c3538` with this repository's `aggregation/frames/consensus/eip8288-lean` patches 0001-0014 (#10, `bf371db`); `/lighthouse` sha256 `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d` |
 | Lean account | `Daisugi.AggregatedFrameAccount.eip8288-lean.v2`, runtime `0x0b882e19e2b9d99498fec4d6c7df7d308c190b5e73a4ffd2542d0aef1d11b467` |
@@ -27,7 +27,7 @@ Run a disposable EIP-8288 Daisugi devnet on one Linux machine, then use the AA-P
 ```bash
 export WORK=~/daisugi-devnet && mkdir -p $WORK && cd $WORK
 git clone --filter=blob:none --no-checkout https://github.com/NethermindEth/nethermind nethermind
-git -C nethermind checkout 869b338147babed0bac866e88c29863ea791c597                      # the kit
+git -C nethermind checkout 45c559d778c94e0231b2a8fe5ad01f86f1d5cbd4                      # the kit
 git -C nethermind worktree add ../nethermind-el 215f799b136347109a55f962748068ec0d2fee54  # the client
 git clone https://github.com/asanso/AA-PQ AA-PQ    # then check out the commit that contains this file
 for d in frontend explorer frame-account aggregation/frames/extension; do
