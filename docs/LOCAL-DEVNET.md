@@ -10,16 +10,16 @@ Run a disposable EIP-8288 Daisugi devnet on one Linux machine, then use the AA-P
 
 - Linux x86_64, Docker with Compose 2.24 or later, Node.js 22, `git`, `jq`, `curl`, `openssl`, `python3`.
 - Chromium (branded Chrome ignores `--load-extension`).
-- For the Kurtosis option: the Kurtosis CLI on a Docker host that is not a Swarm node.
+- For the Kurtosis option: the Kurtosis CLI on a Docker host that is not a Swarm node (Kurtosis fails on a second network named `*bridge*`, such as `docker_gwbridge`) and has port 8081 free.
 - About 8 cores, 16 GB RAM and 20 GB free disk.
 
 ## Revisions
 
 | Component | Revision |
 |---|---|
-| Devnet kit | NethermindEth/nethermind `daisugi/devnet-handoff` `ff0d878dbc9b577629e9ed274b46a766873408a2` |
-| Nethermind | `feature/eip8288-lean` `1e5d1fa8a071b0b329a243437d00026e1d4a72df` |
-| Lighthouse | sigp/lighthouse v8.2.2 `e423a66763bb1bd780492d635123f208d80c3538` with this repository's `aggregation/frames/consensus/eip8288-lean` patches; `/lighthouse` sha256 `b249885cf90b06d772ce1eb94757e816c0910f514d200610f328991961d88eb2` |
+| Devnet kit | NethermindEth/nethermind `feature/daisugi-devnet-packaged-kurtosis` (#15845, into `daisugi/devnet-handoff`) `869b338147babed0bac866e88c29863ea791c597` |
+| Nethermind | NethermindEth/nethermind#15829 `215f799b136347109a55f962748068ec0d2fee54`, native Lean backend from `Nethermind.Crypto.Lean` 0.12.0.21 |
+| Lighthouse | sigp/lighthouse v8.2.2 `e423a66763bb1bd780492d635123f208d80c3538` with this repository's `aggregation/frames/consensus/eip8288-lean` patches 0001-0014 (#10, `bf371db`); `/lighthouse` sha256 `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d` |
 | Lean account | `Daisugi.AggregatedFrameAccount.eip8288-lean.v2`, runtime `0x0b882e19e2b9d99498fec4d6c7df7d308c190b5e73a4ffd2542d0aef1d11b467` |
 
 ## 1. Sources and images
@@ -27,16 +27,15 @@ Run a disposable EIP-8288 Daisugi devnet on one Linux machine, then use the AA-P
 ```bash
 export WORK=~/daisugi-devnet && mkdir -p $WORK && cd $WORK
 git clone --filter=blob:none --no-checkout https://github.com/NethermindEth/nethermind nethermind
-git -C nethermind checkout ff0d878dbc9b577629e9ed274b46a766873408a2                      # the kit
-git -C nethermind worktree add ../nethermind-el 1e5d1fa8a071b0b329a243437d00026e1d4a72df  # the client
+git -C nethermind checkout 869b338147babed0bac866e88c29863ea791c597                      # the kit
+git -C nethermind worktree add ../nethermind-el 215f799b136347109a55f962748068ec0d2fee54  # the client
 git clone https://github.com/asanso/AA-PQ AA-PQ    # then check out the commit that contains this file
 for d in frontend explorer frame-account aggregation/frames/extension; do
   npm ci --prefix AA-PQ/$d --ignore-scripts --no-audit --no-fund
 done
 
-# Nethermind with the native Lean library, built from the client checkout.
-docker build -f nethermind/tools/daisugi-devnet/images/nethermind.Dockerfile \
-  --build-arg COMMIT_HASH=1e5d1fa8a071b0b329a243437d00026e1d4a72df -t daisugi/nethermind:1e5d1fa8a0 nethermind-el
+# Nethermind's stock Dockerfile restores the native Lean library from Nethermind.Crypto.Lean; no Rust.
+docker build --build-arg COMMIT_HASH=215f799b136347109a55f962748068ec0d2fee54 -t daisugi/nethermind:215f799b13 nethermind-el
 
 # Lighthouse: the pinned archive plus the patch series, checked against sources.lock.json.
 LH=e423a66763bb1bd780492d635123f208d80c3538 && mkdir -p build
@@ -58,21 +57,21 @@ Pick one option. Both activate EIP-8288 at epoch 3 (block 96) on a Prague genesi
 cd $WORK/nethermind/tools/daisugi-devnet
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml RUN=$WORK/run/devnet EL_RPC=http://127.0.0.1:28545
 CHAIN_ID=7357 LOCAL=1 ./gen-genesis.sh $RUN $(( $(date +%s) + 30 )) 3
-./up.sh $RUN daisugi/nethermind:1e5d1fa8a0 daisugi/lighthouse:eip8288-lean
+./up.sh $RUN daisugi/nethermind:215f799b13 daisugi/lighthouse:eip8288-lean
 ./check.sh $RUN      # about 4 minutes; ends with PASS once finality passes the fork
 ```
 
-**Option B: Kurtosis.** Uses ethpandaops' ethereum-package, chain ID 1337 and its public prefunding mnemonic.
+**Option B: Kurtosis.** Uses ethpandaops' ethereum-package, chain ID 1337 and its public prefunding mnemonic: a local devnet only. The shared Daisugi network gets its own chain ID and private mnemonic from the kit's `gen-genesis.sh`, never these.
 
 ```bash
 cd $WORK/nethermind/tools/daisugi-devnet
-KEEP=1 PQ_SERIES=0 NETHERMIND_IMAGE=daisugi/nethermind:1e5d1fa8a0 LIGHTHOUSE_IMAGE=daisugi/lighthouse:eip8288-lean \
+KEEP=1 PQ_SERIES=0 NETHERMIND_IMAGE=daisugi/nethermind:215f799b13 LIGHTHOUSE_IMAGE=daisugi/lighthouse:eip8288-lean \
   kurtosis/run.sh daisugi
 cd $WORK/AA-PQ
 eval "$(scripts/local-devnet/kurtosis-run-dir.sh $WORK/nethermind/tools/daisugi-devnet daisugi $WORK/run/kurtosis)"
 ```
 
-`run.sh` checks the fork and finality like `check.sh`. `kurtosis-run-dir.sh` writes the AA-PQ run directory and exports `RUN` and `EL_RPC` for the enclave's dynamic ports. `PQ_SERIES=0` skips the kit's own transaction series.
+`run.sh` checks the fork and finality like `check.sh`. `NODES=3` starts three Nethermind + Lighthouse + validator nodes instead of one; that configuration, with a late node from the kit's `kurtosis/sync.sh`, is the tested one. `kurtosis-run-dir.sh` writes the AA-PQ run directory and exports `RUN` and `EL_RPC` for the enclave's dynamic ports. `PQ_SERIES=0` skips the kit's own transaction series.
 
 ## 3. Deploy the Lean account factory
 
@@ -127,4 +126,4 @@ rm -rf $RUN
 
 - ERC-4337 mode is unavailable: a fresh devnet has no bundler or EntryPoint.
 - Single host, x86_64 only. Client images are built locally, not published.
-- The kit's own `proof.sh send` and Kurtosis transaction series still use the earlier EIP-8141 transaction envelope; the wallet path above does not depend on them.
+- The kit's PQ transaction series (`pq.sh`) needs the .NET SDK and `FX` set to the `Nethermind.Crypto.Lean` package's `testing/runtimes/linux-x64/native/fixtures` signer; the wallet path above does not depend on it.
