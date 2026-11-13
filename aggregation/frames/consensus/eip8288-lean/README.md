@@ -11,12 +11,11 @@ A Lighthouse patch series for the EIP-8288 format implemented upstream in Nether
 overlay**: build that branch commit as is. The legacy Nethermind overlay in
 `../fork` is for the live chain only.
 
-The pinned Nethermind commit is **interim** (`revisionStatus` in the lock): the head
-of NethermindEth/nethermind#15829, under review, that this series was validated
-against. It takes the native Lean backend (ABI 12, upstream leanVM `e4dcb8d5`) from the
-`Nethermind.Crypto.Lean` 0.12.0.21 NuGet package and builds no Rust. Once #15829
-merges, a `feature/eip8288-lean` commit replaces this pin, and the acceptance steps
-below run again against it. `previouslyValidated` keeps the earlier pin, `1e5d1fa8a0`,
+The pinned Nethermind commit is the merge of NethermindEth/nethermind#15829 into
+`feature/eip8288-lean` (`revisionStatus` `merged` in the lock), the tree this series was
+validated against. It takes the native Lean backend (ABI 12, upstream leanVM `e4dcb8d5`)
+from the `Nethermind.Crypto.Lean` 0.12.0.21 NuGet package and builds no Rust.
+`previouslyValidated` keeps the earlier pin, `1e5d1fa8a0`,
 whose BLAKE2s dependency commitment this series rejects.
 
 The series starts from `../fork`'s Lighthouse overlay (same base, Lighthouse
@@ -192,7 +191,7 @@ Nethermind options:
 - the `Eth` JSON-RPC module, for `eth_sendProofWrapper`.
 
 Nethermind takes its native Lean library from the pinned `Nethermind.Crypto.Lean`
-package (restored from nugettest at the interim commit); the standard Dockerfile
+package (restored from nugettest); the standard Dockerfile
 includes it and needs no Rust toolchain.
 
 Consensus (`config.yaml`):
