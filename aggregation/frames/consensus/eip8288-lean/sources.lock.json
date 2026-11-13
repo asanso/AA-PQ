@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "activation": "disabled",
+  "nethermind": {
+    "repository": "NethermindEth/nethermind",
+    "branch": "feature/eip8288-lean",
+    "revision": "3dc22c25502774fcf3d8c4ea7a773092caf34a95",
+    "revisionStatus": "merged",
+    "revisionNote": "Merge of NethermindEth/nethermind#15829 into feature/eip8288-lean. The native Lean backend comes from the pinned NuGet package; Nethermind builds no Rust. Same Git tree as the validated #15829 head 725e1dede5; it differs from the previously pinned head 215f799b13 only by the removed managed CPU feature guard.",
+    "gitTree": "f2b720b70e1cadf73c8663c36b80ae9c47ae7968",
+    "overlay": null,
+    "dependencyMode": 4,
+    "dependencyCommitment": "Keccak-256 over sorted, deduplicated (data_hash || key) entries of the leanSPHINCS (0x10) list; with any other scheme, Keccak-256(leanSPHINCS list hash || hash of every other entry || \"eip8288/leanstark-deps\" zero-padded to 32 bytes)",
+    "proofHeaderCommitment": "keccak256(stark_proof)",
+    "nativePackage": {
+      "id": "Nethermind.Crypto.Lean",
+      "version": "0.12.0.21",
+      "source": "nugettest",
+      "repository": "NethermindEth/lean-bindings"
+    },
+    "nativeAbi": 12,
+    "leanvmRepository": "leanEthereum/leanVM",
+    "leanvmRevision": "e4dcb8d5436c9bf76398d890c57c59613af12956",
+    "dependencySchemes": [
+      16,
+      17
+    ],
+    "frameTransactionRules": "ethereum/EIPs#12502 signature lengths in compute_sig_hash; fees = [max_fee, max_priority_fee_per_gas] (NethermindEth/nethermind#14374); empty nonce_keys selects the account nonce (ethereum/EIPs#12511)",
+    "previouslyValidated": {
+      "revision": "1e5d1fa8a071b0b329a243437d00026e1d4a72df",
+      "gitTree": "5127b1b596519981e0ad309d50f022cbaa65b2e7",
+      "nativeAbi": 10,
+      "note": "BLAKE2s-256 dependency commitment (Marchhill/leanVM e2bc4212, ABI 10). Its blocks fail this series' block hash check."
+    }
+  },
+  "lighthouse": {
+    "repository": "sigp/lighthouse",
+    "revision": "e423a66763bb1bd780492d635123f208d80c3538",
+    "archiveSha256": "3f3193218d8f7228889505eb508c6176ea60a964fcfb072eb248787c1e242d4c",
+    "patchSeries": {
+      "pristineTree": "ab477c0379d547f44498a3e67de42ae3b44ba010",
+      "patchedTree": "c6664b540777715486dc6ebdafdf6990fe49a9df",
+      "provenance": {
+        "inherited": {
+          "patches": [
+            "0001-Add-the-Daisugi-consensus-fork-imported-AA-PQ-overla.patch"
+          ],
+          "source": "asanso/AA-PQ a4b1d73b843987412f8423ae601b531e4c83bce7 aggregation/frames/consensus/fork/overlays/lighthouse/files",
+          "introducedBy": "3bfba0706b22393b3bae32ad1e2b2c433083ff31"
+        },
+        "eip8288Lean": {
+          "patches": [
+            "0002-feat-daisugi-carry-the-EIP-8288-starkProof-of-the-cu.patch",
+            "0003-feat-daisugi-check-the-Daisugi-block-hash-with-the-E.patch",
+            "0004-test-daisugi-reproduce-a-real-devnet-block-hash-and-.patch",
+            "0005-test-daisugi-reproduce-the-hash-of-a-proof-bearing-d.patch",
+            "0006-test-daisugi-reject-a-reconstructed-payload-body-wit.patch",
+            "0007-build-daisugi-build-the-reproducible-image-on-bookwo.patch",
+            "0008-fix-daisugi-reject-the-zero-block-hash-of-an-undecod.patch",
+            "0009-fix-daisugi-commit-to-signature-lengths-in-the-EIP-8.patch",
+            "0010-fix-daisugi-read-the-two-item-EIP-8141-fee-list-when.patch",
+            "0011-fix-daisugi-check-the-Keccak-EIP-8288-commitment-of-.patch",
+            "0012-test-daisugi-pin-Keccak-era-Nethermind-blocks-and-re.patch",
+            "0013-test-daisugi-reject-a-wrong-EIP-8288-commitment-on-g.patch",
+            "0014-test-daisugi-pin-Nethermind-s-ComputeDepsHash-vector.patch"
+          ],
+          "originalCommits": [
+            "20712977998f25ba9aedd05c58a42d0f932869df",
+            "d4a14a025b8f7a35578e85faa2afc9b3abb2cbaa",
+            "d8f106e07b687ca4eb9929b56b8593f596de6dd2",
+            "db4536d4e3add011256d1370548fa726ea5ab500",
+            "0e5db88e568ebb0a1f7bb4583ad66a3d73f16afa",
+            "17dd930dc5a5fcdf1bc9744f9c03b766478040da",
+            "be498c6615e79672ece8ba7256d90ce5f59052b2",
+            "422bb14350a3ab934af2044a2464c05c191ea44a",
+            "285238b365640944e8ad2d67999ac8d16add6c60",
+            "bc9f00a041d985bd6a0244c8885fabd90a2440dc",
+            "c5c4ddba94893a0071696f2786b7f2d8930ff019",
+            "d16587dbdf91d69c8f65bbf0e7fe39e36ebac0d0",
+            "8126852d973cb88f234e3cd8563d164e2213a82c"
+          ]
+        }
+      },
+      "patches": [
+        {
+          "file": "0001-Add-the-Daisugi-consensus-fork-imported-AA-PQ-overla.patch",
+          "sha256": "327c20fe18c26e9de80c09de9db9996748d076f43e827955f301fb4edb6d8c36"
+        },
+        {
+          "file": "0002-feat-daisugi-carry-the-EIP-8288-starkProof-of-the-cu.patch",
+          "sha256": "90ecc582919b73fd6c2fbac59574cd223f76c11d0f79438a5c61451e6b04945a"
+        },
+        {
+          "file": "0003-feat-daisugi-check-the-Daisugi-block-hash-with-the-E.patch",
+          "sha256": "0d3239961cb264bdbbe71b11c8eade1092ff885275969faa94168672340f9271"
+        },
+        {
+          "file": "0004-test-daisugi-reproduce-a-real-devnet-block-hash-and-.patch",
+          "sha256": "67405fa71651efe93d4dc8d6386542f2b03f0880084c39d9fad1b0590ee1cdf3"
+        },
+        {
+          "file": "0005-test-daisugi-reproduce-the-hash-of-a-proof-bearing-d.patch",
+          "sha256": "f8a0c56be4c70001ab1597333ca956c0863c248b5567bdeab42ff5c4bdd82ef0"
+        },
+        {
+          "file": "0006-test-daisugi-reject-a-reconstructed-payload-body-wit.patch",
+          "sha256": "3d4c56a5753f4af2c942ee23892196aff8a6b183bb9f79003e5e90eb99a0970d"
+        },
+        {
+          "file": "0007-build-daisugi-build-the-reproducible-image-on-bookwo.patch",
+          "sha256": "c6a6a5fff0bd19de25b505d47cf0671dbe8fc138b66055cd4344cdef716b5403"
+        },
+        {
+          "file": "0008-fix-daisugi-reject-the-zero-block-hash-of-an-undecod.patch",
+          "sha256": "71a02c142e67ada3489214758f4109139e189a39942f2d6ecd601178483fa6ab"
+        },
+        {
+          "file": "0009-fix-daisugi-commit-to-signature-lengths-in-the-EIP-8.patch",
+          "sha256": "a9d560cf4f3701d304eed0a918d1d3adfe1e2bae8ced6886dba317cc277b8718"
+        },
+        {
+          "file": "0010-fix-daisugi-read-the-two-item-EIP-8141-fee-list-when.patch",
+          "sha256": "ca8cb4318695cca2ac0dbde2d2ca7850f0af4e2c334465eb5104e5e0338b6750"
+        },
+        {
+          "file": "0011-fix-daisugi-check-the-Keccak-EIP-8288-commitment-of-.patch",
+          "sha256": "bab7283e64a5df8b8b5f4a65d9f53a8341c029a703eea0115af3da9c88eacab7"
+        },
+        {
+          "file": "0012-test-daisugi-pin-Keccak-era-Nethermind-blocks-and-re.patch",
+          "sha256": "6b17dbe587ee65182b149ab5f857750f9fa3e34b5d207a8278e49280cfd0d136"
+        },
+        {
+          "file": "0013-test-daisugi-reject-a-wrong-EIP-8288-commitment-on-g.patch",
+          "sha256": "18d4fc9cae85c5409f26e7a1e665fa763b912461aba4028f281c6d1e25b21a42"
+        },
+        {
+          "file": "0014-test-daisugi-pin-Nethermind-s-ComputeDepsHash-vector.patch",
+          "sha256": "c5c6799f5e515b86121f236bd449f58ad71de30259e0c4f5d08b8d24b0b5028e"
+        }
+      ]
+    },
+    "fork": "Daisugi",
+    "sszForkTag": 8,
+    "activationEpoch": null,
+    "activationVersion": null,
+    "reproducibleBuild": {
+      "dockerfile": "Dockerfile.reproducible",
+      "sourceDate": 1787008455,
+      "features": "jemalloc-unprefixed,portable",
+      "amd64": {
+        "rustImage": "rust:1.91-bookworm@sha256:8322627e69ba7780b54f39e9f4d3758c006a3ae0123ea01d63b91f0626169891",
+        "binarySha256": "109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d"
+      },
+      "arm64": {
+        "rustImage": "rust:1.91-bookworm@sha256:20262682d0201e219012287e8c1e6a7a14b6ebd46bb2b280714f23c06678c285",
+        "binarySha256": null
+      }
+    }
+  },
+  "guestVerificationKey": "f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5",
+  "recommendedMaxConsensusPayloadBytes": 20971520,
+  "maxStarkProofBytes": 1310720
+}

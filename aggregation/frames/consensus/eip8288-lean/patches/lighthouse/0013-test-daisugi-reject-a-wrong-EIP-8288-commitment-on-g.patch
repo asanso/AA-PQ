@@ -1,0 +1,203 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ManuelArto <manuelartociao@gmail.com>
+Date: Thu, 12 Nov 2026 22:34:59 +0100
+Subject: [PATCH 13/14] test(daisugi): reject a wrong EIP-8288 commitment on
+ gossip, lookup and range-sync import
+
+The mock EL built Daisugi payloads with a tree-root block hash, so no harness chain could import a Daisugi
+block under the local block hash check, and nothing tested that check on the import path. Build them with the
+real header hash, and import a block whose proof no longer matches its commitment, with a valid state root and
+signature and an EL answering VALID: gossip, lookup and range sync without EL notification all reject it with
+LocalBlockHashMismatch. With the check disabled the same block imports.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../tests/payload_invalidation.rs             | 127 +++++++++++++++++-
+ .../test_utils/execution_block_generator.rs   |  20 ++-
+ 2 files changed, 144 insertions(+), 3 deletions(-)
+
+diff --git a/beacon_node/beacon_chain/tests/payload_invalidation.rs b/beacon_node/beacon_chain/tests/payload_invalidation.rs
+index c89be0f5ddac8eb8de9ca9d94a81432794def50e..fce363fb999287b311d3de269902cfd954af56be 100644
+--- a/beacon_node/beacon_chain/tests/payload_invalidation.rs
++++ b/beacon_node/beacon_chain/tests/payload_invalidation.rs
+@@ -3,12 +3,13 @@
+ 
+ use beacon_chain::block_verification_types::LookupBlock;
+ use beacon_chain::{
+-    BeaconChainError, BlockError, ChainConfig, ExecutionPayloadError,
++    BeaconChainError, BlockError, ChainConfig, ChainSegmentResult, ExecutionPayloadError,
+     INVALID_JUSTIFIED_PAYLOAD_SHUTDOWN_REASON, NotifyExecutionLayer, StateSkipConfig,
+     WhenSlotSkipped,
+     canonical_head::CachedHead,
+     test_utils::{BeaconChainHarness, EphemeralHarnessType, fork_name_from_env, test_spec},
+ };
++use bls::Signature;
+ use execution_layer::{
+     ExecutionLayer, ForkchoiceState, PayloadAttributes,
+     json_structures::{JsonForkchoiceStateV1, JsonPayloadAttributes, JsonPayloadAttributesV1},
+@@ -16,6 +17,9 @@ use execution_layer::{
+ use fork_choice::{Error as ForkChoiceError, InvalidationOperation, PayloadVerificationStatus};
+ use proto_array::{Error as ProtoArrayError, ExecutionStatus};
+ use slot_clock::SlotClock;
++use state_processing::{
++    BlockSignatureStrategy, ConsensusContext, VerifyBlockRoot, per_block_processing,
++};
+ use std::collections::HashMap;
+ use std::sync::Arc;
+ use std::time::Duration;
+@@ -1457,3 +1461,124 @@ async fn weights_after_resetting_optimistic_status() {
+         rig.import_block(Payload::Valid).await;
+     }
+ }
++
++/// A Daisugi block on the head whose recursive proof no longer matches the `keccak(stark_proof)` its block hash commits
++/// to, with a valid state root and proposer signature, so only the EIP-8288 commitment is wrong.
++async fn daisugi_block_with_tampered_proof(
++    rig: &InvalidPayloadRig,
++) -> (
++    Arc<SignedBeaconBlock<E>>,
++    Option<(KzgProofs<E>, BlobsList<E>)>,
++) {
++    let harness = &rig.harness;
++    let head_state = harness.chain.head_snapshot().beacon_state.clone();
++    let slot = head_state.slot() + 1;
++    let ((block, blobs), mut state) = harness.make_block_return_pre_state(head_state, slot).await;
++    let (mut block, _) = (*block).clone().deconstruct();
++    let BeaconBlockBodyRefMut::Daisugi(body) = block.body_mut() else {
++        panic!("expected a Daisugi block");
++    };
++    body.execution_payload
++        .execution_payload
++        .recursive_stark_proof = vec![1].try_into().unwrap();
++
++    per_block_processing(
++        &mut state,
++        &SignedBeaconBlock::from_block(block.clone(), Signature::empty()),
++        BlockSignatureStrategy::NoVerification,
++        VerifyBlockRoot::False,
++        &mut ConsensusContext::new(slot),
++        &harness.spec,
++    )
++    .unwrap();
++    *block.state_root_mut() = state.update_tree_hash_cache().unwrap();
++
++    harness.set_current_slot(slot);
++    let proposer = &harness.validator_keypairs[block.proposer_index() as usize];
++    let signed = block.sign(
++        &proposer.sk,
++        &state.fork(),
++        state.genesis_validators_root(),
++        &harness.spec,
++    );
++    (Arc::new(signed), blobs)
++}
++
++fn is_local_block_hash_mismatch(error: &BlockError) -> bool {
++    matches!(
++        error,
++        BlockError::ExecutionPayloadError(ExecutionPayloadError::LocalBlockHashMismatch(_))
++    )
++}
++
++/// EIP-8288: Lighthouse recomputes a Daisugi block hash from the payload, `keccak(stark_proof)` and the dependency hash
++/// included, and rejects a mismatch on gossip, lookup and range-sync import even when the EL answers VALID.
++#[tokio::test]
++async fn daisugi_block_with_wrong_commitment_is_rejected_on_every_import_path() {
++    let mut rig =
++        InvalidPayloadRig::new_with_spec(ForkName::Daisugi.make_genesis_spec(E::default_spec()));
++    // Honest blocks pass the local check: the mock EL builds Daisugi payloads with their real header hash.
++    rig.build_blocks(4, Payload::Valid).await;
++    let head = rig.cached_head().head_block_root();
++
++    let mock_execution_layer = rig.harness.mock_execution_layer.as_ref().unwrap();
++    mock_execution_layer.server.all_payloads_valid();
++    let (block, blobs) = daisugi_block_with_tampered_proof(&rig).await;
++    let chain = rig.harness.chain.clone();
++
++    let gossip_block = chain
++        .clone()
++        .verify_block_for_gossip(block.clone())
++        .await
++        .unwrap();
++    let error = chain
++        .process_block(
++            gossip_block.block_root,
++            gossip_block,
++            NotifyExecutionLayer::Yes,
++            BlockImportSource::Gossip,
++            || Ok(()),
++        )
++        .await
++        .unwrap_err();
++    assert!(is_local_block_hash_mismatch(&error), "gossip: {error:?}");
++
++    let lookup_block = LookupBlock::new(block.clone());
++    let error = chain
++        .process_block(
++            lookup_block.block_root(),
++            lookup_block,
++            NotifyExecutionLayer::Yes,
++            BlockImportSource::Lookup,
++            || Ok(()),
++        )
++        .await
++        .unwrap_err();
++    assert!(is_local_block_hash_mismatch(&error), "lookup: {error:?}");
++
++    // Range sync does not notify the EL; the optimistic path must not accept the block either.
++    assert!(chain.config.optimistic_finalized_sync);
++    let range_block = rig
++        .harness
++        .build_range_sync_block_from_blobs(block, blobs)
++        .unwrap();
++    match chain
++        .process_chain_segment(vec![range_block], NotifyExecutionLayer::No)
++        .await
++    {
++        ChainSegmentResult::Failed {
++            imported_blocks,
++            error,
++        } => {
++            assert!(imported_blocks.is_empty());
++            assert!(
++                is_local_block_hash_mismatch(&error),
++                "range sync: {error:?}"
++            );
++        }
++        ChainSegmentResult::Successful { .. } => panic!("range sync imported the tampered block"),
++    }
++
++    rig.recompute_head().await;
++    assert_eq!(rig.cached_head().head_block_root(), head);
++}
+diff --git a/beacon_node/execution_layer/src/test_utils/execution_block_generator.rs b/beacon_node/execution_layer/src/test_utils/execution_block_generator.rs
+index 3af3be374fd4342e14899f770129b283e864cc69..5e84267ae0ecaed21d1bf001d2341840a6743610 100644
+--- a/beacon_node/execution_layer/src/test_utils/execution_block_generator.rs
++++ b/beacon_node/execution_layer/src/test_utils/execution_block_generator.rs
+@@ -847,8 +847,24 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
+             self.blobs_bundles.insert(id, bundle);
+         }
+ 
+-        *execution_payload.block_hash_mut() =
+-            ExecutionBlockHash::from_root(execution_payload.tree_hash_root());
++        *execution_payload.block_hash_mut() = match &execution_payload {
++            // Lighthouse recomputes a Daisugi block hash on import, so the mock must produce the real header hash.
++            ExecutionPayload::Daisugi(payload) => {
++                crate::calculate_execution_block_hash(
++                    types::ExecutionPayloadRef::Daisugi(payload),
++                    attributes.parent_beacon_block_root().ok(),
++                    Some(
++                        &self
++                            .execution_requests
++                            .get(&id)
++                            .cloned()
++                            .unwrap_or_default(),
++                    ),
++                )
++                .0
++            }
++            _ => ExecutionBlockHash::from_root(execution_payload.tree_hash_root()),
++        };
+         Ok(execution_payload)
+     }
+ }

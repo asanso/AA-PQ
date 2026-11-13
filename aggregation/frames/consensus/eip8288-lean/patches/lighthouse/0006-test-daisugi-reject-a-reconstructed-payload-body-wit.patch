@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ManuelArto <manuelartociao@gmail.com>
+Date: Mon, 2 Nov 2026 18:57:39 +0100
+Subject: [PATCH 6/8] test(daisugi): reject a reconstructed payload body
+ without its committed proof
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ beacon_node/execution_layer/src/engine_api.rs | 35 +++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/beacon_node/execution_layer/src/engine_api.rs b/beacon_node/execution_layer/src/engine_api.rs
+index 57cd89f187b1849b67777469ca37bbbfc20bfc6e..7af282db95d75de225d7a79aeced4f16b06ba13a 100644
+--- a/beacon_node/execution_layer/src/engine_api.rs
++++ b/beacon_node/execution_layer/src/engine_api.rs
+@@ -905,3 +905,38 @@ impl ClientVersionV1 {
+         Graffiti::from(graffiti_bytes)
+     }
+ }
++
++#[cfg(test)]
++mod daisugi_payload_body_test {
++    use super::ExecutionPayloadBodyV1;
++    use tree_hash::TreeHash;
++    use types::{
++        ExecutionPayloadHeader, ExecutionPayloadHeaderDaisugi, MainnetEthSpec, RecursiveProof,
++    };
++
++    fn header(proof: &RecursiveProof) -> ExecutionPayloadHeader<MainnetEthSpec> {
++        ExecutionPayloadHeader::Daisugi(ExecutionPayloadHeaderDaisugi {
++            recursive_stark_proof_root: proof.tree_hash_root(),
++            ..Default::default()
++        })
++    }
++
++    fn body(proof: Option<RecursiveProof>) -> ExecutionPayloadBodyV1<MainnetEthSpec> {
++        ExecutionPayloadBodyV1 {
++            recursive_stark_proof: proof,
++            transactions: Default::default(),
++            withdrawals: Some(Default::default()),
++        }
++    }
++
++    /// A payload rebuilt from `engine_getPayloadBodiesBy*` to serve `BlocksByRange` must carry the proof its stored
++    /// header commits to, or the node would serve a block whose hash its peers cannot reproduce.
++    #[test]
++    fn daisugi_body_must_carry_the_proof_its_header_commits_to() {
++        let proof = RecursiveProof::try_from(vec![1, 2, 3]).unwrap();
++        let other = RecursiveProof::try_from(vec![1, 2, 4]).unwrap();
++        assert!(body(Some(proof.clone())).to_payload(header(&proof)).is_ok());
++        assert!(body(Some(other)).to_payload(header(&proof)).is_err());
++        assert!(body(None).to_payload(header(&proof)).is_err());
++    }
++}
