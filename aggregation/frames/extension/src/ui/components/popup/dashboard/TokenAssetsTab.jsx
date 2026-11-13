@@ -21,7 +21,7 @@
 
 import { useEffect, useState } from "preact/hooks";
 import { useLocation } from "wouter-preact";
-import { useBalance, useNetwork, useTokens, usePriceFeed } from "@/ui/hooks";
+import { useBalance, useNetwork, useTokens, usePriceFeed, BALANCE_UNAVAILABLE } from "@/ui/hooks";
 import { TokenIcon } from "./TokenIcon.jsx";
 import { nativeIconUrl, tokenIconUrl } from "@/ui/utils/asset-icon.js";
 
@@ -104,7 +104,7 @@ export function TokenAssetsTab() {
   const networkName = net.network.value?.name || "Ethereum";
   const importedTokens = tokensApi.list.value;
   const balances = tokensApi.balances.value;
-  const nativeUsd = price.toUsd(bal.sa.value);
+  const nativeUsd = bal.sa.value === BALANCE_UNAVAILABLE ? null : price.toUsd(bal.sa.value);
 
   function toggleHideMode() {
     setHideMode((v) => !v);

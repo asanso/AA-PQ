@@ -7,7 +7,7 @@ function percent(used,limit) {
   const hundredths=(BigInt(used)*10000n+BigInt(limit)/2n)/BigInt(limit);
   return `${hundredths/100n}.${String(hundredths%100n).padStart(2,'0')}`;
 }
-export function transactionMetrics(tx,receipt,block,head) {
+export function transactionMetrics(tx,receipt,block,head,maxFee=tx.maxFee) {
   const mined=receipt!=null;
   const used=quantity(receipt?.gasUsed),limit=quantity(tx.gasLimit);
   const price=quantity(receipt?.gasPrice ?? receipt?.effectiveGasPrice);
@@ -27,7 +27,7 @@ export function transactionMetrics(tx,receipt,block,head) {
     confirmations:mined&&blockNumber!=null&&head!=null?Math.max(0,Number(head)-Number(blockNumber)+1):null,
     observedHead:head??null,timestamp:block?.timestamp??null,
     valueWei:decimal(tx.value),gasLimit:decimal(limit),gasUsed:decimal(used),gasUsedPercent:percent(used,limit),
-    effectiveGasPriceWei:decimal(price),baseFeePerGasWei:decimal(base),maxFeePerGasWei:decimal(cap),maxPriorityFeePerGasWei:decimal(tx.maxPriorityFeePerGas),
+    effectiveGasPriceWei:decimal(price),baseFeePerGasWei:decimal(base),maxFeePerGasWei:decimal(cap),maxFeeWei:decimal(maxFee),maxPriorityFeePerGasWei:decimal(tx.maxPriorityFeePerGas),
     transactionFeeWei:decimal(fee),executionFeeWei:decimal(execution),burntExecutionFeeWei:decimal(burnt),feeSavingWei:decimal(saving),
     blobGasUsed:decimal(blobUsed),blobGasPriceWei:decimal(blobPrice),blobFeeWei:decimal(blobFee),
     type:tx.type??null,nonce:decimal(tx.nonce),transactionIndex:receipt?.index??receipt?.transactionIndex??tx.index??null,
@@ -87,14 +87,16 @@ export function createTransactionDetails({provider,rpcUrl,fetchImpl=fetch,now=Da
     pending.set(key,work);return work;
   }
   return async tx=>{
-    const [receiptResult,headResult,blockResult]=await Promise.allSettled([
-      provider.getTransactionReceipt(tx.hash),provider.getBlockNumber(),tx.blockHash?provider.getBlock(tx.blockHash):Promise.resolve(null)
+    // ethers keeps only the fields it knows, so an EIP-8141 frame transaction's max_fee budget comes from the raw RPC result.
+    const frameFee=Number(tx.type)===6&&tx.maxFee==null?Promise.resolve(provider.send('eth_getTransactionByHash',[tx.hash])).then(raw=>raw?.maxFee??null):Promise.resolve(tx.maxFee??null);
+    const [receiptResult,headResult,blockResult,maxFeeResult]=await Promise.allSettled([
+      provider.getTransactionReceipt(tx.hash),provider.getBlockNumber(),tx.blockHash?provider.getBlock(tx.blockHash):Promise.resolve(null),frameFee
     ]);
     const receipt=receiptResult.status==='fulfilled'?receiptResult.value:null;
     let block=blockResult.status==='fulfilled'?blockResult.value:null;
     if(block&&receipt?.blockHash&&block.hash!==receipt.blockHash)block=null;
     const head=headResult.status==='fulfilled'?headResult.value:null;
-    const details=transactionMetrics(tx,receipt,block,head);
+    const details=transactionMetrics(tx,receipt,block,head,maxFeeResult.status==='fulfilled'?maxFeeResult.value:null);
     details.errors=[];
     if(receiptResult.status==='rejected')details.errors.push('The transaction receipt is unavailable.');
     if(blockResult.status==='rejected'||tx.blockHash&&!block)details.errors.push('Block timestamp and base fee are unavailable.');

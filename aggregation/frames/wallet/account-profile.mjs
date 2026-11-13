@@ -1,13 +1,22 @@
 // Experimental clone account policy for the pinned EIP-8288 client.
-export function createProfile(e) {
+// eip8288-lean (upstream Nethermind feature/eip8288-lean) verifies leanSPHINCS against the raw 32-byte public key, so
+// the dependency carries that key and the account checks its hash; daisugi-v1 carries the hash itself.
+// eip8288-lean also follows that branch's EIP-8141 envelope: the account nonce is selected by empty nonce_keys
+// (ethereum/EIPs#12511), and max_fee is a total budget with no per-gas or blob fee caps (TXPARAM 0x05 is undefined).
+export const EIP8288_FORMATS = Object.freeze(['daisugi-v1', 'eip8288-lean']);
+export function createProfile(e, format = 'daisugi-v1') {
+  if (!EIP8288_FORMATS.includes(format)) throw Error('Unknown EIP-8288 format.');
   const { keccak256, concat, toBeHex, zeroPadValue, getBytes, hexlify, toUtf8Bytes, getAddress } = e;
-  const domain = keccak256(toUtf8Bytes('Daisugi.AggregatedFrameAccount.v2'));
+  // Each format has its own account domain, so an intent signed for one cannot authorize the other's account.
+  const lean = format === 'eip8288-lean';
+  const domain = keccak256(toUtf8Bytes(lean ? 'Daisugi.AggregatedFrameAccount.eip8288-lean.v2' : 'Daisugi.AggregatedFrameAccount.v2'));
   const word = value => zeroPadValue(toBeHex(BigInt(value)), 32);
   const selector = keccak256(toUtf8Bytes('createAccount(bytes32,bytes32,bytes32)')).slice(0, 10);
   const keyHash = (seed, root) => {
     for (const key of [seed, root]) if (!/^0x[0-9a-f]{32}0{32}$/i.test(key)) throw Error('Invalid SPHINCS public-key encoding.');
-    return keccak256(concat(['0x' + root.slice(2, 34), '0x' + seed.slice(2, 34)]));
+    return keccak256(publicKey(seed, root));
   };
+  const publicKey = (seed, root) => concat(['0x' + root.slice(2, 34), '0x' + seed.slice(2, 34)]);
   const cloneRuntime = (implementation, key) => concat(['0x363d3d373d3d3d363d73', getAddress(implementation),
     '0x5af43d82803e903d91602b57fd5bf3', key]);
   const initCode = (implementation, key) => concat(['0x3d604d80600a3d3981f3', cloneRuntime(implementation, key)]);
@@ -17,9 +26,10 @@ export function createProfile(e) {
     if (!/^0x[0-9a-f]{64}$/i.test(key)) throw Error('Invalid public-key hash.');
     const count = tx.frames.length, dependency = count - 3, verify = count - 2;
     if (count !== 3 && count !== 4) throw Error('Expected three frames or four frames with account creation.');
-    if (tx.nonceKeys?.length !== 1 || BigInt(tx.nonceKeys[0]) !== 0n) throw Error('Nonce key zero is required.');
+    if (lean ? tx.nonceKeys?.length !== 0 : tx.nonceKeys?.length !== 1 || BigInt(tx.nonceKeys[0]) !== 0n)
+      throw Error(lean ? 'The account nonce (empty nonce keys) is required.' : 'Nonce key zero is required.');
     for (const quantity of [tx.chainId, tx.nonce]) if (BigInt(quantity) < 0n || BigInt(quantity) >= 1n << 64n) throw Error('Quantity exceeds the client range.');
-    if (BigInt(tx.maxBlobFee ?? 0) !== 0n || tx.signatures?.length || tx.recentRootReferences?.length || tx.blobVersionedHashes?.length)
+    if ((lean ? tx.maxBlobFee !== undefined : BigInt(tx.maxBlobFee ?? 0) !== 0n) || tx.signatures?.length || tx.recentRootReferences?.length || tx.blobVersionedHashes?.length)
       throw Error('Unsupported envelope fields.');
     for (const [index, mode, flags, length] of [[dependency, 4, 0, 96], [verify, 1, 3, 0]]) {
       const f = tx.frames[index];
@@ -34,8 +44,11 @@ export function createProfile(e) {
     const dep = tx.frames[dependency], call = tx.frames.at(-1);
     if (BigInt(dep.executionGas) !== 3000n || BigInt(dep.stateGas) !== 0n || BigInt(tx.frames[verify].executionGas) < 50000n
         || call.mode !== 2 || call.flags !== 0 || getBytes(call.data).length > 4096) throw Error('Unsupported frame limits.');
-    const words = [domain, word(tx.chainId), word(tx.sender), key, word(6), word(tx.nonce),
-      keccak256(concat([word(1), word(0)])), word(tx.maxPriorityFee), word(tx.maxFee), word(0), word(count)];
+    const words = lean
+      ? [domain, word(tx.chainId), word(tx.sender), key, word(6), word(tx.nonce),
+        keccak256(word(0)), word(tx.maxPriorityFee), word(tx.maxFee), word(count)]
+      : [domain, word(tx.chainId), word(tx.sender), key, word(6), word(tx.nonce),
+        keccak256(concat([word(1), word(0)])), word(tx.maxPriorityFee), word(tx.maxFee), word(0), word(count)];
     for (let i = 0; i < count; i++) {
       const f = tx.frames[i];
       getAddress(f.target ?? tx.sender);
@@ -74,8 +87,8 @@ export function createProfile(e) {
     tx(2); op(0x30, 0x14); requireTrue();
     op(0x30, 0x3b); equal(77);
     push(32); push(45); push(2048); op(0x30, 0x3c);
-    for (const field of [0x0b, 7, 5, 0x10]) { tx(field); equal(0); }
-    tx(0x0e); equal(1);
+    for (const field of lean ? [0x0b, 7, 0x10] : [0x0b, 7, 5, 0x10]) { tx(field); equal(0); }
+    tx(0x0e); equal(lean ? 0 : 1);
     tx(9); push(3); op(0x14); jump('three');
     tx(9); equal(4); push(1); jump('four');
 
@@ -94,13 +107,15 @@ export function createProfile(e) {
       frame(dep, 1); equal(3000); frame(dep, 9); equal(0);
       frame(body, 2); equal(2); frame(body, 3); equal(0);
       push(4096); frame(body, 4); op(0x11, 0x15); requireTrue();
-      load(dep, 0); equal(16); load(dep, 64); key(); op(0x14); requireTrue();
+      load(dep, 0); equal(16); load(dep, 64);
+      if (lean) { push(3072); op(0x52); push(32); push(3072); op(0x20); }
+      key(); op(0x14); requireTrue();
       push(49999); frame(verify, 1); op(0x11); requireTrue();
       push(0); push(0); push(32); push(32); op(0x30); push(2000); op(0xfa, 0x15); requireTrue();
       let offset = 0;
       const store = () => { push(offset); op(0x52); offset += 32; };
       push(domain); store(); op(0x46); store(); op(0x30); store(); key(); store();
-      for (const field of [0, 1, 0x0f, 3, 4, 5, 9]) { tx(field); store(); }
+      for (const field of lean ? [0, 1, 0x0f, 3, 4, 9] : [0, 1, 0x0f, 3, 4, 5, 9]) { tx(field); store(); }
       for (let index = 0; index < count; index++) {
         for (const field of [0, 1, 2, 3, 4, 8, 9]) { frame(index, field); store(); }
         if (index === dep) {
@@ -123,5 +138,5 @@ export function createProfile(e) {
     }
     return hexlify(new Uint8Array(code));
   }
-  return { domain, word, keyHash, cloneRuntime, initCode, digest, implementationRuntime };
+  return { format, domain, word, keyHash, publicKey, cloneRuntime, initCode, digest, implementationRuntime };
 }

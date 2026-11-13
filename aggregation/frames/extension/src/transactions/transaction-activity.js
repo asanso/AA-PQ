@@ -85,6 +85,12 @@ export function createTransactionActivity(details, { notifySigned = true } = {})
   };
 }
 
+// Records a journaled submission's outcome on its activity, when something other than the poller resolved it.
+export async function settleActivity(txHash, outcome) {
+  const entry = (txHistory.value || []).find(tx => tx.txHash?.toLowerCase() === txHash?.toLowerCase());
+  if (entry && isUnconfirmedActivity(entry)) await publish({ ...entry, status: outcome.status, error: outcome.message });
+}
+
 let polling = false;
 export async function pollPendingActivities() {
   if (polling || busy.value) return;

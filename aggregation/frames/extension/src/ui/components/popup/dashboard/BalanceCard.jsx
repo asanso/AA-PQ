@@ -19,7 +19,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 import { useEffect } from "preact/hooks";
-import { useBalance, useNetwork, usePriceFeed } from "@/ui/hooks";
+import { useBalance, useNetwork, usePriceFeed, BALANCE_UNAVAILABLE } from "@/ui/hooks";
 import { TokenAssetsTab } from "./TokenAssetsTab.jsx";
 
 const TABS = [
@@ -99,7 +99,8 @@ export function BalanceCard({ tab, onTab, onSend, onReceive }) {
   }, []);
 
   const symbol = net.network.value?.symbol || "ETH";
-  const usd = price.toUsd(bal.sa.value);
+  const unavailable = bal.sa.value === BALANCE_UNAVAILABLE;
+  const usd = unavailable ? null : price.toUsd(bal.sa.value);
   const change = price.change24h;
   const hasChange = typeof change === "number" && Number.isFinite(change);
   const up = hasChange && change >= 0;
@@ -154,7 +155,7 @@ export function BalanceCard({ tab, onTab, onSend, onReceive }) {
               <span class="type-display-title text-text-dim pb-1">{symbol}</span>
             </button>
             <span class="relative z-10 type-label-md text-text-muted">
-              ${usd ?? "0.00"} USD
+              {unavailable ? (bal.loading.value ? "" : "Balance unavailable · tap to retry") : `$${usd ?? "0.00"} USD`}
             </span>
             <img
               src="/Vector5.png"

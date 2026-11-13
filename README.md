@@ -63,11 +63,12 @@ fallback key in its source.
 | --- | --- |
 | `RPC_URL` | Backend RPC used for chain reads |
 | `BUNDLER_URL` | Bundler upstream |
-| `ENTRY_POINT` | EntryPoint deployed on this chain |
+| `ENTRY_POINT` | Optional. Defaults to the network profile's EntryPoint; any other value stops startup. |
 | `FAUCET_PRIVATE_KEY` | Funded server-side test account used by the faucet |
 | `FAUCET_RPC_URL` | Optional separate RPC for faucet submission; defaults to `RPC_URL` |
 | `EXPLORER_URL` | Native indexer API; defaults to `http://127.0.0.1:3001` |
 | `FACTORY_ADDRESS` | Deployed factory used by the retained AA helper and original integration test |
+| `DAISUGI_NETWORK_PROFILE` | Optional path to a complete network profile JSON (chain ID, genesis hash, frame activation block, contract addresses; fields in `explorer/network-profile.mjs`). Unset: the current Daisugi network. The browser reads the chain ID from `/site-config.js`. `/api/config` and `/api/network`, which release "chain" health checks must use, fail when the RPC serves another chain. Prefer `/api/network`: releases before this profile also enforce their chain there, so a rollback health check catches them. |
 
 The faucet RPC must support transaction submission, nonce and fee queries. The
 restricted public read proxy is not a replacement for that connection. Public
@@ -128,7 +129,7 @@ preference is shared between them.
 5. Inspect complete input bytes, decoded parameters, signature length and
    available execution details. Missing data is labelled rather than inferred.
 
-The faucet serves chain 1337 only. Its API accepts up to 10 ETH per request;
+The faucet serves only the network profile's chain (1337 by default). Its API accepts up to 10 ETH per request;
 the interface requests 1 ETH. The per-address cooldown is 60 seconds and is local
 to the running process. Test ETH has no monetary value.
 
@@ -151,6 +152,8 @@ configuration, verification and rollback behavior.
 
 These steps create infrastructure and deploy the repository's baseline contracts.
 They are not needed when updating the portal on an already provisioned network.
+For a local EIP-8288 devnet with the `eip8288-lean` wallet, see
+[docs/LOCAL-DEVNET.md](docs/LOCAL-DEVNET.md).
 
 ### Start the network
 
