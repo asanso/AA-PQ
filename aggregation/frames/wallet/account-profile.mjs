@@ -16,7 +16,9 @@ export function createProfile(e, format = 'daisugi-v1') {
     for (const key of [seed, root]) if (!/^0x[0-9a-f]{32}0{32}$/i.test(key)) throw Error('Invalid SPHINCS public-key encoding.');
     return keccak256(publicKey(seed, root));
   };
-  const publicKey = (seed, root) => concat(['0x' + root.slice(2, 34), '0x' + seed.slice(2, 34)]);
+  // EIP-8288 lays out a leanSPHINCS key as PK.seed || PK.root (ethereum/EIPs#12666); daisugi-v1 keeps root || seed.
+  const publicKey = (seed, root) => concat(lean ? ['0x' + seed.slice(2, 34), '0x' + root.slice(2, 34)]
+    : ['0x' + root.slice(2, 34), '0x' + seed.slice(2, 34)]);
   const cloneRuntime = (implementation, key) => concat(['0x363d3d373d3d3d363d73', getAddress(implementation),
     '0x5af43d82803e903d91602b57fd5bf3', key]);
   const initCode = (implementation, key) => concat(['0x3d604d80600a3d3981f3', cloneRuntime(implementation, key)]);
