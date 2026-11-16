@@ -14,12 +14,12 @@ https.createServer({ cert: readFileSync(cert), key: readFileSync(key) }, (req, r
     res.writeHead(response.statusCode, response.headers);
     // pipeline, not pipe: a portal that dies mid-body leaves pipe's destination open, and the browser then waits for
     // its own timeout instead of seeing the response end. Destroying each side keeps a failed request short.
-    pipeline(response, res, () => res.destroy());
+    pipeline(response, res, error => { if (error) res.destroy(); });
   });
   upstream.on('error', () => {
     if (res.headersSent) { res.destroy(); return; }
     res.writeHead(502, { 'content-type': 'application/json' });
     res.end('{"error":"portal unavailable"}');
   });
-  pipeline(req, upstream, () => upstream.destroy());
+  pipeline(req, upstream, error => { if (error) upstream.destroy(); });
 }).listen(Number(port), '127.0.0.1', () => console.log(`tls proxy listening on https://127.0.0.1:${port} -> ${origin}`));
