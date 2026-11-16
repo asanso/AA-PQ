@@ -17,8 +17,8 @@ Run a disposable EIP-8288 Daisugi devnet on one Linux machine, then use the AA-P
 
 | Component | Revision |
 |---|---|
-| Devnet kit | NethermindEth/nethermind `daisugi/devnet-handoff` (#15845) `c0c90dd79be73c3dd9214ea41a012ac91381076d` |
-| Nethermind | NethermindEth/nethermind `feature/eip8288-lean` `3dc22c25502774fcf3d8c4ea7a773092caf34a95` (#15829), native Lean backend from `Nethermind.Crypto.Lean` 0.12.0.21 |
+| Devnet kit | NethermindEth/nethermind `daisugi/devnet-handoff` `e32558614e` (restart handoff in `tools/daisugi-devnet/RESTART.md`) |
+| Nethermind | NethermindEth/nethermind `fe94447c770f7eedfb31336c47a824df69aeaf53` (`feature/eip8288-lean` + #15955), native Lean backend from `Nethermind.Crypto.Lean` 0.21.0.110 (F128, ABI 21, key `PK.seed \|\| PK.root`) |
 | Lighthouse | sigp/lighthouse v8.2.2 `e423a66763bb1bd780492d635123f208d80c3538` with this repository's `aggregation/frames/consensus/eip8288-lean` patches 0001-0014 (#10, `0ba239e`); `/lighthouse` sha256 `109c9a91e128db8cb17be6939c5f614b1ae494a68da53814e9300bc5299ccd3d` |
 | Lean account | `Daisugi.AggregatedFrameAccount.eip8288-lean.v2`, runtime `0x0b882e19e2b9d99498fec4d6c7df7d308c190b5e73a4ffd2542d0aef1d11b467` |
 
@@ -27,15 +27,15 @@ Run a disposable EIP-8288 Daisugi devnet on one Linux machine, then use the AA-P
 ```bash
 export WORK=~/daisugi-devnet && mkdir -p $WORK && cd $WORK
 git clone --filter=blob:none --no-checkout https://github.com/NethermindEth/nethermind nethermind
-git -C nethermind checkout c0c90dd79be73c3dd9214ea41a012ac91381076d                      # the kit
-git -C nethermind worktree add ../nethermind-el 3dc22c25502774fcf3d8c4ea7a773092caf34a95  # the client
+git -C nethermind checkout e32558614e59d2817e4fd963e5c62330e0613227                     # the kit
+git -C nethermind worktree add ../nethermind-el fe94447c770f7eedfb31336c47a824df69aeaf53  # the client
 git clone https://github.com/asanso/AA-PQ AA-PQ    # then check out the commit that contains this file
 for d in frontend explorer frame-account aggregation/frames/extension; do
   npm ci --prefix AA-PQ/$d --ignore-scripts --no-audit --no-fund
 done
 
 # Nethermind's stock Dockerfile restores the native Lean library from Nethermind.Crypto.Lean; no Rust.
-docker build --build-arg COMMIT_HASH=3dc22c25502774fcf3d8c4ea7a773092caf34a95 -t daisugi/nethermind:3dc22c2550 nethermind-el
+docker build --build-arg COMMIT_HASH=fe94447c770f7eedfb31336c47a824df69aeaf53 -t daisugi/nethermind:fe94447c77 nethermind-el
 
 # Lighthouse: the pinned archive plus the patch series, checked against sources.lock.json.
 LH=e423a66763bb1bd780492d635123f208d80c3538 && mkdir -p build
@@ -57,7 +57,7 @@ Pick one option. Both activate EIP-8288 at epoch 3 (block 96) on a Prague genesi
 cd $WORK/nethermind/tools/daisugi-devnet
 export COMPOSE_FILE=docker-compose.yml:lighthouse-distroless.override.yml RUN=$WORK/run/devnet EL_RPC=http://127.0.0.1:28545
 CHAIN_ID=7357 LOCAL=1 ./gen-genesis.sh $RUN $(( $(date +%s) + 30 )) 3
-./up.sh $RUN daisugi/nethermind:3dc22c2550 daisugi/lighthouse:eip8288-lean
+./up.sh $RUN daisugi/nethermind:fe94447c77 daisugi/lighthouse:eip8288-lean
 ./check.sh $RUN      # about 4 minutes; ends with PASS once finality passes the fork
 ```
 
@@ -65,7 +65,7 @@ CHAIN_ID=7357 LOCAL=1 ./gen-genesis.sh $RUN $(( $(date +%s) + 30 )) 3
 
 ```bash
 cd $WORK/nethermind/tools/daisugi-devnet
-KEEP=1 PQ_SERIES=0 NETHERMIND_IMAGE=daisugi/nethermind:3dc22c2550 LIGHTHOUSE_IMAGE=daisugi/lighthouse:eip8288-lean \
+KEEP=1 PQ_SERIES=0 NETHERMIND_IMAGE=daisugi/nethermind:fe94447c77 LIGHTHOUSE_IMAGE=daisugi/lighthouse:eip8288-lean \
   kurtosis/run.sh daisugi
 cd $WORK/AA-PQ
 eval "$(scripts/local-devnet/kurtosis-run-dir.sh $WORK/nethermind/tools/daisugi-devnet daisugi $WORK/run/kurtosis)"
