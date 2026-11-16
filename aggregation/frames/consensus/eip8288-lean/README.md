@@ -11,7 +11,7 @@ A Lighthouse patch series for the EIP-8288 format implemented upstream in Nether
 overlay**: build that branch commit as is. The legacy Nethermind overlay in
 `../fork` is for the live chain only.
 
-The pinned Nethermind commit is the head of NethermindEth/nethermind#15955 on
+The pinned Nethermind commit is the head of NethermindEth/nethermind#15961 (on #15955) over
 `feature/eip8288-lean` (`revisionStatus` `open-pr` in the lock; a squash merge keeps its
 `gitTree`), the tree this series was validated against for the Daisugi restart. It takes
 the native Lean backend (ABI 21, upstream leanVM F128 `f7ba4999`, leanSPHINCS key

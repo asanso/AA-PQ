@@ -4,10 +4,10 @@
   "nethermind": {
     "repository": "NethermindEth/nethermind",
     "branch": "feature/eip8288-lean",
-    "revision": "fe94447c770f7eedfb31336c47a824df69aeaf53",
+    "revision": "9065d9a50b5036f9d1b08b650234acb0a1d4823e",
     "revisionStatus": "open-pr",
-    "revisionNote": "Head of NethermindEth/nethermind#15955 on feature/eip8288-lean 757b7eabed: leanVM F128, native ABI 21 and the leanSPHINCS key laid out as PK.seed || PK.root (ethereum/EIPs#12666). The native Lean backend comes from the pinned NuGet package; Nethermind builds no Rust. Validated with this patch series on a 3-node Kurtosis devnet, including a late joiner syncing from genesis. A squash merge keeps this Git tree.",
-    "gitTree": "005ffcbcc9547c56ac5caefcbc30372a9c5c9f70",
+    "revisionNote": "Head of NethermindEth/nethermind#15961, stacked on #15955 over feature/eip8288-lean 757b7eabed: leanVM F128, native ABI 21 and the leanSPHINCS key laid out as PK.seed || PK.root (ethereum/EIPs#12666). The native Lean backend comes from the pinned NuGet package; Nethermind builds no Rust. Validated with this patch series on a 3-node Kurtosis devnet, including a late joiner syncing from genesis. #15961 lets peers without blob support negotiate eth/73 before PeerDAS, which proof wrapper relay needs. Squash merges keep this Git tree.",
+    "gitTree": "2b237313d8367ce107fab00d0df3674c96094438",
     "overlay": null,
     "dependencyMode": 4,
     "dependencyCommitment": "Keccak-256 over sorted, deduplicated (data_hash || key) entries of the leanSPHINCS (0x10) list; with any other scheme, Keccak-256(leanSPHINCS list hash || hash of every other entry || \"eip8288/leanstark-deps\" zero-padded to 32 bytes)",
