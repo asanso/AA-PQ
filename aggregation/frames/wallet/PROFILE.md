@@ -77,9 +77,12 @@ The wallet submits the upstream RLP wrapper:
 ```
 
 With `eip8288Format: eip8288-lean` (upstream Nethermind `feature/eip8288-lean`), the
-dependency triple carries the raw key `pkRoot16 || pkSeed16` instead of its hash,
-the account compares its keccak256 with the clone's key hash, and the third wrapper
-element is `[[dependency triple], [witness]]`.
+dependency triple carries the raw key `pkSeed16 || pkRoot16` (EIP-8288's
+`PK.seed || PK.root`) instead of its hash, the witness starts with that key, the
+account compares its keccak256 with the clone's key hash, and the third wrapper
+element is `[[dependency triple], [witness]]`. The creation frame passes
+`createAccount(pkRoot, pkSeed, 0)`, so the factory's `publicKeyHash` yields the same
+`keccak256(pkSeed16 || pkRoot16)`; lean addresses therefore differ from daisugi-v1.
 
 The typed transaction encodes `[chainId, [0], nonceSequence, sender, frames,
 [], [priorityFee, maxFee, 0], []]` after its `0x06` prefix. Its hash excludes the

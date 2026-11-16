@@ -18,7 +18,9 @@ export function createProtocol(e, format) {
       executionGas: executionGas.toString(), stateGas: stateGas.toString(), value: value.toString(), data });
     const frames = [];
     if (!deployed) frames.push(frame(0, 0, getAddress(config.factory), 100000, 450000, 0,
-      abi.encodeFunctionData('createAccount', [pkSeed, pkRoot, ZeroHash])));
+      // The shared factory hashes its second key word first, so the lean account passes root then seed to get
+      // keccak256(PK.seed || PK.root), the hash of its dependency key.
+      abi.encodeFunctionData('createAccount', lean ? [pkRoot, pkSeed, ZeroHash] : [pkSeed, pkRoot, ZeroHash])));
     const dependencyIndex = frames.length;
     frames.push(frame(4, 0, null, 3000, 0, 0, concat([p.word(16), p.word(0), key])));
     frames.push(frame(1, 3, null, 100000, 0, 0, '0x'));
@@ -45,7 +47,7 @@ export function createProtocol(e, format) {
     if (p.digest(prepared.transaction, prepared.keyHash) !== prepared.digest) throw Error('Transaction changed after preparation.');
     const dependency = concat([p.word(16), prepared.digest, lean ? p.publicKey(prepared.pkSeed, prepared.pkRoot) : prepared.keyHash]);
     if (prepared.transaction.frames[prepared.dependencyIndex].data !== dependency) throw Error('Dependency changed after preparation.');
-    const witness = concat(['0x' + prepared.pkRoot.slice(2, 34), '0x' + prepared.pkSeed.slice(2, 34), signature]);
+    const witness = concat([p.publicKey(prepared.pkSeed, prepared.pkRoot), signature]);
     const raw = encode(prepared.transaction), hash = keccak256(raw);
     const wrapper = encodeRlp([[raw], '0x', lean ? [[dependency], [witness]] : [dependency, [witness]]]);
     return { raw, hash, wrapper, method: 'eth_sendProofWrapper', params: [wrapper] };

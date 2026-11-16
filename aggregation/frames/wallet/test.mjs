@@ -270,12 +270,21 @@ await check('Expired preparation during admission retry prevents another send', 
 });
 
 const lean = createProtocol(e, 'eip8288-lean');
-await check('eip8288-lean declares the raw key in a dependency list and keeps the account address', () => {
+await check('eip8288-lean declares the raw key as PK.seed || PK.root and the factory deploys its sender', () => {
   const legacy = p.prepare(options), prepared = lean.prepare(options), request = lean.signedRequest(prepared, signed.signature);
   const rawKey = lean.publicKey(key.backupPkSeed, key.backupPkRoot);
-  assert.equal(rawKey, '0x' + '22'.repeat(16) + '11'.repeat(16));
-  assert.equal(prepared.transaction.sender, legacy.transaction.sender);
+  assert.equal(rawKey, '0x' + '11'.repeat(16) + '22'.repeat(16));
+  assert.equal(p.publicKey(key.backupPkSeed, key.backupPkRoot), '0x' + '22'.repeat(16) + '11'.repeat(16));
+  assert.notEqual(prepared.transaction.sender, legacy.transaction.sender);
   assert.equal(prepared.keyHash, e.keccak256(rawKey));
+  // SphincsAggregateAccountFactory.publicKeyHash(a, b) is keccak256(bytes16(b) || bytes16(a)); its CREATE2 address must
+  // be the sender the transaction names, or the creation frame deploys some other account.
+  for (const [profile, tx] of [[lean, prepared.transaction], [p, legacy.transaction]]) {
+    const [a, b, salt] = profile.abi.decodeFunctionData('createAccount', tx.frames[0].data);
+    const factoryKeyHash = e.keccak256(e.concat([e.dataSlice(b, 0, 16), e.dataSlice(a, 0, 16)]));
+    assert.equal(e.getCreate2Address(config.factory, salt, e.keccak256(profile.initCode(config.implementation, factoryKeyHash))),
+      tx.sender);
+  }
   const dependency = e.concat([p.word(16), prepared.digest, rawKey]);
   assert.equal(prepared.transaction.frames[prepared.dependencyIndex].data, dependency);
   const [[typed], mode, [dependencies, witnesses]] = e.decodeRlp(request.wrapper);
