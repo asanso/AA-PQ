@@ -4,33 +4,34 @@
   "nethermind": {
     "repository": "NethermindEth/nethermind",
     "branch": "feature/eip8288-lean",
-    "revision": "3dc22c25502774fcf3d8c4ea7a773092caf34a95",
-    "revisionStatus": "merged",
-    "revisionNote": "Merge of NethermindEth/nethermind#15829 into feature/eip8288-lean. The native Lean backend comes from the pinned NuGet package; Nethermind builds no Rust. Same Git tree as the validated #15829 head 725e1dede5; it differs from the previously pinned head 215f799b13 only by the removed managed CPU feature guard.",
-    "gitTree": "f2b720b70e1cadf73c8663c36b80ae9c47ae7968",
+    "revision": "fe94447c770f7eedfb31336c47a824df69aeaf53",
+    "revisionStatus": "open-pr",
+    "revisionNote": "Head of NethermindEth/nethermind#15955 on feature/eip8288-lean 757b7eabed: leanVM F128, native ABI 21 and the leanSPHINCS key laid out as PK.seed || PK.root (ethereum/EIPs#12666). The native Lean backend comes from the pinned NuGet package; Nethermind builds no Rust. Validated with this patch series on a 3-node Kurtosis devnet, including a late joiner syncing from genesis. A squash merge keeps this Git tree.",
+    "gitTree": "005ffcbcc9547c56ac5caefcbc30372a9c5c9f70",
     "overlay": null,
     "dependencyMode": 4,
     "dependencyCommitment": "Keccak-256 over sorted, deduplicated (data_hash || key) entries of the leanSPHINCS (0x10) list; with any other scheme, Keccak-256(leanSPHINCS list hash || hash of every other entry || \"eip8288/leanstark-deps\" zero-padded to 32 bytes)",
     "proofHeaderCommitment": "keccak256(stark_proof)",
     "nativePackage": {
       "id": "Nethermind.Crypto.Lean",
-      "version": "0.12.0.21",
+      "version": "0.21.0.110",
       "source": "nugettest",
-      "repository": "NethermindEth/lean-bindings"
+      "repository": "NethermindEth/lean-bindings",
+      "sha256": "daecd150e646cdbc1ecaffb0fa118dff780c8a928a2ff705a7c3362fddd51ac2"
     },
-    "nativeAbi": 12,
+    "nativeAbi": 21,
     "leanvmRepository": "leanEthereum/leanVM",
-    "leanvmRevision": "e4dcb8d5436c9bf76398d890c57c59613af12956",
+    "leanvmRevision": "f7ba4999ae523b94c8d0969b32762c3effea4cbd",
     "dependencySchemes": [
       16,
       17
     ],
     "frameTransactionRules": "ethereum/EIPs#12502 signature lengths in compute_sig_hash; fees = [max_fee, max_priority_fee_per_gas] (NethermindEth/nethermind#14374); empty nonce_keys selects the account nonce (ethereum/EIPs#12511)",
     "previouslyValidated": {
-      "revision": "1e5d1fa8a071b0b329a243437d00026e1d4a72df",
-      "gitTree": "5127b1b596519981e0ad309d50f022cbaa65b2e7",
-      "nativeAbi": 10,
-      "note": "BLAKE2s-256 dependency commitment (Marchhill/leanVM e2bc4212, ABI 10). Its blocks fail this series' block hash check."
+      "revision": "3dc22c25502774fcf3d8c4ea7a773092caf34a95",
+      "gitTree": "f2b720b70e1cadf73c8663c36b80ae9c47ae7968",
+      "nativeAbi": 12,
+      "note": "Nethermind.Crypto.Lean 0.12.0.21, leanVM e4dcb8d5, leanSPHINCS key root || seed, guest verification key f7cf7458...c0e5. Its proofs fail under this revision's verification key."
     }
   },
   "lighthouse": {
@@ -158,7 +159,7 @@
       }
     }
   },
-  "guestVerificationKey": "f7cf74585d02043051f0575c23c6b441b0b08ac9e273f5e989c5984b8a4ac0e5",
+  "guestVerificationKey": "e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81",
   "recommendedMaxConsensusPayloadBytes": 20971520,
   "maxStarkProofBytes": 1310720
 }

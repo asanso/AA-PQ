@@ -11,12 +11,13 @@ A Lighthouse patch series for the EIP-8288 format implemented upstream in Nether
 overlay**: build that branch commit as is. The legacy Nethermind overlay in
 `../fork` is for the live chain only.
 
-The pinned Nethermind commit is the merge of NethermindEth/nethermind#15829 into
-`feature/eip8288-lean` (`revisionStatus` `merged` in the lock), the tree this series was
-validated against. It takes the native Lean backend (ABI 12, upstream leanVM `e4dcb8d5`)
-from the `Nethermind.Crypto.Lean` 0.12.0.21 NuGet package and builds no Rust.
-`previouslyValidated` keeps the earlier pin, `1e5d1fa8a0`,
-whose BLAKE2s dependency commitment this series rejects.
+The pinned Nethermind commit is the head of NethermindEth/nethermind#15955 on
+`feature/eip8288-lean` (`revisionStatus` `open-pr` in the lock; a squash merge keeps its
+`gitTree`), the tree this series was validated against for the Daisugi restart. It takes
+the native Lean backend (ABI 21, upstream leanVM F128 `f7ba4999`, leanSPHINCS key
+`PK.seed || PK.root`) from the `Nethermind.Crypto.Lean` 0.21.0.110 NuGet package and builds
+no Rust. The consensus client never reads the verification key, the ABI or the key order, so
+the patch series is unchanged from the ABI 12 pin that `previouslyValidated` keeps.
 
 The series starts from `../fork`'s Lighthouse overlay (same base, Lighthouse
 v8.2.2 `e423a667`, same `Daisugi` fork, SSZ tag 8) and changes it as follows.
