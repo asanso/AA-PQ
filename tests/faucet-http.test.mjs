@@ -121,7 +121,8 @@ const alternative = {
     name: 'Daisugi Next', chainId: 7357, genesisHash: '0x' + '11'.repeat(32), frameActivationBlock: 100,
     entryPoint: '0x' + '22'.repeat(20), nativeFactory: '0x' + '33'.repeat(20),
     nativeImplementation: '0x' + '44'.repeat(20), nativeImplementationCodeHash: '0x' + '55'.repeat(32),
-    nativeVerifier: '0x' + '66'.repeat(20), nativeVerifierCodeHash: '0x' + '77'.repeat(32)
+    nativeVerifier: '0x' + '66'.repeat(20), nativeVerifierCodeHash: '0x' + '77'.repeat(32),
+  eip8288Format: 'eip8288-lean'
 };
 const legacyEntryPoint = '0x433709009B8330FDa32311DF1C2AFA402eD8D009';
 

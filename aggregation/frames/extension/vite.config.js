@@ -17,7 +17,6 @@ const profilePath = resolve(__dirname, process.env.NICETRY_AGGREGATION_PROFILE |
 const aggregationProfile = JSON.parse(readFileSync(profilePath,'utf8'));
 if (typeof aggregationProfile.active !== 'boolean') throw Error('The aggregation profile requires an explicit boolean active flag.');
 if (aggregationProfile.active) {
-  if (aggregationProfile.chainId !== 1337) throw Error('The aggregation profile must identify Daisugi chain 1337.');
   // Build-time validation checks pin completeness. Runtime checks also compare
   // the actual chain, genesis, contract bytecode and RPC capabilities.
   createClient(ethers,{config:aggregationProfile,rpc:async()=>{},receiptOutcome:()=>{}});

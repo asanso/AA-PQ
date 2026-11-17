@@ -1,6 +1,6 @@
 // Daisugi-only experimental build. No public/mainnet fallback is enabled.
 import { defineChain } from "viem";
-import { DEFAULT_CHAIN_ID } from "./chain-defaults.js";
+import { DEFAULT_CHAIN_ID, NETWORK_IDENTITY } from "./chain-defaults.js";
 import { transactionMode } from './transaction-mode.js';
 import frame from '../aggregated-frame/deployment.json';
 import aa from '../erc4337/network.json';
@@ -12,17 +12,17 @@ const LEGACY_FACTORY = "0x0000000000000000000000000000000000000000";
 export const DAISUGI_RPC_URL = typeof __DAISUGI_RPC_URL__ !== 'undefined' ? __DAISUGI_RPC_URL__ : "";
 export const DAISUGI_EXPLORER_URL = typeof __DAISUGI_EXPLORER_URL__ !== 'undefined' ? __DAISUGI_EXPLORER_URL__ : '';
 const daisugi = defineChain({
-  id: 1337, name: "Daisugi Testnet", nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
+  id: NETWORK_IDENTITY.chainId, name: "Daisugi Testnet", nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
   rpcUrls: { default: { http: [DAISUGI_RPC_URL] } },
   blockExplorers: { default: { name: "Daisugi", url: DAISUGI_EXPLORER_URL } }, testnet: true,
 });
 export const NETWORKS = {
-  "0x539": {
-    chainId: "0x539", networkId: 1337, name: "Daisugi Testnet", shortName: "DAISUGI",
+  [DEFAULT_CHAIN_ID]: {
+    chainId: DEFAULT_CHAIN_ID, networkId: NETWORK_IDENTITY.chainId, name: "Daisugi Testnet", shortName: "DAISUGI",
     symbol: "ETH", decimals: 18, testnet: true, blockTimeSec: 2,
     rpcUrl: DAISUGI_RPC_URL, rpcFallbacks: [],
     blockExplorer: DAISUGI_EXPLORER_URL, explorerHashRouting: false, viemChain: daisugi,
-    genesisHash: "0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55",
+    genesisHash: NETWORK_IDENTITY.genesisHash,
     get accountFactory() { return accountProfile()?.factory || FACTORY_PLACEHOLDER; },
     get accountImplementation() { return accountProfile()?.implementation; },
     sphincsVerifier: "0xf505AD2Cff58b84E145D637d99Fae0617B5685BE",
@@ -64,7 +64,7 @@ export function getCanonicalNetworkName(chainId) {
    ChooseChain sets it before calling deploySmartAccount. */
 export function getActiveNetwork() {
   const id = globalThis.__NT_CHAIN_ID || DEFAULT_CHAIN_ID;
-  if (!NETWORKS[id]) throw new Error("Daisugi-only build: use a fresh extension profile and select chain 1337.");
+  if (!NETWORKS[id]) throw new Error(`Daisugi-only build: use a fresh extension profile and select chain ${NETWORK_IDENTITY.chainId}.`);
   return withOverrides(NETWORKS[id]);
 }
 
