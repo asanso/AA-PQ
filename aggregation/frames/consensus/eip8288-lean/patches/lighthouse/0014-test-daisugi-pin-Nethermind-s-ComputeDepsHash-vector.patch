@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ManuelArto <manuelartociao@gmail.com>
+Date: Thu, 12 Nov 2026 22:34:59 +0100
+Subject: [PATCH 14/14] test(daisugi): pin Nethermind's ComputeDepsHash vectors
+
+The same dependency lists and expected digests as Nethermind's FrameDependencyTests
+(NethermindEth/nethermind#15829): empty, leanSPHINCS-only, duplicates, leanSTARK-only, mixed, the same data and
+key under both schemes, and a scheme below 0x10 that must join the second list.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../execution_layer/src/daisugi_block_hash.rs | 86 +++++++++++++++++++
+ 1 file changed, 86 insertions(+)
+
+diff --git a/beacon_node/execution_layer/src/daisugi_block_hash.rs b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+index f660e29c91baf721aefa9b30e33018f7e4eae782..611ef845b9c4b345ad74df36d4172e57848afba4 100644
+--- a/beacon_node/execution_layer/src/daisugi_block_hash.rs
++++ b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+@@ -211,6 +211,92 @@ mod test {
+         );
+     }
+ 
++    /// `VectorDependency` of Nethermind's `FrameDependencyTests`: a 32-byte `data` fill and a key counting up from
++    /// `key_start`, or filled with `key_fill`.
++    fn dependency(scheme: u8, data: u8, key_start: u8, key_fill: Option<u8>) -> Dependency {
++        let key = std::array::from_fn(|i| key_fill.unwrap_or(key_start + i as u8));
++        (scheme, [data; 32], key)
++    }
++
++    fn canonical_deps_hash(mut dependencies: Vec<Dependency>) -> Hash256 {
++        dependencies.sort_unstable();
++        dependencies.dedup();
++        deps_hash(&dependencies)
++    }
++
++    /// The `ComputeDepsHash` vectors pinned in Nethermind (NethermindEth/nethermind#15829, `FrameDependencyTests`).
++    #[test]
++    fn deps_hash_matches_nethermind_vectors() {
++        let a = dependency(LEAN_SPHINCS_SCHEME, 0x07, 0, None);
++        let b = dependency(LEAN_SPHINCS_SCHEME, 0x07, 1, None);
++        let c = dependency(LEAN_SPHINCS_SCHEME, 0x01, 0, Some(0xFF));
++        let d = dependency(LEAN_SPHINCS_SCHEME, 0xA5, 0, Some(0x5A));
++        let g1 = dependency(0x11, 0x07, 0, None);
++        let g2 = dependency(0x11, 0xA5, 0, Some(0x5A));
++        let vectors = [
++            (
++                vec![],
++                "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
++            ),
++            (
++                vec![a],
++                "0x535b1be06804ff1c42441f5b486c07a4f0b788bb24cbd7a3a21c405a869730b5",
++            ),
++            (
++                vec![b, a, c, a],
++                "0xa9cb9f718bf29878fea69d892f229c0a49932e21555106f3bf37044f142262ba",
++            ),
++            (
++                vec![d, a, c, b],
++                "0x43c9b8d263f3c5128d4b200350327b8ff8423c4d2235654c497b281c0efc7a2e",
++            ),
++            (
++                vec![g1],
++                "0x472b9b9746554a2d22de24296cc51b74741f0a369b0355bbbc07dace239e4c49",
++            ),
++            (
++                vec![g2, a, g1, c],
++                "0x82cb3c09f78c3f79ed0f35e6c946c28c79861d6c743468255a828b8ba22fbab9",
++            ),
++            (
++                vec![g2, d],
++                "0x527d30bc3378b13fda7d9d0815b5d31abcb474d1ce10ee338c30be03e3fb8cde",
++            ),
++        ];
++        for (dependencies, expected) in vectors {
++            assert_eq!(canonical_deps_hash(dependencies), hash(expected));
++        }
++    }
++
++    /// A scheme sorting before leanSPHINCS joins the leanSTARK list, as in Nethermind: the leanSPHINCS list holds
++    /// exactly the `0x10` entries.
++    #[test]
++    fn scheme_below_lean_sphincs_joins_the_other_list() {
++        let a = dependency(LEAN_SPHINCS_SCHEME, 0x07, 0, None);
++        let b = dependency(LEAN_SPHINCS_SCHEME, 0x07, 1, None);
++        for other in [0x11, 0x0F] {
++            let second = dependency(other, 0x02, 3, None);
++            let list = |deps: &[Dependency]| {
++                keccak256(
++                    &deps
++                        .iter()
++                        .flat_map(|(_, h, k)| [*h, *k].concat())
++                        .collect::<Vec<_>>(),
++                )
++                .0
++            };
++            let expected = keccak256(
++                &[
++                    &list(&[a, b])[..],
++                    &list(&[second])[..],
++                    &LEAN_STARK_DEPS_DOMAIN[..],
++                ]
++                .concat(),
++            );
++            assert_eq!(canonical_deps_hash(vec![b, second, a]), expected);
++        }
++    }
++
+     #[test]
+     fn signature_hash_matches_nethermind() {
+         let tx = &transactions()[0];

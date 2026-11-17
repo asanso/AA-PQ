@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Manuel Arto <manuelartociao@gmail.com>
+Date: Tue, 3 Nov 2026 12:23:13 +0100
+Subject: [PATCH 7/8] build(daisugi): build the reproducible image on bookworm
+ with static zlib and portable BLS
+
+Backports the v8.3.2 Dockerfile.reproducible, since bullseye-security no
+longer serves the pinned packages. libz links statically because the
+distroless runtime has none, and the portable feature keeps blst from
+enabling the build host's ADX.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Dockerfile.reproducible | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/Dockerfile.reproducible b/Dockerfile.reproducible
+index 903515373f871e051ba8533f3d71c0903088ec2b..153d012b71e6a640ecb0fca4d175acf653e40329 100644
+--- a/Dockerfile.reproducible
++++ b/Dockerfile.reproducible
+@@ -1,18 +1,23 @@
+-# Define the Rust image as an argument with a default to x86_64 Rust 1.88 image based on Debian Bullseye
+-ARG RUST_IMAGE="rust:1.88-bullseye@sha256:8e3c421122bf4cd3b2a866af41a4dd52d87ad9e315fd2cb5100e87a7187a9816"
++# Define the Rust image as an argument with a default to x86_64 Rust 1.91 image based on Debian Bookworm
++ARG RUST_IMAGE="rust:1.91-bookworm@sha256:8322627e69ba7780b54f39e9f4d3758c006a3ae0123ea01d63b91f0626169891"
+ FROM ${RUST_IMAGE} AS builder
+ 
+ # Install specific version of the build dependencies
+-RUN apt-get update && apt-get install -y libclang-dev=1:11.0-51+nmu5 cmake=3.18.4-2+deb11u1 libjemalloc-dev=5.2.1-3
++RUN apt-get update && apt-get install -y libclang-dev=1:14.0-55.7~deb12u1 clang=1:14.0-55.7~deb12u1 cmake=3.25.1-1 libjemalloc-dev=5.3.0-1
+ 
+ ARG RUST_TARGET="x86_64-unknown-linux-gnu"
++# Daisugi: the commit time of the pinned upstream revision (v8.2.2), so builds from a source archive without
++# `.git` get a valid SOURCE_DATE_EPOCH and the same timestamp as builds from a checkout.
++ARG SOURCE_DATE="1787008455"
+ 
+ # Copy the project to the container
+ COPY ./ /app
+ WORKDIR /app
+ 
+ # Build the project with the reproducible settings
+-RUN make build-reproducible
++# Daisugi: zlib links statically for the distroless runtime, and `portable` keeps blst from enabling the build
++# host's ADX, so the binary is the same on every builder and runs on CPUs without ADX.
++RUN LIBZ_SYS_STATIC=1 make build-reproducible SOURCE_DATE=${SOURCE_DATE} FEATURES_REPRODUCIBLE='$(CROSS_FEATURES),jemalloc-unprefixed,portable'
+ 
+ # Move the binary to a standard location
+ RUN mv /app/target/${RUST_TARGET}/release/lighthouse /lighthouse

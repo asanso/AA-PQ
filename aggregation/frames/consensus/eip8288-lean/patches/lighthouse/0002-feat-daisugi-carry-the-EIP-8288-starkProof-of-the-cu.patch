@@ -1,0 +1,530 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Manuel Arto <manuel.arto@nethermind.io>
+Date: Mon, 2 Nov 2026 13:30:35 +0100
+Subject: [PATCH 2/8] feat(daisugi): carry the EIP-8288 starkProof of the
+ current Nethermind format
+
+The execution client now derives the header commitment from the proof bytes
+and the payload's frame transactions, so the payload carries a single
+starkProof (empty for blocks without dependencies) and no deps hash.
+Lighthouse cannot recompute that commitment, so its optimistic-sync
+block-hash check defers to the execution client for Daisugi payloads.
+Removes the unused experimental aggregate payload containers.
+---
+ .../src/aggregate_block_hash.rs               | 71 -----------------
+ beacon_node/execution_layer/src/block_hash.rs | 32 +-------
+ beacon_node/execution_layer/src/engine_api.rs | 10 +--
+ .../src/engine_api/aggregate_json.rs          | 39 ---------
+ .../src/engine_api/json_structures.rs         | 15 +---
+ .../src/engine_api/new_payload_request.rs     |  5 ++
+ beacon_node/execution_layer/src/lib.rs        |  1 -
+ .../test_utils/execution_block_generator.rs   |  6 +-
+ .../src/test_utils/handle_rpc.rs              |  8 +-
+ .../types/src/execution/aggregate_payload.rs  | 79 ++-----------------
+ .../types/src/execution/execution_payload.rs  |  2 -
+ .../src/execution/execution_payload_header.rs |  4 -
+ 12 files changed, 18 insertions(+), 254 deletions(-)
+ delete mode 100644 beacon_node/execution_layer/src/aggregate_block_hash.rs
+ delete mode 100644 beacon_node/execution_layer/src/engine_api/aggregate_json.rs
+
+diff --git a/beacon_node/execution_layer/src/aggregate_block_hash.rs b/beacon_node/execution_layer/src/aggregate_block_hash.rs
+deleted file mode 100644
+index df583c9636b98972c4c09d9add0b7e882bd57cfb..0000000000000000000000000000000000000000
+--- a/beacon_node/execution_layer/src/aggregate_block_hash.rs
++++ /dev/null
+@@ -1,71 +0,0 @@
+-//! Experimental Prague-based block-hash reconstruction for the pinned EL encoding.
+-//! Existing block hashing is unchanged; fork dispatch must select this explicitly.
+-
+-use crate::json_structures::JsonWithdrawal;
+-use crate::{
+-    block_hash::{rlp_encode_block_header, rlp_encode_withdrawal},
+-    keccak::{KeccakHasher, keccak256},
+-};
+-use alloy_rlp::{Encodable, Header};
+-use keccak_hash::KECCAK_EMPTY_LIST_RLP;
+-use triehash::ordered_trie_root;
+-use types::{
+-    AggregateExecutionPayload, EthSpec, ExecutionBlockHash, ExecutionBlockHeader,
+-    ExecutionPayloadRef, ExecutionRequests, Hash256,
+-};
+-
+-pub fn aggregate_execution_block_hash<E: EthSpec>(
+-    payload: &AggregateExecutionPayload<E>,
+-    parent_beacon_block_root: Hash256,
+-    execution_requests: &ExecutionRequests<E>,
+-) -> Result<ExecutionBlockHash, alloy_rlp::Error> {
+-    let base = ExecutionPayloadRef::Electra(&payload.payload);
+-    let (_, tx_root) = crate::calculate_execution_block_hash(
+-        base,
+-        Some(parent_beacon_block_root),
+-        Some(execution_requests),
+-    );
+-    let withdrawal_root = ordered_trie_root::<KeccakHasher, _>(
+-        payload
+-            .payload
+-            .withdrawals
+-            .iter()
+-            .map(|w| rlp_encode_withdrawal(&JsonWithdrawal::from(w.clone()))),
+-    );
+-    let header = ExecutionBlockHeader::from_payload(
+-        base,
+-        KECCAK_EMPTY_LIST_RLP.as_fixed_bytes().into(),
+-        tx_root,
+-        Some(withdrawal_root),
+-        Some(payload.payload.blob_gas_used),
+-        Some(payload.payload.excess_blob_gas),
+-        Some(parent_beacon_block_root),
+-        Some(execution_requests.requests_hash()),
+-    );
+-    let legacy = rlp_encode_block_header(&header);
+-    let mut content = legacy.as_slice();
+-    let prefix = Header::decode(&mut content)?;
+-    if !prefix.list || prefix.payload_length != content.len() {
+-        return Err(alloy_rlp::Error::Custom("Invalid base header"));
+-    }
+-    let mut fields = content.to_vec();
+-    // The pinned Nethermind codec pads optional pre-proof fields: no BAL, slot zero.
+-    fields.extend_from_slice(&[0x80, 0x80]);
+-    let proof = payload.recursive_stark_proof.bytes();
+-    let commitment = payload.recursive_stark_block_deps_hash.as_slice();
+-    Header {
+-        list: true,
+-        payload_length: proof.length() + commitment.length(),
+-    }
+-    .encode(&mut fields);
+-    proof.encode(&mut fields);
+-    commitment.encode(&mut fields);
+-    let mut output = Vec::new();
+-    Header {
+-        list: true,
+-        payload_length: fields.len(),
+-    }
+-    .encode(&mut output);
+-    output.extend_from_slice(&fields);
+-    Ok(ExecutionBlockHash::from_root(keccak256(&output)))
+-}
+diff --git a/beacon_node/execution_layer/src/block_hash.rs b/beacon_node/execution_layer/src/block_hash.rs
+index ca125bf218234e4107c7e1adb97c8acab8559328..e45bf477a2c15b6e5942e4911f342bf4f5d7ccc0 100644
+--- a/beacon_node/execution_layer/src/block_hash.rs
++++ b/beacon_node/execution_layer/src/block_hash.rs
+@@ -54,37 +54,7 @@ pub fn calculate_execution_block_hash<E: EthSpec>(
+     );
+ 
+     // Hash the RLP encoding of the block header.
+-    let rlp_block_header = if let ExecutionPayloadRef::Daisugi(daisugi) = payload {
+-        let mut fields = Vec::new();
+-        // Encode the known header fields directly; no decoding or untrusted length is involved.
+-        let base = rlp_encode_block_header(&exec_block_header);
+-        let mut body = base.as_slice();
+-        let prefix = alloy_rlp::Header::decode(&mut body)
+-            .expect("the locally encoded execution header is valid RLP");
+-        debug_assert!(prefix.list && prefix.payload_length == body.len());
+-        fields.extend_from_slice(body);
+-        // The pinned EL encoding reserves absent BAL and slot fields before the proof tuple.
+-        fields.extend_from_slice(&[0x80, 0x80]);
+-        let proof = daisugi.recursive_stark_proof.bytes();
+-        let commitment = daisugi.recursive_stark_block_deps_hash.as_slice();
+-        alloy_rlp::Header {
+-            list: true,
+-            payload_length: proof.length() + commitment.length(),
+-        }
+-        .encode(&mut fields);
+-        proof.encode(&mut fields);
+-        commitment.encode(&mut fields);
+-        let mut encoded = Vec::new();
+-        alloy_rlp::Header {
+-            list: true,
+-            payload_length: fields.len(),
+-        }
+-        .encode(&mut encoded);
+-        encoded.extend_from_slice(&fields);
+-        encoded
+-    } else {
+-        rlp_encode_block_header(&exec_block_header)
+-    };
++    let rlp_block_header = rlp_encode_block_header(&exec_block_header);
+     (
+         ExecutionBlockHash::from_root(keccak256(&rlp_block_header)),
+         rlp_transactions_root,
+diff --git a/beacon_node/execution_layer/src/engine_api.rs b/beacon_node/execution_layer/src/engine_api.rs
+index 1d691a5457d06a0b2f88cccd6cad87a22c26fd2d..a7ab468b22127984ec869afa2e2d167d648300b0 100644
+--- a/beacon_node/execution_layer/src/engine_api.rs
++++ b/beacon_node/execution_layer/src/engine_api.rs
+@@ -448,7 +448,6 @@ impl<E: EthSpec> GetPayloadResponse<E> {
+ pub struct ExecutionPayloadBodyV1<E: EthSpec> {
+     /// Present only for the explicit Daisugi Engine API extension.
+     pub recursive_stark_proof: Option<types::RecursiveProof>,
+-    pub recursive_stark_block_deps_hash: Option<Hash256>,
+     pub transactions: Transactions<E>,
+     pub withdrawals: Option<Withdrawals<E>>,
+ }
+@@ -569,12 +568,7 @@ impl<E: EthSpec> ExecutionPayloadBodyV1<E> {
+                 let proof = self
+                     .recursive_stark_proof
+                     .ok_or("Daisugi payload body is missing its proof")?;
+-                let deps_hash = self
+-                    .recursive_stark_block_deps_hash
+-                    .ok_or("Daisugi payload body is missing its dependency commitment")?;
+-                if tree_hash::TreeHash::tree_hash_root(&proof) != header.recursive_stark_proof_root
+-                    || deps_hash != header.recursive_stark_block_deps_hash
+-                {
++                if tree_hash::TreeHash::tree_hash_root(&proof) != header.recursive_stark_proof_root {
+                     return Err("Daisugi payload body does not match its header".into());
+                 }
+                 if let Some(withdrawals) = self.withdrawals {
+@@ -597,7 +591,6 @@ impl<E: EthSpec> ExecutionPayloadBodyV1<E> {
+                         blob_gas_used: header.blob_gas_used,
+                         excess_blob_gas: header.excess_blob_gas,
+                         recursive_stark_proof: proof,
+-                        recursive_stark_block_deps_hash: deps_hash,
+                     }))
+                 } else {
+                     Err(format!(
+@@ -912,4 +905,3 @@ impl ClientVersionV1 {
+     }
+ }
+ 
+-pub mod aggregate_json;
+diff --git a/beacon_node/execution_layer/src/engine_api/aggregate_json.rs b/beacon_node/execution_layer/src/engine_api/aggregate_json.rs
+deleted file mode 100644
+index e053915082a5488b472468af7843ce0efb7b759f..0000000000000000000000000000000000000000
+--- a/beacon_node/execution_layer/src/engine_api/aggregate_json.rs
++++ /dev/null
+@@ -1,39 +0,0 @@
+-//! Engine JSON adapter for the experimental proof-bearing consensus container.
+-//! This module is not connected to the live Engine request-selection path.
+-
+-use super::json_structures::JsonExecutionPayloadElectra;
+-use serde::{Deserialize, Serialize};
+-use types::{AggregateExecutionPayload, EthSpec, Hash256, RecursiveProof};
+-
+-/// Preserve the pinned Nethermind field names alongside the existing Engine fields.
+-/// Both fields are required; no cache lookup or proof substitution is performed.
+-#[derive(Debug, Serialize, Deserialize)]
+-#[serde(bound = "E: EthSpec", rename_all = "camelCase")]
+-pub struct JsonAggregateExecutionPayload<E: EthSpec> {
+-    #[serde(flatten)]
+-    pub payload: JsonExecutionPayloadElectra<E>,
+-    pub recursive_stark_proof: RecursiveProof,
+-    pub recursive_stark_block_deps_hash: Hash256,
+-}
+-
+-impl<E: EthSpec> TryFrom<JsonAggregateExecutionPayload<E>> for AggregateExecutionPayload<E> {
+-    type Error = ssz_types::Error;
+-    fn try_from(value: JsonAggregateExecutionPayload<E>) -> Result<Self, Self::Error> {
+-        Ok(Self {
+-            payload: value.payload.try_into()?,
+-            recursive_stark_proof: value.recursive_stark_proof,
+-            recursive_stark_block_deps_hash: value.recursive_stark_block_deps_hash,
+-        })
+-    }
+-}
+-
+-impl<E: EthSpec> TryFrom<AggregateExecutionPayload<E>> for JsonAggregateExecutionPayload<E> {
+-    type Error = ssz_types::Error;
+-    fn try_from(value: AggregateExecutionPayload<E>) -> Result<Self, Self::Error> {
+-        Ok(Self {
+-            payload: value.payload.try_into()?,
+-            recursive_stark_proof: value.recursive_stark_proof,
+-            recursive_stark_block_deps_hash: value.recursive_stark_block_deps_hash,
+-        })
+-    }
+-}
+diff --git a/beacon_node/execution_layer/src/engine_api/json_structures.rs b/beacon_node/execution_layer/src/engine_api/json_structures.rs
+index f37ca21dca14355fa0115c721f5c15422bdf4477..5db5d4086585bd40e766c7e3da170b6415d1a4f9 100644
+--- a/beacon_node/execution_layer/src/engine_api/json_structures.rs
++++ b/beacon_node/execution_layer/src/engine_api/json_structures.rs
+@@ -76,9 +76,8 @@ pub struct JsonPayloadIdResponse {
+ #[serde(bound = "E: EthSpec", rename_all = "camelCase", untagged)]
+ pub struct JsonExecutionPayload<E: EthSpec> {
+     #[superstruct(only(Daisugi))]
++    #[serde(rename = "starkProof")]
+     pub recursive_stark_proof: types::RecursiveProof,
+-    #[superstruct(only(Daisugi))]
+-    pub recursive_stark_block_deps_hash: Hash256,
+     pub parent_hash: ExecutionBlockHash,
+     #[serde(with = "serde_utils::address_hex")]
+     pub fee_recipient: Address,
+@@ -237,7 +236,6 @@ impl<E: EthSpec> TryFrom<ExecutionPayloadDaisugi<E>> for JsonExecutionPayloadDai
+             blob_gas_used: payload.blob_gas_used,
+             excess_blob_gas: payload.excess_blob_gas,
+             recursive_stark_proof: payload.recursive_stark_proof,
+-            recursive_stark_block_deps_hash: payload.recursive_stark_block_deps_hash,
+         })
+     }
+ }
+@@ -443,7 +441,6 @@ impl<E: EthSpec> TryFrom<JsonExecutionPayloadDaisugi<E>> for ExecutionPayloadDai
+             blob_gas_used: payload.blob_gas_used,
+             excess_blob_gas: payload.excess_blob_gas,
+             recursive_stark_proof: payload.recursive_stark_proof,
+-            recursive_stark_block_deps_hash: payload.recursive_stark_block_deps_hash,
+         })
+     }
+ }
+@@ -1142,16 +1139,10 @@ impl From<ForkchoiceUpdatedResponse> for JsonForkchoiceUpdatedV1Response {
+ pub struct JsonExecutionPayloadBodyV1<E: EthSpec> {
+     #[serde(
+         default,
+-        rename = "recursiveStarkProof",
++        rename = "starkProof",
+         skip_serializing_if = "Option::is_none"
+     )]
+     pub recursive_stark_proof: Option<types::RecursiveProof>,
+-    #[serde(
+-        default,
+-        rename = "recursiveStarkBlockDepsHash",
+-        skip_serializing_if = "Option::is_none"
+-    )]
+-    pub recursive_stark_block_deps_hash: Option<Hash256>,
+     #[serde(with = "ssz_types::serde_utils::list_of_hex_var_list")]
+     pub transactions: Transactions<E>,
+     pub withdrawals: Option<VariableList<JsonWithdrawal, E::MaxWithdrawalsPerPayload>>,
+@@ -1165,7 +1156,6 @@ impl<E: EthSpec> TryFrom<JsonExecutionPayloadBodyV1<E>> for ExecutionPayloadBody
+             transactions: value.transactions,
+             withdrawals: value.withdrawals.map(withdrawals_from_json).transpose()?,
+             recursive_stark_proof: value.recursive_stark_proof,
+-            recursive_stark_block_deps_hash: value.recursive_stark_block_deps_hash,
+         })
+     }
+ }
+@@ -1178,7 +1168,6 @@ impl<E: EthSpec> TryFrom<ExecutionPayloadBodyV1<E>> for JsonExecutionPayloadBody
+             transactions: value.transactions,
+             withdrawals: value.withdrawals.map(withdrawals_to_json).transpose()?,
+             recursive_stark_proof: value.recursive_stark_proof,
+-            recursive_stark_block_deps_hash: value.recursive_stark_block_deps_hash,
+         })
+     }
+ }
+diff --git a/beacon_node/execution_layer/src/engine_api/new_payload_request.rs b/beacon_node/execution_layer/src/engine_api/new_payload_request.rs
+index 140d56a6cc4a75f531556d986b1ab2d9e122918f..6aee21959f4c4d73accdee4a380457d960d99cb0 100644
+--- a/beacon_node/execution_layer/src/engine_api/new_payload_request.rs
++++ b/beacon_node/execution_layer/src/engine_api/new_payload_request.rs
+@@ -139,6 +139,11 @@ impl<'block, E: EthSpec> NewPayloadRequest<'block, E> {
+     /// https://github.com/ethereum/consensus-specs/blob/v1.4.0-beta.2/specs/deneb/beacon-chain.md#is_valid_block_hash
+     pub fn verify_payload_block_hash(&self) -> Result<(), Error> {
+         let payload = self.execution_payload_ref();
++        // The Daisugi header commits to an EIP-8288 dependency hash that the EL derives from frame
++        // transactions; the CL cannot recompute it, so the EL's own block-hash check stands alone.
++        if let ExecutionPayloadRef::Daisugi(_) = payload {
++            return Ok(());
++        }
+         let parent_beacon_block_root = self.parent_beacon_block_root().ok().cloned();
+ 
+         let _timer = metrics::start_timer(&metrics::EXECUTION_LAYER_VERIFY_BLOCK_HASH);
+diff --git a/beacon_node/execution_layer/src/lib.rs b/beacon_node/execution_layer/src/lib.rs
+index 232282eec543eccce53f6f0d8846cc953c4e794f..d3e9becabfca48f1f3a0448deaa7d507763911a9 100644
+--- a/beacon_node/execution_layer/src/lib.rs
++++ b/beacon_node/execution_layer/src/lib.rs
+@@ -2191,4 +2191,3 @@ mod test {
+     }
+ }
+ 
+-pub mod aggregate_block_hash;
+diff --git a/beacon_node/execution_layer/src/test_utils/execution_block_generator.rs b/beacon_node/execution_layer/src/test_utils/execution_block_generator.rs
+index c3997c341be2a05c4b303b23f6c1854354980b32..3af3be374fd4342e14899f770129b283e864cc69 100644
+--- a/beacon_node/execution_layer/src/test_utils/execution_block_generator.rs
++++ b/beacon_node/execution_layer/src/test_utils/execution_block_generator.rs
+@@ -759,11 +759,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
+                     excess_blob_gas: 0,
+                 }),
+                 ForkName::Daisugi => ExecutionPayload::Daisugi(ExecutionPayloadDaisugi {
+-                    recursive_stark_proof: b"NLR3\0\0\0\0\0\0\0\0".to_vec().try_into().unwrap(),
+-                    recursive_stark_block_deps_hash:
+-                        "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+-                            .parse()
+-                            .unwrap(),
++                    recursive_stark_proof: Default::default(),
+                     parent_hash: head_block_hash,
+                     fee_recipient: pa.suggested_fee_recipient,
+                     receipts_root: Hash256::repeat_byte(42),
+diff --git a/beacon_node/execution_layer/src/test_utils/handle_rpc.rs b/beacon_node/execution_layer/src/test_utils/handle_rpc.rs
+index eab126a57a8b6c82e91f0d330fa37af75eab36dd..fff33aa515f706cf1df6cce740de329c527de0f0 100644
+--- a/beacon_node/execution_layer/src/test_utils/handle_rpc.rs
++++ b/beacon_node/execution_layer/src/test_utils/handle_rpc.rs
+@@ -119,7 +119,7 @@ pub async fn handle_rpc<E: EthSpec>(
+                 ENGINE_NEW_PAYLOAD_V3 => get_param::<JsonExecutionPayloadDeneb<E>>(params, 0)
+                     .map(|jep| JsonExecutionPayload::Deneb(jep))
+                     .map_err(|s| (s, BAD_PARAMS_ERROR_CODE))?,
+-                ENGINE_NEW_PAYLOAD_V4 if params[0].get("recursiveStarkProof").is_some() => {
++                ENGINE_NEW_PAYLOAD_V4 if params[0].get("starkProof").is_some() => {
+                     get_param::<JsonExecutionPayloadDaisugi<E>>(params, 0)
+                         .map(JsonExecutionPayload::Daisugi)
+                         .map_err(|s| (s, BAD_PARAMS_ERROR_CODE))?
+@@ -731,9 +731,6 @@ pub async fn handle_rpc<E: EthSpec>(
+                     Some(payload) => {
+                         let payload_body: ExecutionPayloadBodyV1<E> = ExecutionPayloadBodyV1 {
+                             recursive_stark_proof: payload.recursive_stark_proof().ok().cloned(),
+-                            recursive_stark_block_deps_hash: payload
+-                                .recursive_stark_block_deps_hash()
+-                                .ok(),
+                             transactions: payload.transactions().clone(),
+                             withdrawals: payload.withdrawals().ok().cloned(),
+                         };
+@@ -770,9 +767,6 @@ pub async fn handle_rpc<E: EthSpec>(
+                     Some(payload) => {
+                         let payload_body: ExecutionPayloadBodyV1<E> = ExecutionPayloadBodyV1 {
+                             recursive_stark_proof: payload.recursive_stark_proof().ok().cloned(),
+-                            recursive_stark_block_deps_hash: payload
+-                                .recursive_stark_block_deps_hash()
+-                                .ok(),
+                             transactions: payload.transactions().clone(),
+                             withdrawals: payload.withdrawals().ok().cloned(),
+                         };
+diff --git a/consensus/types/src/execution/aggregate_payload.rs b/consensus/types/src/execution/aggregate_payload.rs
+index e15e9d24d070e7caa4dfeb2b1fad7a907ce30d8d..e0295dbe12b3299d97e297d4c2647c0854ea958f 100644
+--- a/consensus/types/src/execution/aggregate_payload.rs
++++ b/consensus/types/src/execution/aggregate_payload.rs
+@@ -1,23 +1,17 @@
+-//! Experimental proof-bearing payload types. Not selected by the live fork schedule.
+-//!
+-//! Existing Electra containers are unchanged. This transport container must be
+-//! wired into an explicitly versioned consensus transition before node use.
++//! EIP-8288 block proof carried by Daisugi execution payloads.
+ 
+-use educe::Educe;
+ use serde::{Deserialize, Deserializer, Serialize, Serializer};
+ use ssz::Decode;
+-use ssz_derive::{Decode, Encode};
++use ssz_derive::Encode;
+ use ssz_types::{VariableList, typenum::U8388608};
+ use tree_hash::TreeHash;
+-use tree_hash_derive::TreeHash;
+ 
+-use crate::{EthSpec, ExecutionPayloadElectra, ExecutionPayloadHeaderElectra, Hash256};
+-
+-/// Matches the pinned Nethermind EIP-8288 proof bound. This is not a security level.
++/// Transport bound only; the EL enforces the tighter EIP-8288 proof limit.
+ pub const MAX_RECURSIVE_PROOF_BYTES: usize = 8 * 1024 * 1024;
+ 
+-/// Transport validation only; cryptographic verification belongs to the EL.
+-#[derive(Debug, Clone, PartialEq, Eq, Hash, Encode)]
++/// The EL derives the header commitment from these bytes, so the CL only carries them.
++/// A block without dependencies carries an empty proof.
++#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Encode)]
+ #[ssz(struct_behaviour = "transparent")]
+ pub struct RecursiveProof(VariableList<u8, U8388608>);
+ 
+@@ -54,9 +48,6 @@ impl TryFrom<Vec<u8>> for RecursiveProof {
+     type Error = &'static str;
+ 
+     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+-        if bytes.is_empty() {
+-            return Err("Recursive proof must not be empty");
+-        }
+         VariableList::new(bytes)
+             .map(Self)
+             .map_err(|_| "Recursive proof exceeds 8 MiB")
+@@ -68,11 +59,6 @@ impl Decode for RecursiveProof {
+         false
+     }
+     fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, ssz::DecodeError> {
+-        if bytes.is_empty() {
+-            return Err(ssz::DecodeError::BytesInvalid(
+-                "Recursive proof must not be empty".into(),
+-            ));
+-        }
+         VariableList::from_ssz_bytes(bytes).map(Self)
+     }
+ }
+@@ -85,57 +71,6 @@ impl Serialize for RecursiveProof {
+ 
+ impl<'de> Deserialize<'de> for RecursiveProof {
+     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+-        let bytes: VariableList<u8, U8388608> =
+-            ssz_types::serde_utils::hex_var_list::deserialize(deserializer)?;
+-        if bytes.is_empty() {
+-            return Err(serde::de::Error::custom(
+-                "Recursive proof must not be empty",
+-            ));
+-        }
+-        Ok(Self(bytes))
+-    }
+-}
+-
+-/// Candidate SSZ container: unchanged Electra payload, complete proof, commitment.
+-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, TreeHash, Educe)]
+-#[educe(PartialEq, Hash(bound(E: EthSpec)))]
+-#[serde(bound = "E: EthSpec", deny_unknown_fields)]
+-pub struct AggregateExecutionPayload<E: EthSpec> {
+-    pub payload: ExecutionPayloadElectra<E>,
+-    pub recursive_stark_proof: RecursiveProof,
+-    pub recursive_stark_block_deps_hash: Hash256,
+-}
+-
+-/// Blinding preserves the full container's root; it does not provide proof bytes.
+-#[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, TreeHash, Educe)]
+-#[educe(PartialEq, Hash(bound(E: EthSpec)))]
+-#[serde(bound = "E: EthSpec", deny_unknown_fields)]
+-pub struct AggregateExecutionPayloadHeader<E: EthSpec> {
+-    pub payload: ExecutionPayloadHeaderElectra<E>,
+-    pub recursive_stark_proof_root: Hash256,
+-    pub recursive_stark_block_deps_hash: Hash256,
+-}
+-
+-impl<E: EthSpec> AggregateExecutionPayload<E> {
+-    pub fn to_header(&self) -> AggregateExecutionPayloadHeader<E> {
+-        AggregateExecutionPayloadHeader {
+-            payload: ExecutionPayloadHeaderElectra::from(&self.payload),
+-            recursive_stark_proof_root: self.recursive_stark_proof.tree_hash_root(),
+-            recursive_stark_block_deps_hash: self.recursive_stark_block_deps_hash,
+-        }
+-    }
+-}
+-
+-impl<E: EthSpec> AggregateExecutionPayloadHeader<E> {
+-    /// A header alone is insufficient; unblinding must match every committed field.
+-    pub fn accepts(&self, payload: &AggregateExecutionPayload<E>) -> bool {
+-        self.tree_hash_root() == payload.tree_hash_root()
+-    }
+-}
+-
+-// A default payload contains no dependency claims. Missing transport data is still rejected.
+-impl Default for RecursiveProof {
+-    fn default() -> Self {
+-        Self::try_from(b"NLR3\0\0\0\0\0\0\0\0".to_vec()).expect("Canonical empty-set envelope")
++        ssz_types::serde_utils::hex_var_list::deserialize(deserializer).map(Self)
+     }
+ }
+diff --git a/consensus/types/src/execution/execution_payload.rs b/consensus/types/src/execution/execution_payload.rs
+index b5eb6db6a8d45da96a3d9e6db30c96ce8de68774..da295898fe6fb028e9ad6ef04ef4966379229734 100644
+--- a/consensus/types/src/execution/execution_payload.rs
++++ b/consensus/types/src/execution/execution_payload.rs
+@@ -108,8 +108,6 @@ pub struct ExecutionPayload<E: EthSpec> {
+     pub excess_blob_gas: u64,
+     #[superstruct(only(Daisugi))]
+     pub recursive_stark_proof: crate::RecursiveProof,
+-    #[superstruct(only(Daisugi), partial_getter(copy))]
+-    pub recursive_stark_block_deps_hash: Hash256,
+     /// EIP-7928: Block access list
+     #[superstruct(only(Gloas))]
+     #[serde(with = "ssz_types::serde_utils::hex_var_list")]
+diff --git a/consensus/types/src/execution/execution_payload_header.rs b/consensus/types/src/execution/execution_payload_header.rs
+index 6400d2aca0fb832467d5f212db0f52b6cef1e9a5..30a92fe633c347206e89341b027486fa0921e924 100644
+--- a/consensus/types/src/execution/execution_payload_header.rs
++++ b/consensus/types/src/execution/execution_payload_header.rs
+@@ -113,8 +113,6 @@ pub struct ExecutionPayloadHeader<E: EthSpec> {
+     pub excess_blob_gas: u64,
+     #[superstruct(only(Daisugi), partial_getter(copy))]
+     pub recursive_stark_proof_root: Hash256,
+-    #[superstruct(only(Daisugi), partial_getter(copy))]
+-    pub recursive_stark_block_deps_hash: Hash256,
+ }
+ 
+ impl<E: EthSpec> ExecutionPayloadHeader<E> {
+@@ -297,7 +295,6 @@ impl<E: EthSpec> ExecutionPayloadHeaderElectra<E> {
+             blob_gas_used: self.blob_gas_used,
+             excess_blob_gas: self.excess_blob_gas,
+             recursive_stark_proof_root: Hash256::zero(),
+-            recursive_stark_block_deps_hash: Hash256::zero(),
+         }
+     }
+ }
+@@ -414,7 +411,6 @@ impl<'a, E: EthSpec> From<&'a ExecutionPayloadDaisugi<E>> for ExecutionPayloadHe
+             blob_gas_used: payload.blob_gas_used,
+             excess_blob_gas: payload.excess_blob_gas,
+             recursive_stark_proof_root: payload.recursive_stark_proof.tree_hash_root(),
+-            recursive_stark_block_deps_hash: payload.recursive_stark_block_deps_hash,
+         }
+     }
+ }
