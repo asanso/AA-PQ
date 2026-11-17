@@ -1,5 +1,6 @@
 import {decodeRlp} from 'ethers';
 import {DAISUGI_GENESIS} from '../explorer/native-frame.mjs';
+import {NETWORK} from '../explorer/network-profile.mjs';
 import {validateProofWrapper} from './aggregation-rpc.mjs';
 
 export const RPC_BODY_LIMIT = 128 * 1024;
@@ -14,7 +15,7 @@ export function validateFrameEnvelope(raw) {
   if (typeof raw !== 'string' || raw.length > RPC_BODY_LIMIT || !/^0x06(?:[0-9a-f]{2})+$/i.test(raw)) throw new Error('Only bounded native frame transactions (type 0x06) are accepted.');
   let tx;
   try { tx = decodeRlp('0x'+raw.slice(4)); } catch { throw new Error('Invalid frame transaction RLP.'); }
-  if (!Array.isArray(tx) || tx.length !== 7 || !quantity(tx[0]) || bigint(tx[0]) !== 1337n || !quantity(tx[1]) || !address(tx[2])) throw new Error('Expected a Daisugi frame transaction with chain ID 1337.');
+  if (!Array.isArray(tx) || tx.length !== 7 || !quantity(tx[0]) || bigint(tx[0]) !== BigInt(NETWORK.chainId) || !quantity(tx[1]) || !address(tx[2])) throw new Error(`Expected a ${NETWORK.name} frame transaction with chain ID ${NETWORK.chainId}.`);
   const [, , ,frames,witnesses,fees,blobs] = tx;
   if (!Array.isArray(frames) || !frames.length || frames.length > 1024 || !frames.every(f=>
     Array.isArray(f) && f.length === 6 && quantity(f[0]) && bigint(f[0]) <= 3n && quantity(f[1]) && bigint(f[1]) <= 255n && (f[2] === '0x' || address(f[2])) &&
@@ -53,7 +54,8 @@ export function createRpcProxy({url,nativeFramesEnabled = false,aggregationEnabl
   let identity, expires = 0;
   async function upstream(payload) {
     const response = await fetchImpl(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
-    const data = await response.json();
+    // Past this point the request may have been forwarded: no error may look like a refusal before forwarding.
+    const data = await response.json().catch(() => { throw new Error('The upstream RPC returned an invalid response.'); });
     if (!response.ok) throw new Error('The upstream RPC is unavailable.');
     return data;
   }
@@ -64,7 +66,7 @@ export function createRpcProxy({url,nativeFramesEnabled = false,aggregationEnabl
         upstream({jsonrpc:'2.0',id:1,method:'eth_chainId',params:[]}),
         upstream({jsonrpc:'2.0',id:2,method:'eth_getBlockByNumber',params:['0x0',false]})
       ]);
-      if (Number(chain.result) !== 1337 || genesis.result?.hash !== DAISUGI_GENESIS) throw new Error('Frame submission requires the configured Daisugi chain and genesis.');
+      if (Number(chain.result) !== NETWORK.chainId || genesis.result?.hash !== DAISUGI_GENESIS) throw new Error('Frame submission requires the configured Daisugi chain and genesis.');
       expires = Date.now()+60000;
     })().catch(error=>{identity=null;expires=0;throw error;});
     return identity;
@@ -72,7 +74,9 @@ export function createRpcProxy({url,nativeFramesEnabled = false,aggregationEnabl
   return async payload => {
     try {validateRpcRequest(payload,{nativeFramesEnabled,aggregationEnabled});}
     catch(error) {error.status=400;error.rpcCode=-32602;throw error;}
-    if (payload.method === 'eth_sendRawTransaction' || payload.method === 'eth_sendProofWrapper') await verifyIdentity();
+    // 503 tells wallets that nothing was forwarded; 502 stays for upstream failures whose outcome is unknown.
+    if (payload.method === 'eth_sendRawTransaction' || payload.method === 'eth_sendProofWrapper')
+      await verifyIdentity().catch(error => { error.status = 503; throw error; });
     return upstream(payload.params === undefined ? {...payload,params:[]} : payload);
   };
 }

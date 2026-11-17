@@ -284,6 +284,7 @@ export function Send() {
   }
 
   function setMax() {
+    if (!Number.isFinite(parseFloat(available))) return;
     send.amount = available;
   }
 

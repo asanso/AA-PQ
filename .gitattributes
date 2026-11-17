@@ -4,3 +4,5 @@
 *.mjs text eol=lf
 # Unified-diff context markers include a space on otherwise empty lines.
 deploy/nethermind/*.patch whitespace=-blank-at-eol
+# The Lighthouse patch series carries CRLF lines; keep its bytes as committed.
+aggregation/frames/consensus/eip8288-lean/patches/** -text

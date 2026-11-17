@@ -5,10 +5,16 @@ import { sendCall as sendFrame } from '../native-frame/send.js';
 import { sendCall as sendUserOperation } from '../erc4337/send.js';
 import { accountAddress as frameAddress } from '../aggregated-frame/address.js';
 import { accountAddress as aaAddress, ENTRY_POINT_ABI } from '../erc4337/protocol.js';
+import { withSigningLock } from './signing-lock.js';
+import { recoverJournal } from '../native-frame/journal.mjs';
+import { ERC4337_AVAILABLE } from '../config/chain-defaults.js';
 
 const adapters = Object.freeze({
   frame: { ...frameClient, accountAddress: frameAddress, sendCall: sendFrame },
-  aa: { ...aaClient, accountAddress: aaAddress, sendCall: sendUserOperation },
+  aa: { ...aaClient, sendCall: sendUserOperation, accountAddress(...args) {
+    if (!ERC4337_AVAILABLE) throw Error('ERC-4337 is not deployed on this network. Account creation is unavailable.');
+    return aaAddress(...args);
+  } },
 });
 
 export function activeProtocol() {
@@ -34,5 +40,11 @@ export async function refreshActivity(entry) {
   if (entry.userOpHash) {
     return aaClient.refreshRecord({ ...entry, sender: entry.smartAddr, status: 'pending' });
   }
-  return frameClient.refreshRecord({ ...entry, hash: entry.txHash, status: 'pending' });
+  const key = frameClient.journalKey(entry.smartAddr);
+  // An unresolved submission blocks further sends; recover it from its journal. A busy lock leaves this for a later poll.
+  const outcome = await recoverJournal({ hash: entry.txHash, recover: frameClient.recoverRecord,
+    lock: fn => withSigningLock('native-frame-recover', fn),
+    storage: { get: async () => (await chrome.storage.local.get(key))[key], set: value => chrome.storage.local.set({ [key]: value }),
+      remove: () => chrome.storage.local.remove(key) } });
+  return outcome ?? frameClient.refreshRecord({ ...entry, hash: entry.txHash, status: 'pending' });
 }

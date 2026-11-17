@@ -66,6 +66,24 @@ test('wrong chain identity blocks forwarding before any transaction submission',
   const proxy=createRpcProxy({url:'http://mock',nativeFramesEnabled:true,fetchImpl:async(url,options)=>{
     const call=JSON.parse(options.body);methods.push(call.method);return {ok:true,json:async()=>({result:call.method==='eth_chainId'?'0x1':{hash:DAISUGI_GENESIS}})};
   }});
-  await assert.rejects(proxy(request('eth_sendRawTransaction',[raw(payload())])),/genesis/);
+  // 503 tells the wallet nothing was forwarded, so it may treat the submission as definitely rejected.
+  await assert.rejects(proxy(request('eth_sendRawTransaction',[raw(payload())])),error=>/genesis/.test(error.message)&&error.status===503);
   assert.ok(!methods.includes('eth_sendRawTransaction'));
+});
+test('an upstream failure after forwarding keeps the outcome unknown',async()=>{
+  const proxy=createRpcProxy({url:'http://mock',nativeFramesEnabled:true,fetchImpl:async(url,options)=>{
+    const call=JSON.parse(options.body);
+    if(call.method==='eth_sendRawTransaction') throw new Error('The operation was aborted due to timeout');
+    return {ok:true,json:async()=>({result:call.method==='eth_chainId'?'0x539':{hash:DAISUGI_GENESIS}})};
+  }});
+  await assert.rejects(proxy(request('eth_sendRawTransaction',[raw(payload())])),error=>error.status===undefined);
+});
+test('an unparsable upstream reply after forwarding is not reported as a refusal',async()=>{
+  const proxy=createRpcProxy({url:'http://mock',nativeFramesEnabled:true,fetchImpl:async(url,options)=>{
+    const call=JSON.parse(options.body);
+    if(call.method==='eth_sendRawTransaction') return {ok:false,json:async()=>{throw new SyntaxError('Unexpected token <');}};
+    return {ok:true,json:async()=>({result:call.method==='eth_chainId'?'0x539':{hash:DAISUGI_GENESIS}})};
+  }});
+  await assert.rejects(proxy(request('eth_sendRawTransaction',[raw(payload())])),
+    error=>!(error instanceof SyntaxError)&&error.status===undefined&&/invalid response/.test(error.message));
 });

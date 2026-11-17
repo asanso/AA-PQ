@@ -1,7 +1,8 @@
 import {dependencyClaims} from './aggregation-proof.mjs';
+import {NETWORK} from './network-profile.mjs';
 
-export const DAISUGI_GENESIS = '0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55';
-export const FRAME_ACTIVATION_BLOCK = 519324;
+export const DAISUGI_GENESIS = NETWORK.genesisHash;
+export const FRAME_ACTIVATION_BLOCK = NETWORK.frameActivationBlock;
 export const isFrameTransaction = tx => tx?.type != null && Number(tx.type) === 6;
 const quantity = value => value == null ? null : BigInt(value).toString();
 const number = value => value == null ? null : Number(value);

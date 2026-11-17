@@ -48,3 +48,6 @@ export function createSiteRouting(config = {}, currentHref = 'http://localhost/'
 }
 
 export const site = createSiteRouting(globalThis.DAISUGI_SITE, globalThis.location?.href);
+// The network profile's chain ID and EntryPoint, served by /site-config.js.
+export const chainId = globalThis.DAISUGI_SITE?.chainId;
+export const entryPoint = globalThis.DAISUGI_SITE?.entryPoint;

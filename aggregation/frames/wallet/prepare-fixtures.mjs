@@ -23,7 +23,7 @@ const input = { language: 'Solidity', sources: {
 const compiled = JSON.parse(solc.compile(JSON.stringify(input)));
 for (const error of compiled.errors ?? []) if (error.severity === 'error') throw Error(error.formattedMessage);
 const factory = compiled.contracts[name].SphincsAggregateAccountFactory;
-const config = { factory: '0xda1500000000000000000000000000000000f001',
+const config = { chainId: 1337, factory: '0xda1500000000000000000000000000000000f001',
   implementation: '0xda1500000000000000000000000000000000f002' };
 const factoryBytes = e.getBytes('0x' + factory.evm.deployedBytecode.object);
 const references = Object.values(factory.evm.deployedBytecode.immutableReferences).flat();

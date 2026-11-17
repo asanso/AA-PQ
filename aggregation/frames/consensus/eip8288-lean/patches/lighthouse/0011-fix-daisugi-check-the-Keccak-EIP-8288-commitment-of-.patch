@@ -1,0 +1,150 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ManuelArto <manuelartociao@gmail.com>
+Date: Thu, 12 Nov 2026 15:02:24 +0100
+Subject: [PATCH 11/14] fix(daisugi): check the Keccak EIP-8288 commitment of
+ every Daisugi block locally
+
+Lighthouse recomputed the block dependency hash with BLAKE2s and compared the block hash only on
+optimistic finalized sync, where a mismatch was a warning. Hash with Keccak-256 as Nethermind does,
+split the lists by scheme equality, and reject a Daisugi block whose recomputed hash differs on every
+import path, whatever the EL answers.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Cargo.lock                                    |  1 -
+ .../beacon_chain/src/block_verification.rs    |  8 +++++
+ .../beacon_chain/src/execution_payload.rs     | 14 ++++++++
+ beacon_node/execution_layer/Cargo.toml        |  1 -
+ .../execution_layer/src/daisugi_block_hash.rs | 33 ++++++++-----------
+ 5 files changed, 35 insertions(+), 22 deletions(-)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index 9e096fababa52a42b8ea0533ecafc43ea649471a..092286748b40428fbdb1d656f95650cbae78c8e4 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3384,7 +3384,6 @@ dependencies = [
+  "alloy-rlp",
+  "alloy-rpc-types-eth",
+  "arc-swap",
+- "blake2",
+  "bls",
+  "builder_client",
+  "bytes",
+diff --git a/beacon_node/beacon_chain/src/block_verification.rs b/beacon_node/beacon_chain/src/block_verification.rs
+index 6b1ac3b033e3ab0467ff6dd67a93fdc9afcbf9fe..a7bb3f253a64acc02b07fe2a37a5ab2fb2b7383a 100644
+--- a/beacon_node/beacon_chain/src/block_verification.rs
++++ b/beacon_node/beacon_chain/src/block_verification.rs
+@@ -395,6 +395,13 @@ pub enum ExecutionPayloadError {
+     ///
+     /// The peer is not necessarily invalid.
+     UnverifiedNonOptimisticCandidate,
++    /// The block hash Lighthouse recomputes from a Daisugi payload, its EIP-8288 commitment included, is not the
++    /// payload's block hash
++    ///
++    /// ## Peer scoring
++    ///
++    /// Checked after gossip propagation, like an EL rejection, so the peer is not penalized
++    LocalBlockHashMismatch(execution_layer::Error),
+ }
+ 
+ impl ExecutionPayloadError {
+@@ -420,6 +427,7 @@ impl ExecutionPayloadError {
+             ExecutionPayloadError::InvalidActivationEpoch { .. } => false,
+             // Do not penalize the peer since it's not their fault that *we're* optimistic.
+             ExecutionPayloadError::UnverifiedNonOptimisticCandidate => false,
++            ExecutionPayloadError::LocalBlockHashMismatch(_) => false,
+         }
+     }
+ }
+diff --git a/beacon_node/beacon_chain/src/execution_payload.rs b/beacon_node/beacon_chain/src/execution_payload.rs
+index d8cd3e0287ef3335bbd4942d61cb15710d51f347..7f2c48cdeb3b3a042791ea309c7ab0d91646a9d3 100644
+--- a/beacon_node/beacon_chain/src/execution_payload.rs
++++ b/beacon_node/beacon_chain/src/execution_payload.rs
+@@ -74,6 +74,20 @@ impl<T: BeaconChainTypes> PayloadNotifier<T> {
+             )
+             .map_err(BlockError::PerBlockProcessingError)?;
+ 
++            // EIP-8288: a Daisugi header commits to `keccak(stark_proof)` and the block's dependency hash, both
++            // recomputed here from the payload, so the block hash is checked locally whatever the EL answers.
++            if block.fork_name_unchecked() == ForkName::Daisugi {
++                let new_payload_request: NewPayloadRequest<T::EthSpec> =
++                    block_message.try_into()?;
++                new_payload_request
++                    .verify_payload_block_hash()
++                    .map_err(|e| {
++                        BlockError::ExecutionPayloadError(
++                            ExecutionPayloadError::LocalBlockHashMismatch(e),
++                        )
++                    })?;
++            }
++
+             match notify_execution_layer {
+                 NotifyExecutionLayer::No if chain.config.optimistic_finalized_sync => {
+                     // Create a NewPayloadRequest (no clones required) and check optimistic sync verifications
+diff --git a/beacon_node/execution_layer/Cargo.toml b/beacon_node/execution_layer/Cargo.toml
+index 6d04b5b5fedd7e11a41afe4edc946070d0bf3255..91eb74e621035ed62295540d106226dea61f0e2a 100644
+--- a/beacon_node/execution_layer/Cargo.toml
++++ b/beacon_node/execution_layer/Cargo.toml
+@@ -8,7 +8,6 @@ edition = { workspace = true }
+ alloy-consensus = { workspace = true }
+ alloy-primitives = { workspace = true }
+ alloy-rlp = { workspace = true }
+-blake2 = "0.10"
+ alloy-rpc-types-eth = { workspace = true }
+ arc-swap = "1.6.0"
+ bls = { workspace = true }
+diff --git a/beacon_node/execution_layer/src/daisugi_block_hash.rs b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+index 304b59efd3b2a8566132e98110fe6678d4160390..1764ba787cf05ee0c1d5b023d7a7393a3bc6bd04 100644
+--- a/beacon_node/execution_layer/src/daisugi_block_hash.rs
++++ b/beacon_node/execution_layer/src/daisugi_block_hash.rs
+@@ -3,7 +3,6 @@
+ 
+ use crate::keccak::keccak256;
+ use alloy_rlp::{Decodable, Encodable, Header};
+-use blake2::{Blake2s256, Digest};
+ use types::Hash256;
+ 
+ const FRAME_TX_TYPE: u8 = 0x06;
+@@ -65,29 +64,23 @@ pub fn block_deps_hash<'a>(
+ }
+ 
+ fn deps_hash(dependencies: &[Dependency]) -> Hash256 {
+-    let split = dependencies
+-        .iter()
+-        .take_while(|(scheme, _, _)| *scheme == LEAN_SPHINCS_SCHEME)
+-        .count();
+-    let sphincs = list_deps_hash(&dependencies[..split]);
+-    if split == dependencies.len() {
++    let sphincs = list_deps_hash(dependencies, true);
++    if dependencies.iter().all(|(scheme, _, _)| *scheme == LEAN_SPHINCS_SCHEME) {
+         return Hash256::from(sphincs);
+     }
+-    let stark = list_deps_hash(&dependencies[split..]);
+-    let mut hasher = Blake2s256::new();
+-    hasher.update(sphincs);
+-    hasher.update(stark);
+-    hasher.update(LEAN_STARK_DEPS_DOMAIN);
+-    Hash256::from(<[u8; 32]>::from(hasher.finalize()))
++    // Every other scheme joins the leanSTARK list, so no entry escapes the digest.
++    let stark = list_deps_hash(dependencies, false);
++    keccak256(&[&sphincs[..], &stark[..], &LEAN_STARK_DEPS_DOMAIN[..]].concat())
+ }
+ 
+-fn list_deps_hash(dependencies: &[Dependency]) -> [u8; 32] {
+-    let mut hasher = Blake2s256::new();
+-    for (_, data_hash, key) in dependencies {
+-        hasher.update(data_hash);
+-        hasher.update(key);
+-    }
+-    hasher.finalize().into()
++/// `DEPS_HASH` (Keccak-256) over the 64-byte `data_hash || key` entries of the leanSPHINCS list, or of every other scheme.
++fn list_deps_hash(dependencies: &[Dependency], sphincs: bool) -> [u8; 32] {
++    let entries: Vec<u8> = dependencies
++        .iter()
++        .filter(|(scheme, _, _)| (*scheme == LEAN_SPHINCS_SCHEME) == sphincs)
++        .flat_map(|(_, data_hash, key)| data_hash.iter().chain(key.iter()).copied())
++        .collect();
++    keccak256(&entries).0
+ }
+ 
+ /// EIP-8141 canonical signature hash: `keccak(0x06 || rlp(tx))` with the signature bytes of every

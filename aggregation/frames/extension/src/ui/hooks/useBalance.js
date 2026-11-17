@@ -21,8 +21,10 @@ import { getNetwork } from "@/config/networks.js";
 import { chainId, smartAddr } from "@/ui/store.js";
 import { pollIncomingForActive } from "@/blockchain/incoming-tx-poller.js";
 
-const saBalance = signal("0.000000");
-const eoaBalance = signal("0.000000");
+// Shown until a balance is read, and after a user-visible refresh fails: never a made-up zero.
+export const BALANCE_UNAVAILABLE = "—";
+const saBalance = signal(BALANCE_UNAVAILABLE);
+const eoaBalance = signal(BALANCE_UNAVAILABLE);
 const loading = signal(false);
 const error = signal(null);
 
@@ -54,7 +56,11 @@ export async function refreshBalances({ silent = false } = {}) {
       saBalance.value = "0.000000";
     }
   } catch (e) {
-    if (!silent) error.value = e;
+    // A silent poll keeps the last real balance; a failed explicit refresh shows it as unknown.
+    if (!silent) {
+      error.value = e;
+      saBalance.value = eoaBalance.value = BALANCE_UNAVAILABLE;
+    }
   } finally {
     if (!silent) loading.value = false;
   }

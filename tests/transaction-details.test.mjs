@@ -19,6 +19,11 @@ test('legacy, pending and missing fee data do not become fabricated zero values'
  assert.equal(pending.status,'Pending');assert.equal(pending.transactionFeeWei,null);assert.equal(pending.effectiveGasPriceWei,null);assert.equal(pending.confirmations,null);
  const missing=transactionMetrics(tx,{...receipt,gasPrice:null},block,null);assert.equal(missing.transactionFeeWei,null);assert.equal(missing.confirmations,null);
 });
+test('an EIP-8141 frame transaction reports its max_fee budget instead of a per-gas cap',()=>{
+ const frame=transactionMetrics({...tx,type:6,maxFeePerGas:null,maxFee:3500000049000000n},receipt,block,20);
+ assert.equal(frame.maxFeeWei,'3500000049000000');assert.equal(frame.maxFeePerGasWei,null);assert.equal(frame.transactionFeeWei,'252000');
+ assert.equal(transactionMetrics(tx,receipt,block,20).maxFeeWei,null);
+});
 test('blob transaction totals include blob fee, or remain unknown when that component is missing',()=>{
  const d=transactionMetrics({...tx,type:3},{...receipt,blobGasUsed:100n,blobGasPrice:2n},block,20);
  assert.equal(d.executionFeeWei,'252000');assert.equal(d.blobFeeWei,'200');assert.equal(d.transactionFeeWei,'252200');
@@ -53,6 +58,12 @@ test('trace reads coalesce and cache while confirmations refresh independently',
  let calls=0,head=20;const read=createTransactionDetails({provider:{...provider,getBlockNumber:async()=>head},rpcUrl:'http://rpc.local',fetchImpl:async()=>{calls++;return{ok:true,json:async()=>({result:frame(A,B,'0x0')})};}});
  const first=await Promise.all([read(tx),read(tx)]);assert.equal(calls,1);assert.equal(first[0].confirmations,11);head=25;
  assert.equal((await read(tx)).confirmations,16);assert.equal(calls,1);
+});
+test('a frame transaction read through ethers takes its max_fee budget from the raw RPC result',async()=>{
+ const sent=[];const read=createTransactionDetails({provider:{...provider,send:async(method,params)=>{sent.push([method,...params]);return{maxFee:'0xc6f3b43a26e40'};}},
+  rpcUrl:'http://rpc.local',fetchImpl:async()=>({ok:true,json:async()=>({result:frame(A,B,'0x0')})})});
+ const d=await read({...tx,type:6,maxFeePerGas:null});assert.equal(d.maxFeeWei,'3500000049000000');assert.deepEqual(sent,[['eth_getTransactionByHash',H]]);
+ assert.equal((await read(tx)).maxFeeWei,null);assert.equal(sent.length,1);
 });
 test('failed receipt/block reads leave values unavailable instead of clearing the record',async()=>{
  const read=createTransactionDetails({provider:{getTransactionReceipt:async()=>{throw new Error('offline');},getBlock:async()=>{throw new Error('offline');},getBlockNumber:async()=>{throw new Error('offline');}}});

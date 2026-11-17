@@ -1,4 +1,4 @@
-import {site} from '/routes.js';
+import {site, chainId, entryPoint} from '/routes.js';
 import {formatUnits, isAddress} from '/ethers.js';
 import './faucet.js';
 import {renderTransactionDetails,attachTransactionDetailEvents} from './transaction-view.js';
@@ -7,6 +7,8 @@ import {renderBlockAggregation} from './native-frame-view.js';
 import {renderInputPanel as dataPanel,clearInputPanels,attachInputPanelEvents} from './input-data.js';
 
 const $ = id => document.getElementById(id);
+for (const node of document.querySelectorAll('[data-chain-id]')) node.textContent = chainId ?? '';
+for (const node of document.querySelectorAll('[data-entry-point]')) node.textContent = entryPoint ?? '';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hashPattern = /^0x[0-9a-fA-F]{64}$/;
 const short = (value, size = 8) => String(value).length > size * 2 + 3 ? String(value).slice(0,size + 2) + '…' + String(value).slice(-size) : String(value);
@@ -79,9 +81,9 @@ async function refresh() {
   refreshing = true;
   try {
     const results = await Promise.allSettled([api('/api/network'),api('/api/explorer/overview')]);
-    if (results[0].status === 'fulfilled' && Number(results[0].value.chainId) === 1337) {network = results[0].value; networkError = '';}
-    else {network = null; networkError = results[0].reason?.message || 'Unexpected chain. Daisugi requires chain 1337.';}
-    if (results[1].status === 'fulfilled' && Number(results[1].value.chainId) === 1337) {overview = results[1].value; explorerError = '';}
+    if (results[0].status === 'fulfilled' && Number(results[0].value.chainId) === chainId) {network = results[0].value; networkError = '';}
+    else {network = null; networkError = results[0].reason?.message || `Unexpected chain. Daisugi requires chain ${chainId}.`;}
+    if (results[1].status === 'fulfilled' && Number(results[1].value.chainId) === chainId) {overview = results[1].value; explorerError = '';}
     else {overview = null; explorerError = results[1].reason?.message || 'The explorer is not connected to Daisugi.';}
     showOverview();
   } finally {refreshing = false;}
@@ -90,7 +92,7 @@ function table(title, caption, headings, rows, noRows) {
   return `<section class="panel"><div class="table-heading"><h2>${esc(title)}</h2><span>${esc(caption)}</span></div>${rows.length ? '<div class="table-scroll"><table class="data-table"><thead><tr>' + headings.map(h=>'<th scope="col">'+esc(h)+'</th>').join('') + '</tr></thead><tbody>' + rows.map(cells=>'<tr>'+cells.map(cell=>'<td>'+cell+'</td>').join('')+'</tr>').join('') + '</tbody></table></div>' : empty(noRows)}</section>`;
 }
 function detail(title, fields, extra='') {
-  return `<a class="back-link" href="${esc(site.href({page:'explorer'}))}">← Back to explorer</a><section class="panel detail-panel"><div class="panel-heading"><h2>${esc(title)}</h2><span class="tag">Daisugi · 1337</span></div><dl class="definition-list">${fields.map(([key,value])=>'<dt>'+esc(key)+'</dt><dd>'+value+'</dd>').join('')}</dl>${extra}</section>`;
+  return `<a class="back-link" href="${esc(site.href({page:'explorer'}))}">← Back to explorer</a><section class="panel detail-panel"><div class="panel-heading"><h2>${esc(title)}</h2><span class="tag">Daisugi · ${esc(chainId)}</span></div><dl class="definition-list">${fields.map(([key,value])=>'<dt>'+esc(key)+'</dt><dd>'+value+'</dd>').join('')}</dl>${extra}</section>`;
 }
 function operationRows(operations) {
   return table('UserOperations','Events associated with this record',['Hash','Sender','Block','Timestamp (UTC)','Result'],operations.map(o=>[link('op',o.userOpHash),link('address',o.sender),link('block',o.blockNumber),renderTimestamp(o.timestamp,{compact:true}),outcome(o.success)]),'No UserOperation events indexed for this record.');
