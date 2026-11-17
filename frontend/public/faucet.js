@@ -1,4 +1,4 @@
-import {site} from '/routes.js';
+import {site, chainId} from '/routes.js';
 import {getAddress, isAddress} from '/ethers.js';
 
 const form = document.getElementById('faucetForm');
@@ -49,7 +49,7 @@ form.addEventListener('submit', async event => {
     const configResponse = await fetch('/api/config', {cache: 'no-store'});
     if (!configResponse.ok) throw new Error('The faucet network is unavailable. Try again later.');
     const config = await configResponse.json();
-    if (Number(config.chainId) !== 1337) throw new Error('This faucet is only available on Daisugi (chain 1337).');
+    if (Number(config.chainId) !== chainId) throw new Error(`This faucet is only available on Daisugi (chain ${chainId}).`);
     showStatus('Submitting 1 test ETH to ' + address + '…');
     submitted = true;
     const response = await fetch('/api/faucet', {

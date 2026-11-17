@@ -24,7 +24,7 @@ async function fixture(t,enabled,aggregationEnabled=false) {
   const rpc='http://127.0.0.1:'+upstream.address().port;
   const child=spawn(process.execPath,['frontend/server.mjs'],{cwd:fileURLToPath(new URL('../',import.meta.url)),windowsHide:true,
     env:{PATH:process.env.PATH,PORT:String(port),HOST:'127.0.0.1',RPC_URL:rpc,BUNDLER_URL:rpc,FAUCET_RPC_URL:rpc,
-      ENTRY_POINT:account,FAUCET_PRIVATE_KEY:'0x'+'0'.repeat(63)+'1',NATIVE_FRAME_RPC_ENABLED:enabled?'true':'false',
+      FAUCET_PRIVATE_KEY:'0x'+'0'.repeat(63)+'1',NATIVE_FRAME_RPC_ENABLED:enabled?'true':'false',
       NATIVE_AGGREGATION_RPC_ENABLED:aggregationEnabled?'true':'false'},stdio:['ignore','pipe','pipe']});
   t.after(async()=>{if(child.exitCode==null&&child.signalCode==null){const stopped=once(child,'exit');child.kill();await stopped;}});
   await Promise.race([once(child.stdout,'data'),once(child,'exit').then(()=>{throw Error('Frontend startup failed');})]);

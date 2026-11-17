@@ -2,6 +2,7 @@ import {Interface} from 'ethers';
 import {decodeInputData} from './input-decoder.mjs';
 import {isFrameTransaction} from '../explorer/native-frame.mjs';
 import {nativeAccountProfile} from './native-profile.mjs';
+import {NETWORK} from '../explorer/network-profile.mjs';
 
 const packed = '(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)';
 const nativeFactoryInput = new Interface(['function createAccount(bytes32 pkSeed,bytes32 pkRoot,bytes32 salt)']);
@@ -31,7 +32,7 @@ export async function addTransactionInput({provider, data, kind, id, entryPoint,
   try {
     if (!/^0x[0-9a-fA-F]{64}$/.test(hash || '')) throw new Error('No valid enclosing transaction hash is available.');
     const [network, transaction] = await Promise.all([provider.getNetwork(),provider.getTransaction(hash)]);
-    if (Number(network.chainId) !== 1337) throw new Error('The RPC is not connected to Daisugi (chain 1337).');
+    if (Number(network.chainId) !== NETWORK.chainId) throw new Error(`The RPC is not connected to ${NETWORK.name} (chain ${NETWORK.chainId}).`);
     if (!transaction) throw new Error('The transaction input is not available from the RPC.');
     if (transaction.hash?.toLowerCase() !== hash.toLowerCase()) throw new Error('The RPC returned a different transaction.');
     if (!isHexData(transaction.data)) throw new Error('The RPC returned invalid transaction input.');
@@ -39,7 +40,7 @@ export async function addTransactionInput({provider, data, kind, id, entryPoint,
     const inputIsEntryPoint = entryPoint && transaction.to?.toLowerCase() === entryPoint.toLowerCase();
     const creation = transaction.to == null && !isFrameTransaction(transaction);
     const nativeFrame = data.nativeFrame ? {...data.nativeFrame,accountProfile:await nativeAccountProfile(provider,transaction),frames:data.nativeFrame.frames?.map(frame=>({
-      ...frame, inputDecoded:decodeInputData(frame.data,frame.target?.toLowerCase() === '0xd07fcbdca6dea83b523faf95386cea236e32d989'
+      ...frame, inputDecoded:decodeInputData(frame.data,frame.target?.toLowerCase() === NETWORK.nativeFactory.toLowerCase()
         ? {abi:nativeFactoryInput,abiSource:'Daisugi native factory ABI template'} : {})
     }))} : null;
     let transactionDetails = null;

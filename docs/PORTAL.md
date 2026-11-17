@@ -1,6 +1,7 @@
 # Daisugi testnet portal
 
-The frontend is a public, single-chain portal for Daisugi (1337). Its navigation
+The frontend is a public, single-chain portal for Daisugi (chain 1337 unless
+`DAISUGI_NETWORK_PROFILE` selects another network). Its navigation
 contains Overview, Explorer and Faucet. It does not discover, connect to, or
 request signatures from browser wallets. The wallet demo and its browser assets
 have been removed; account setup and signing happen in an external wallet.
@@ -45,9 +46,10 @@ fabricated zeroes.
 `GET /api/explorer/<route>` accepts only overview and supported record paths.
 It reads the native indexer configured by `EXPLORER_URL` and enriches transaction
 or UserOperation records with RPC input data and transaction details.
-`GET /api/config` supplies chain, faucet and public-endpoint metadata.
-`GET /site-config.js` supplies non-secret public origins and theme-cookie scope
-before the interface and styles load.
+`GET /api/config` supplies chain, faucet and public-endpoint metadata. It fails
+when the RPC does not serve the network profile's chain.
+`GET /site-config.js` supplies non-secret public origins, theme-cookie scope and
+the network profile's chain ID before the interface and styles load.
 
 Browser API calls remain on the page's origin. When `PORTAL_ORIGIN` is enabled on
 the explorer service, that service forwards the shared UI and allowlisted
@@ -98,7 +100,7 @@ read methods and does not provide every method required by a general-purpose
 wallet. Its public bundler URL is separate.
 
 The faucet retains amount validation (maximum 10 ETH at the API; the interface
-requests 1 ETH), verifies chain 1337, and reserves a 60-second cooldown per
+requests 1 ETH), verifies the network profile's chain, and reserves a 60-second cooldown per
 recipient before broadcasting. The cooldown is case insensitive, process-local,
 bounded and cleared on restart. Failed or uncertain broadcasts retain the
 reservation to avoid immediate duplicates. Amounts are checked as integer wei,

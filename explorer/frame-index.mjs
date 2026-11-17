@@ -1,6 +1,7 @@
 import {readFile, mkdir, rename, writeFile} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {DAISUGI_GENESIS, FRAME_ACTIVATION_BLOCK, isFrameTransaction, nativeFrameSummary} from './native-frame.mjs';
+import {NETWORK} from './network-profile.mjs';
 
 const hex = number => '0x' + number.toString(16);
 const hash = value => /^0x[0-9a-f]{64}$/i.test(value || '');
@@ -19,10 +20,10 @@ export function createFrameIndex({rpc, cacheFile, startBlock = FRAME_ACTIVATION_
   genesisHash = DAISUGI_GENESIS, batchSize = 64}) {
   if (!Number.isSafeInteger(startBlock) || startBlock < 0 || !Number.isInteger(batchSize) || batchSize < 16 || batchSize > 256) throw new Error('Invalid frame index range or batch size.');
   let blocks = [], ready = false, running, error = null, storageError = null, observedHead = null, savedAt = 0;
-  const identity = {version:1,chainId:1337,genesisHash,startBlock};
+  const identity = {version:1,chainId:NETWORK.chainId,genesisHash,startBlock};
   async function initialize() {
     const [chain, genesis] = await Promise.all([rpc('eth_chainId',[]),rpc('eth_getBlockByNumber',['0x0',false])]);
-    if (Number(chain) !== 1337 || genesis?.hash !== genesisHash) throw new Error('Native frame index requires the configured Daisugi chain and genesis.');
+    if (Number(chain) !== NETWORK.chainId || genesis?.hash !== genesisHash) throw new Error('Native frame index requires the configured Daisugi chain and genesis.');
     if (cacheFile) {
       try {
         const saved = JSON.parse(await readFile(cacheFile,'utf8'));

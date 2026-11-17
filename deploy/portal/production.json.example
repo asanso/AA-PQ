@@ -14,7 +14,7 @@
     },
     {
       "kind": "chain",
-      "url": "http://127.0.0.1:3000/api/config"
+      "url": "http://127.0.0.1:3000/api/network"
     },
     {
       "kind": "json",
