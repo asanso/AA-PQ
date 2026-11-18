@@ -1,5 +1,0 @@
-/lighthouse/
-/.lighthouse.staging-*/
-/.private/
-__pycache__/
-*.pyc
