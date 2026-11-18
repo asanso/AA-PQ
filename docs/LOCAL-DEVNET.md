@@ -19,7 +19,7 @@ Run a disposable EIP-8288 Daisugi devnet on one Linux machine, then use the AA-P
 |---|---|
 | Devnet kit | NethermindEth/nethermind `daisugi/devnet-handoff` `bddde6bf09` (restart handoff in `tools/daisugi-devnet/RESTART.md`) |
 | Nethermind | NethermindEth/nethermind `daisugi/eip8288-lean` `af50ed19171295395ea12513f6d9464b782f4c5a` (`feature/eip8288-lean` with #15955, #15870 and #15961), native Lean backend from `Nethermind.Crypto.Lean` 0.21.0.110 (F128, ABI 21, key `PK.seed \|\| PK.root`) |
-| Lighthouse | manusw7/lighthouse `daisugi/eip8288-lean` `16a05d1e17a22d132933e3ec927a6f1b9daf0b1a`: sigp/lighthouse v8.2.2 `e423a667` with the Daisugi fork (formerly this repository's patches 0001-0014, #10) |
+| Lighthouse | manusw7/lighthouse `daisugi/eip8288-lean` `16a05d1e17a22d132933e3ec927a6f1b9daf0b1a`: sigp/lighthouse v8.2.2 `e423a667` with the Daisugi fork (formerly this repository's patches 0001-0014, #10; deviations and tests in [`consensus/eip8288-lean`](../aggregation/frames/consensus/eip8288-lean/README.md)) |
 | Lean account | `Daisugi.AggregatedFrameAccount.eip8288-lean.v2`, runtime `0x0b882e19e2b9d99498fec4d6c7df7d308c190b5e73a4ffd2542d0aef1d11b467` |
 
 ## 1. Sources and images
