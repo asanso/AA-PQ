@@ -304,3 +304,11 @@ await check('Expired preparation during admission retry prevents another send', 
   await c.client.submitCall(quote, signed, c.persist, () => { if (c.delays.length) c.expire(); });
   assert.equal(c.calls.filter(call => call.method === 'eth_sendProofWrapper').length, 1);
 });
+
+check('the shown account address is the address an eip8288-lean send uses', async () => {
+  const { accountAddress } = await import('../src/aggregated-frame/address.js');
+  const lean = { ...config, active: true, eip8288Format: 'eip8288-lean' };
+  const sent = createProtocol(e, 'eip8288-lean').prepare({ ...options, config: lean }).transaction.sender;
+  assert.equal(accountAddress(lean, key.backupPkSeed, key.backupPkRoot), sent);
+  assert.notEqual(accountAddress({ ...lean, eip8288Format: 'daisugi-v1' }, key.backupPkSeed, key.backupPkRoot), sent);
+});
