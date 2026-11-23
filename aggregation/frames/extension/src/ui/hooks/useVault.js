@@ -85,7 +85,14 @@ export function useVault() {
       try {
         error.value = null;
         const accounts = await vaultManager.unlock(password);
-        await hydrateFromVault();
+        try {
+          await hydrateFromVault();
+        } catch (cause) {
+          // The password was right; loading the account failed. Lock again rather than open a wallet without its account.
+          vaultManager.lock();
+          throw Object.assign(new Error('Your password is correct, but the wallet account could not be loaded: '
+            + (cause?.message || String(cause))), { code: 'ACCOUNT_UNAVAILABLE', cause });
+        }
         status.value = "unlocked";
 
         /* Apply any SW-observed owner transitions queued while the

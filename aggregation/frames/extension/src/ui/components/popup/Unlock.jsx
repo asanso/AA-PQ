@@ -79,8 +79,9 @@ export function Unlock() {
       chrome.runtime.sendMessage({ type: "SESSION_START" }).catch?.(() => {});
       page.value = nextRoute.slice(1); // Keep legacy signal in sync
       navigate(nextRoute);
-    } catch {
-      setError("Wrong password");
+    } catch (err) {
+      // Only a failed vault decryption means a wrong password; any other failure is reported as it is.
+      setError(err?.code === "WRONG_PASSWORD" ? "Wrong password" : err?.message || "The wallet could not be unlocked.");
       setSubmitting(false);
     }
   }

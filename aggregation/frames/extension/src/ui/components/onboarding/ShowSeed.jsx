@@ -16,15 +16,12 @@ const STEP = 3;
 const TOTAL_STEPS = 4;
 
 
+// The account address is derived locally (SPHINCS-G key and the build's network profile); no network access is
+// involved, so a failure means the wallet cannot operate on this build and setup must stop before the vault is saved.
 async function precomputeSmartAccount() {
-  try {
-    const sa = await predictAccountAddress();
-    smartAddr.value = sa;
-    return sa;
-  } catch (e) {
-    console.warn("[NiceTry] onboarding SA precompute deferred:", e?.message || e);
-    return null;
-  }
+  const sa = await predictAccountAddress();
+  smartAddr.value = sa;
+  return sa;
 }
 
 function CardShell({ children }) {
@@ -96,7 +93,11 @@ export function ShowSeed() {
     globalThis.__NT_CHAIN_ID = flow.chainId;
 
     const kickoffPrecompute = () => {
-      if (!saPrecompute.current) saPrecompute.current = precomputeSmartAccount();
+      if (!saPrecompute.current) {
+        saPrecompute.current = precomputeSmartAccount();
+        // finalize() awaits and reports the failure; this only avoids an unhandled rejection meanwhile.
+        saPrecompute.current.catch(() => {});
+      }
     };
 
     if (flow.phrase) {
@@ -161,22 +162,19 @@ export function ShowSeed() {
       // Pin the signing profile and chain for the wallet and background.
       await storageSet("nt_chainId", cid);
 
-      let sa = null;
+      let sa;
       try {
         sa = await (saPrecompute.current || precomputeSmartAccount());
-      } catch {}
-
-      if (sa) {
-        // setSmartAccountAddress persists the vault + mirrors the SA.
-        await vaultManager.setSmartAccountAddress(sa, cid);
-      } else {
-        // Commit the vault even if the SA couldn't be predicted (offline)
-        // — the dashboard resolves + persists it on first unlock.
-        await vaultManager.persist();
+      } catch (cause) {
+        saPrecompute.current = null; // Going back and confirming again retries the derivation.
+        throw new Error("The wallet account could not be derived, so the wallet was not saved: " + (cause?.message || String(cause)));
       }
+
+      // setSmartAccountAddress persists the vault + mirrors the SA.
+      await vaultManager.setSmartAccountAddress(sa, cid);
       currentIndex.value = 0;
 
-      flow.smartAddress = sa || "";
+      flow.smartAddress = sa;
       navigate("/create/done");
     } catch (e) {
       setError(e?.message || String(e));

@@ -174,10 +174,11 @@ export class VaultManager {
     const encrypted = await storageGet(VAULT_KEY);
     if (!encrypted) throw new Error("No vault found");
 
-  const { data, keyBytes, salt, iter } = await unlockVaultDetailed(
-      password,
-      encrypted
-    );
+    // AES-GCM authentication failure (WebCrypto OperationError) is the only wrong-password signal. Every other
+    // error (storage, vault format, account loading) keeps its own message.
+    const { data, keyBytes, salt, iter } = await unlockVaultDetailed(password, encrypted).catch(error => {
+      throw error?.name === 'OperationError' ? Object.assign(new Error('Wrong password'), { code: 'WRONG_PASSWORD' }) : error;
+    });
     this.password = password;
     this.sessionKey = { keyBytes, salt, iter };
     return this._applyDecryptedVault(data, encrypted);
