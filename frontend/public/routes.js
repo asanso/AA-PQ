@@ -8,6 +8,7 @@ export function parseRoute(url, explorerHost = false) {
   if (!first || first === 'index.html') return {page:explorerHost ? 'explorer' : 'overview'};
   if (first === 'overview') return {page:'overview', topic:second || ''};
   if (first === 'faucet') return {page:'faucet'};
+  if (first === 'network') return {page:'network'};
   if (first === 'docs') return {page:'overview', topic:faqAliases[second] || second || 'daisugi'};
   if (['wallet','settings'].includes(first)) return {page:'overview'};
   if (['blocks','operations','accounts','wallets'].includes(first)) return {page:'explorer'};
@@ -34,6 +35,7 @@ export function createSiteRouting(config = {}, currentHref = 'http://localhost/'
       path = split ? '/' : '/explorer';
       if (route.kind) path = (split ? '' : '/explorer') + '/' + route.kind + '/' + encodeURIComponent(route.id || '');
     } else if (route.page === 'faucet') path = '/faucet';
+    else if (route.page === 'network') path = '/network';
     else path = route.topic ? '/overview/' + encodeURIComponent(route.topic) : '/';
     return new URL(path, origin).href;
   }
@@ -51,3 +53,5 @@ export const site = createSiteRouting(globalThis.DAISUGI_SITE, globalThis.locati
 // The network profile's chain ID and EntryPoint, served by /site-config.js.
 export const chainId = globalThis.DAISUGI_SITE?.chainId;
 export const entryPoint = globalThis.DAISUGI_SITE?.entryPoint;
+// True on eip8288-lean networks (no ERC-4337).
+export const lean = globalThis.DAISUGI_SITE?.eip8288Format === 'eip8288-lean';

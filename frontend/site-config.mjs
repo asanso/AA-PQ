@@ -1,5 +1,5 @@
 export function isPortalPage(path) {
-  return /^\/(?:overview(?:\/[a-z0-9-]+)?|faucet|explorer(?:\/(?:block\/\d{1,12}|(?:tx|op|hash)\/0x[0-9a-fA-F]{64}|address\/0x[0-9a-fA-F]{40}))?|block\/\d{1,12}|(?:tx|op|hash)\/0x[0-9a-fA-F]{64}|address\/0x[0-9a-fA-F]{40})?\/?$/.test(path);
+  return /^\/(?:overview(?:\/[a-z0-9-]+)?|faucet|network|explorer(?:\/(?:block\/\d{1,12}|(?:tx|op|hash)\/0x[0-9a-fA-F]{64}|address\/0x[0-9a-fA-F]{40}))?|block\/\d{1,12}|(?:tx|op|hash)\/0x[0-9a-fA-F]{64}|address\/0x[0-9a-fA-F]{40})?\/?$/.test(path);
 }
 
 function origin(value, fallback) {
@@ -21,5 +21,7 @@ export function publicSiteConfig(env = process.env) {
 }
 
 export function siteConfigScript(config) {
-  return 'globalThis.DAISUGI_SITE = Object.freeze(' + JSON.stringify(config).replace(/</g, '\\u003c') + ');\n';
+  return 'globalThis.DAISUGI_SITE = Object.freeze(' + JSON.stringify(config).replace(/</g, '\\u003c') + ');\n' +
+    // Select the page variant before first paint: eip8288-lean networks get the new home.
+    'document.documentElement.dataset.network = ' + JSON.stringify(config.eip8288Format === 'eip8288-lean' ? 'lean' : 'legacy') + ';\n';
 }

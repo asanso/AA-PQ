@@ -1,4 +1,4 @@
-import {site, chainId, entryPoint} from '/routes.js';
+import {site, chainId, entryPoint, lean} from '/routes.js';
 import {formatUnits, isAddress} from '/ethers.js';
 import './faucet.js';
 import {renderTransactionDetails,attachTransactionDetailEvents} from './transaction-view.js';
@@ -63,7 +63,7 @@ function showOverview() {
   $('metricBlockAge').textContent = network ? age(network.blockTimestamp) : 'RPC unavailable';
   $('metricAccounts').textContent = integer(overview?.smartAccountCount);
   $('accountIndexStatus').textContent = !overview || overview.entryPointIndex?.status === 'degraded' ? 'Account index unavailable' :
-    overview.smartAccountCount == null ? 'Reading account deployments…' : 'ERC-4337 + native factory';
+    overview.smartAccountCount == null ? 'Reading account deployments…' : lean ? 'Daisugi account factory' : 'ERC-4337 + native factory';
   $('metricOps').textContent = overview ? integer(overview.operationCount) : '—';
   const frames = overview?.nativeFrames;
   $('metricFrames').textContent = frames?.count == null ? '—' : integer(frames.count);
@@ -72,7 +72,7 @@ function showOverview() {
   $('overviewError').hidden = !explorerError && !networkError;
   $('overviewError').textContent = [networkError && 'Network: ' + networkError, explorerError && 'Explorer: ' + explorerError].filter(Boolean).join(' ');
   $('activityStatus').textContent = !overview ? 'Explorer unavailable' : overview.entryPointIndex?.message ||
-    (overview.indexedTo < 0 ? 'ERC-4337 index is warming up…' : 'ERC-4337 indexed through block ' + integer(overview.indexedTo));
+    (overview.indexedTo < 0 ? (lean ? 'Account index is warming up…' : 'ERC-4337 index is warming up…') : (lean ? 'Accounts indexed through block ' : 'ERC-4337 indexed through block ') + integer(overview.indexedTo));
   $('latestBlocks').innerHTML = overview?.blocks?.slice(0,5).map(block => row('Bk',link('block',block.number),esc(age(block.timestamp)),`${integer(block.transactionCount)} txns`)).join('') || empty(overview ? 'No blocks indexed yet.' : 'Block data is unavailable.');
   $('latestOperations').innerHTML = overview?.operations?.slice(0,5).map(op => row('Op',link('op',op.userOpHash),'From ' + link('address',op.sender,short(op.sender,5)) + '<br>' + renderTimestamp(op.timestamp,{compact:true}),outcome(op.success))).join('') || empty(overview ? 'No UserOperations indexed yet.' : 'UserOperation data is unavailable.');
 }
@@ -139,7 +139,7 @@ async function loadDetail(kind, id) {
     if (version !== routeVersion) return;
     $('explorerContent').innerHTML = renderDetail(actualKind,data);
     $('explorerStatus').textContent = actualKind==='tx' && (Number(data.transactionDetails?.type ?? data.type)===6 || data.nativeFrame)
-      ? '' : 'Read from Daisugi. Transaction inclusion, individual frame execution and UserOperation execution are separate results.';
+      ? '' : lean ? 'Read from Daisugi. Transaction inclusion and individual frame execution are separate results.' : 'Read from Daisugi. Transaction inclusion, individual frame execution and UserOperation execution are separate results.';
   } catch(error) {
     if (version !== routeVersion) return;
     $('explorerContent').innerHTML = '<div class="inline-notice error" role="status">' + esc(error.message) + ' Check the identifier and try again.</div>';
@@ -166,10 +166,10 @@ function route() {
   document.querySelectorAll('[data-page]').forEach(section => {section.hidden = section.dataset.page !== (record ? 'record' : page);});
   markLinks('[data-nav]','data-nav',page);
   $('mainNav').classList.remove('open'); $('menuToggle').setAttribute('aria-expanded','false');
-  document.title = 'Daisugi — ' + ({explorer:'Explorer',faucet:'Testnet Faucet',overview:'Overview'})[page];
+  document.title = 'Daisugi — ' + ({explorer:'Explorer',faucet:lean ? 'Devnet Faucet' : 'Testnet Faucet',overview:'Overview',network:'Network'})[page];
   if (record) void loadDetail(next.kind,next.id);
   if (page === 'overview' && next.topic) {
-    const faq = [...document.querySelectorAll('[data-faq]')].find(item=>item.dataset.faq === next.topic);
+    const faq = [...document.querySelectorAll('[data-faq]')].find(item=>item.dataset.faq === next.topic && item.closest('.faq-list')?.checkVisibility?.() !== false);
     if (faq) {faq.open = true; requestAnimationFrame(()=>{if (page === 'overview') faq.scrollIntoView({block:'start',behavior:'instant'});});}
   } else if (location.hash === '#main') $('main').focus();
   else window.scrollTo({top:0,behavior:'instant'});

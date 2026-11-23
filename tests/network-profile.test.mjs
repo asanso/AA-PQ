@@ -76,7 +76,7 @@ test('a profile file switches the portal and explorer to another network and rej
     const accepted = await portal(7357n).network();
     const rejected = await portal(1337n).network().then(() => 'accepted', error => error.message);
     console.log(JSON.stringify({network:{...NETWORK}, chainIdHex, chainIdRlp, DAISUGI_GENESIS, FRAME_ACTIVATION_BLOCK,
-      portal:{chainId:accepted.chainId, name:accepted.network, bundler:accepted.bundler, rejected},
+      portal:{chainId:accepted.chainId, name:accepted.network, bundler:accepted.bundler, status:accepted.status, rejected},
       index:{alternative:await index('0x1cbd', '0x'+'11'.repeat(32)), legacy:await index('0x539', '${legacy.genesisHash}')}}));`;
   const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', probe],
     {cwd:new URL('..', import.meta.url), env:{...process.env, DAISUGI_NETWORK_PROFILE:file}});
@@ -86,7 +86,8 @@ test('a profile file switches the portal and explorer to another network and rej
   assert.equal(result.chainIdRlp, '0x1cbd');
   assert.equal(result.DAISUGI_GENESIS, alternative.genesisHash);
   assert.equal(result.FRAME_ACTIVATION_BLOCK, 100);
-  assert.deepEqual(result.portal, {chainId:7357, name:'Daisugi Next', bundler:'available',
+  // eip8288-lean has no ERC-4337 bundler: the gateway does not probe one and stays operational.
+  assert.deepEqual(result.portal, {chainId:7357, name:'Daisugi Next', bundler:'not deployed', status:'operational',
     rejected:'The RPC is not connected to Daisugi Next (chain 7357).'});
   // Head 5 is below the profile's start block 100: identity accepted, nothing to index yet. The current chain is refused.
   assert.equal(result.index.alternative, 'complete');

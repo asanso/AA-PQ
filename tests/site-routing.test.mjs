@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSiteRouting} from '../frontend/public/routes.js';
-import {isPortalPage, publicSiteConfig} from '../frontend/site-config.mjs';
+import {isPortalPage, publicSiteConfig, siteConfigScript} from '../frontend/site-config.mjs';
 import {createPortalProxy} from '../explorer/portal-proxy.mjs';
 
 const config={siteUrl:'https://daisugi.fyi',explorerUrl:'https://explorer.daisugi.fyi'};
@@ -39,10 +39,30 @@ test('old portal and explorer bookmarks keep their target records',()=>{
 });
 
 test('clean page routes do not turn missing assets and API errors into HTML',()=>{
-  for(const path of ['/','/overview','/overview/wallet','/faucet','/explorer','/tx/'+tx,'/explorer/op/'+tx,'/block/123'])
+  for(const path of ['/','/overview','/overview/wallet','/faucet','/network','/explorer','/tx/'+tx,'/explorer/op/'+tx,'/block/123'])
     assert.equal(isPortalPage(path),true,path);
   for(const path of ['/api/no-such-route','/.env','/missing.js','/unknown','//example.com','/tx/not-a-hash'])
     assert.equal(isPortalPage(path),false,path);
+});
+
+test('the network page stays on the main host',()=>{
+  const main=createSiteRouting(config,'https://daisugi.fyi/');
+  const explorer=createSiteRouting(config,'https://explorer.daisugi.fyi/');
+  assert.deepEqual(main.resolve('https://daisugi.fyi/network'),{page:'network'});
+  assert.equal(explorer.href({page:'network'}),'https://daisugi.fyi/network');
+  assert.equal(createSiteRouting(config,'http://localhost:3003/').href({page:'network'}),'http://localhost:3003/network');
+});
+
+test('the site config selects the page variant from the network format',()=>{
+  const run=format=>{
+    const root={dataset:{}};
+    new Function('globalThis','document',siteConfigScript({chainId:1,eip8288Format:format}))({},{documentElement:root});
+    return root.dataset.network;
+  };
+  assert.equal(run('eip8288-lean'),'lean');
+  assert.equal(run('daisugi-v1'),'legacy');
+  assert.equal(run(undefined),'legacy');
+  assert.match(siteConfigScript({note:'</script>'}),/\\u003c\/script>/);
 });
 
 test('public config accepts origins only and scopes theme cookie to both hosts',()=>{

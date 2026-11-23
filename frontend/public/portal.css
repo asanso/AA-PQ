@@ -1537,3 +1537,17 @@ details[open]>summary>.disclosure-chevron {transform:rotate(90deg);}
   .frame-activity .activity-row { align-items:flex-start }
   .frame-activity .row-meta { max-width:115px; white-space:normal }
 }
+
+/* Network variants: eip8288-lean networks show the new home, others keep the current one. */
+html[data-network="lean"] .legacy-only { display:none !important; }
+html:not([data-network="lean"]) .lean-only { display:none !important; }
+.resource-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px; margin-top:16px; }
+.resource-list a { display:block; padding:14px 16px; border:1px solid var(--line, currentColor); border-radius:10px; text-decoration:none; }
+.resource-list a small { display:block; opacity:.7; margin-top:4px; }
+.network-panel { padding:20px; }
+/* eip8288-lean: three metrics and two activity panels fill the row. */
+@media (min-width: 1051px) {
+  html[data-network="lean"] .metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  html[data-network="lean"] .activity-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  html[data-network="lean"] .frame-activity .row-meta { max-width:none; }
+}

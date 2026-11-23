@@ -16,8 +16,10 @@ export function createPortalApi({provider, bundlerUrl, explorerUrl, entryPoint, 
       const [chain, block] = await Promise.all([provider.getNetwork(), provider.getBlock('latest')]);
       if (Number(chain.chainId) !== EXPECTED_CHAIN) throw new Error(`The RPC is not connected to ${NETWORK.name} (chain ${EXPECTED_CHAIN}).`);
       if (!block) throw new Error('The latest Daisugi block is unavailable.');
-      let bundler = 'unavailable';
-      try {
+      // eip8288-lean networks have no ERC-4337 bundler; its absence is not a degradation.
+      const bundlerExpected = NETWORK.eip8288Format !== 'eip8288-lean';
+      let bundler = bundlerExpected ? 'unavailable' : 'not deployed';
+      if (bundlerExpected) try {
         const response = await fetchImpl(bundlerUrl, {
           method:'POST', headers:{'content-type':'application/json'},
           body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_chainId',params:[]}),
@@ -29,7 +31,7 @@ export function createPortalApi({provider, bundlerUrl, explorerUrl, entryPoint, 
       const blockAge = Math.max(0, Math.floor(now()/1000) - block.timestamp);
       cached = {
         chainId:EXPECTED_CHAIN, network:NETWORK.name, rpc:'available', bundler,
-        status:blockAge > 45 ? 'delayed' : bundler === 'available' ? 'operational' : 'degraded',
+        status:blockAge > 45 ? 'delayed' : bundler === 'available' || !bundlerExpected ? 'operational' : 'degraded',
         blockNumber:block.number, blockTimestamp:block.timestamp,
         baseFeePerGas:block.baseFeePerGas?.toString() ?? null,
         checkedAt:new Date(now()).toISOString()
