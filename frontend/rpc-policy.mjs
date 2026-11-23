@@ -1,6 +1,6 @@
-import {decodeRlp} from 'ethers';
+import {decodeRlp, encodeRlp} from 'ethers';
 import {DAISUGI_GENESIS} from '../explorer/native-frame.mjs';
-import {NETWORK} from '../explorer/network-profile.mjs';
+import {NETWORK, chainIdRlp} from '../explorer/network-profile.mjs';
 import {validateProofWrapper} from './aggregation-rpc.mjs';
 
 export const RPC_BODY_LIMIT = 128 * 1024;
@@ -11,10 +11,11 @@ const bytes = value => typeof value === 'string' && /^0x(?:[0-9a-f]{2})*$/i.test
 const quantity = value => bytes(value) && value.length <= 66 && (value === '0x' || !value.slice(2).startsWith('00'));
 const address = value => typeof value === 'string' && /^0x[0-9a-f]{40}$/i.test(value);
 const bigint = value => value === '0x' ? 0n : BigInt(value);
-export function validateFrameEnvelope(raw) {
+export function validateFrameEnvelope(raw, format = NETWORK.eip8288Format) {
   if (typeof raw !== 'string' || raw.length > RPC_BODY_LIMIT || !/^0x06(?:[0-9a-f]{2})+$/i.test(raw)) throw new Error('Only bounded native frame transactions (type 0x06) are accepted.');
   let tx;
   try { tx = decodeRlp('0x'+raw.slice(4)); } catch { throw new Error('Invalid frame transaction RLP.'); }
+  if (format === 'eip8288-lean') return validateLeanEnvelope(raw, tx);
   if (!Array.isArray(tx) || tx.length !== 7 || !quantity(tx[0]) || bigint(tx[0]) !== BigInt(NETWORK.chainId) || !quantity(tx[1]) || !address(tx[2])) throw new Error(`Expected a ${NETWORK.name} frame transaction with chain ID ${NETWORK.chainId}.`);
   const [, , ,frames,witnesses,fees,blobs] = tx;
   if (!Array.isArray(frames) || !frames.length || frames.length > 1024 || !frames.every(f=>
@@ -25,6 +26,24 @@ export function validateFrameEnvelope(raw) {
   if (!Array.isArray(fees) || fees.length !== 3 || !fees.every(quantity) || bigint(fees[0]) > bigint(fees[1]) || !Array.isArray(blobs) || !blobs.every(b=>bytes(b)&&b.length===66)) throw new Error('Invalid transaction fees or blob hashes.');
   // Structural gateway checks are not signature verification. The node validates
   // the complete envelope, witnesses, account authorization and execution rules.
+}
+// eip8288-lean (upstream Nethermind feature/eip8288-lean, EIP-8141 with EIP-8250):
+//   [chain_id, nonce_keys, nonce, sender, frames, signatures, [max_fee, max_priority_fee], blobs]
+// As for proof wrappers, the gateway accepts the account nonce only (empty nonce_keys) and canonical RLP.
+// Frame modes go up to DEP_VERIFY (4). The node validates signatures, authorization and execution.
+function validateLeanEnvelope(raw, tx) {
+  if (!Array.isArray(tx) || encodeRlp(tx).slice(2) !== raw.slice(4).toLowerCase()) throw new Error('Invalid frame transaction RLP.');
+  if (tx.length !== 8 || tx[0] !== chainIdRlp || !Array.isArray(tx[1]) || tx[1].length !== 0
+      || !quantity(tx[2]) || bigint(tx[2]) >= 1n << 64n || !address(tx[3]))
+    throw new Error(`Expected a ${NETWORK.name} frame transaction with chain ID ${NETWORK.chainId} and the account nonce.`);
+  const [, , , ,frames,witnesses,fees,blobs] = tx;
+  if (!Array.isArray(frames) || !frames.length || frames.length > 1024 || !frames.every(f=>
+    Array.isArray(f) && f.length === 6 && quantity(f[0]) && bigint(f[0]) <= 4n && quantity(f[1]) && bigint(f[1]) <= 255n && (f[2] === '0x' || address(f[2])) &&
+    Array.isArray(f[3]) && f[3].length === 2 && f[3].every(quantity) && quantity(f[4]) && bytes(f[5]))) throw new Error('Invalid frame fields.');
+  if (!Array.isArray(witnesses) || witnesses.length > 1024 || !witnesses.every(w=>
+    Array.isArray(w) && w.length === 4 && quantity(w[0]) && (w[1] === '0x' || address(w[1])) && bytes(w[2]) && bytes(w[3]))) throw new Error('Invalid signature witness fields.');
+  if (!Array.isArray(fees) || fees.length !== 2 || !fees.every(quantity) || bigint(fees[1]) > bigint(fees[0])
+      || !Array.isArray(blobs) || !blobs.every(b=>bytes(b)&&b.length===66)) throw new Error('Invalid transaction fees or blob hashes.');
 }
 export function validateRpcRequest(payload,{nativeFramesEnabled = false, aggregationEnabled = false} = {}) {
   if (!payload || Array.isArray(payload) || payload.jsonrpc !== '2.0' || typeof payload.method !== 'string' || (payload.params !== undefined && !Array.isArray(payload.params))

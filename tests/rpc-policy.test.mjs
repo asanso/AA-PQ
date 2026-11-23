@@ -87,3 +87,51 @@ test('an unparsable upstream reply after forwarding is not reported as a refusal
   await assert.rejects(proxy(request('eth_sendRawTransaction',[raw(payload())])),
     error=>!(error instanceof SyntaxError)&&error.status===undefined&&/invalid response/.test(error.message));
 });
+
+test('an eip8288-lean network forwards the wallet native envelope and rejects the other envelope shapes', async () => {
+  const {execFile} = await import('node:child_process');
+  const {promisify} = await import('node:util');
+  const {mkdtemp, writeFile, rm} = await import('node:fs/promises');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const {DAISUGI_PROFILE} = await import('../explorer/network-profile.mjs');
+  // The two native frame transactions included on daisugi-devnet-0, as built by the wallet.
+  const fixture = new URL('../aggregation/frames/extension/tests/fixtures/native-frame-devnet0.json', import.meta.url);
+  const directory = await mkdtemp(join(tmpdir(), 'daisugi-lean-rpc-'));
+  const file = join(directory, 'network.json');
+  await writeFile(file, JSON.stringify({...DAISUGI_PROFILE, name:'Daisugi Devnet', chainId:701563864, frameActivationBlock:0,
+    genesisHash:'0x3c3a46744395b7beae03e0f994ec80c46d1b8d7646aced7e7b0501dcded7765d', eip8288Format:'eip8288-lean'}));
+  const probe = `
+    import {readFileSync} from 'node:fs';
+    import {createRequire} from 'node:module';
+    const {decodeRlp, encodeRlp} = createRequire(new URL('./frontend/package.json', import.meta.url))('ethers');
+    import {validateFrameEnvelope} from './frontend/rpc-policy.mjs';
+    const outcome = raw => { try { validateFrameEnvelope(raw); return 'accepted'; } catch (error) { return error.message; } };
+    const raw = p => '0x06' + encodeRlp(p).slice(2);
+    const {transactions} = JSON.parse(readFileSync(new URL(${JSON.stringify(fixture.href)}), 'utf8'));
+    const base = decodeRlp('0x' + transactions[1].raw.slice(4));
+    const edit = change => { const p = structuredClone(base); change(p); return raw(p); };
+    console.log(JSON.stringify({
+      included: transactions.map(tx => outcome(tx.raw)),
+      nonceKey: outcome(edit(p => { p[1] = ['0x']; })),
+      chain: outcome(edit(p => { p[0] = '0x0539'; })),
+      legacyFees: outcome(edit(p => { p[6] = [p[6][0], p[6][0], '0x']; })),
+      priorityAboveBudget: outcome(edit(p => { p[6] = ['0x01', '0x02']; })),
+      modeFive: outcome(edit(p => { p[4][0][0] = '0x05'; })),
+      legacyShape: outcome(raw(['0x29d103d8', '0x', base[3], base[4], base[5], ['0x01', '0x02', '0x'], []])),
+      nonCanonical: outcome('0x06' + encodeRlp(base).slice(2).replace(/^f9/, 'fa00')),
+    }));`;
+  try {
+    const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', probe],
+      {cwd:new URL('..', import.meta.url), env:{...process.env, DAISUGI_NETWORK_PROFILE:file}});
+    const result = JSON.parse(stdout);
+    assert.deepEqual(result.included, ['accepted', 'accepted']);
+    assert.match(result.nonceKey, /account nonce/);
+    assert.match(result.chain, /chain ID 701563864/);
+    assert.match(result.legacyFees, /fees/);
+    assert.match(result.priorityAboveBudget, /fees/);
+    assert.match(result.modeFive, /frame fields/);
+    assert.match(result.legacyShape, /chain ID 701563864/);
+    assert.match(result.nonCanonical, /RLP/);
+  } finally { await rm(directory, {recursive:true, force:true}); }
+});
