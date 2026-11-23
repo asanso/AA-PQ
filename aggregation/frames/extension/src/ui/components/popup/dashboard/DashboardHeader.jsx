@@ -46,7 +46,7 @@ import { transactionMode, TRANSACTION_MODES } from '@/config/transaction-mode.js
 
 export function DashboardHeader({ onOpenSettings, onOpenAccounts, onOpenNetwork }) {
   // Display the signature profile and transaction format used by this build.
-  const modeLabel = "SPHINCS-G · " + (TRANSACTION_MODES[transactionMode.value] || "Daisugi");
+  const modeLabel = "SPHINCS · " + (TRANSACTION_MODES[transactionMode.value] || "Daisugi");
 
   // Active network for the switcher chip.
   const net = useNetwork();

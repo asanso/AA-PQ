@@ -94,7 +94,7 @@ export function ChooseChain() {
 
     try {
     globalThis.__NT_CHAIN_ID=selected;chainSignal.value=selected;await storageSet('nt_chainId',selected);
-    setProgress('Deriving your SPHINCS-G account…');
+    setProgress('Deriving your SPHINCS account…');
     const address=await deploySmartAccount();smartAddr.value=address;flow.smartAddress=address;
     await vaultManager.persist();navigate('/create/done');
   } catch (e) {

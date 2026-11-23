@@ -9,8 +9,8 @@ import { ERC4337_AVAILABLE, NATIVE_AVAILABLE } from '@/config/chain-defaults.js'
 // Only modes this build can use on its network are offered: ERC-4337 exists only on the current Daisugi network,
 // native frame accounts only where a native profile is pinned.
 const options = [
-  { id: 'native', title: 'Native frames', description: 'SPHINCS-G verified by your account.', available: NATIVE_AVAILABLE },
-  { id: 'frame', title: 'Aggregated frames', description: 'SPHINCS-G with a block proof.', available: aggregation.active },
+  { id: 'native', title: 'Native frames', description: 'SPHINCS verified by your account.', available: NATIVE_AVAILABLE },
+  { id: 'frame', title: 'Aggregated frames', description: 'SPHINCS with a block proof.', available: aggregation.active },
   { id: 'aa', title: 'ERC-4337', description: 'Send UserOperations via bundler.', available: ERC4337_AVAILABLE },
 ].filter(option => option.available);
 const usable = mode => options.some(option => option.id === mode);
@@ -40,7 +40,7 @@ export function ChooseTransactionMode() {
       <div class="relative flex-1 bg-text-primary flex flex-col min-h-0">
         <CornerTopLeft />
         <div class="flex-1 flex flex-col justify-center px-5 py-2 gap-2">
-          <OnboardingHeader title="Transaction Mode" subtitle="SPHINCS-G in both modes."
+          <OnboardingHeader title="Transaction Mode" subtitle="SPHINCS in both modes."
             icon={<img src="/nicetry_logo_outline.svg" alt="" class="size-16 rounded-full shrink-0" />} />
           <fieldset class="flex flex-col gap-3 border-0 p-0 m-0">
             <legend class="sr-only">Transaction mode</legend>

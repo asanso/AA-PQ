@@ -24,7 +24,7 @@ export const isHex = value => typeof value === 'string' && /^0x(?:[0-9a-f]{2})*$
 export function canonicalKey(seed, root) {
   for (const word of [seed, root]) {
     if (!/^0x[0-9a-f]{64}$/i.test(word) || BigInt(word) === 0n || BigInt(word) % (1n << 128n) !== 0n) {
-      throw Error('Invalid SPHINCS-G public key encoding.');
+      throw Error('Invalid SPHINCS public key encoding.');
     }
   }
 }

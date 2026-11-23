@@ -29,7 +29,7 @@ export const NETWORKS = {
     get sphincsVerifier() { return transactionMode.value === 'native' ? native.verifier : "0xf505AD2Cff58b84E145D637d99Fae0617B5685BE"; },
     sphincs: true, sphincsProfile: "sphincs-g",
     priorityFeeWei: 1_000_000_000n, maxFeeCapWei: 3_000_000_000n,
-    badge: "EXPERIMENTAL TESTNET", description: "SPHINCS-G native frames and ERC-4337. Test ETH only.",
+    badge: "EXPERIMENTAL TESTNET", description: "SPHINCS native frames and ERC-4337. Test ETH only.",
     iconKey: "ethereum", hidden: false,
   },
 };

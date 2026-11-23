@@ -50,7 +50,7 @@ export function createSendCall(mode, { prepareCall, submitCall, refreshRecord, r
       if (expectedNonce != null && BigInt(expectedNonce) !== quote.account.nonce) throw Error('The requested nonce does not match the current account nonce.');
       if (quote.account.address.toLowerCase() !== address.toLowerCase()) throw Error('Account derivation mismatch.');
       guard();
-      log('Signing with SPHINCS-G', 'step'); onPhase('signing');
+      log('Signing with SPHINCS', 'step'); onPhase('signing');
       const start = performance.now();
       const signed = await signDigest(account, quote.digest);
       guard();

@@ -29,7 +29,7 @@ export function useSendTransaction() {
 
     async run(override) {
       if (!isSphincsChain(getActiveNetwork())) {
-        throw new Error("This build supports only SPHINCS-G sends on Daisugi.");
+        throw new Error("This build supports only SPHINCS sends on Daisugi.");
       }
       if (override?.recipient !== undefined) recipient.value = override.recipient;
       if (override?.amount !== undefined)    amount.value = String(override.amount);

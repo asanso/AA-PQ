@@ -72,7 +72,7 @@ function SignatureChip({ tx }) {
     <span
       title={
         sphincs
-          ? "Signed with SPHINCS-G"
+          ? "Signed with SPHINCS"
           : "Signature details unavailable"
       }
       class={
@@ -82,7 +82,7 @@ function SignatureChip({ tx }) {
           : "bg-blue-hover/20 text-blue-hover")
       }
     >
-      {sphincs ? "SPHINCS-G" : "Unknown"}
+      {sphincs ? "SPHINCS" : "Unknown"}
     </span>
   );
 }

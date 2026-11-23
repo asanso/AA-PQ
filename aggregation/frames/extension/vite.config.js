@@ -83,8 +83,8 @@ const publicRpcManifest = {
     const manifest=JSON.parse(await readFile(file,'utf8'));
     manifest.name='NiceTry Daisugi — aggregation preview';
     manifest.description=aggregationProfile.active
-      ? 'Experimental Daisugi wallet with SPHINCS-G aggregated frames and ERC-4337.'
-      : 'Development preview of SPHINCS-G aggregated frames. Wallet deployment configuration is pending.';
+      ? 'Experimental Daisugi wallet with SPHINCS aggregated frames and ERC-4337.'
+      : 'Development preview of SPHINCS aggregated frames. Wallet deployment configuration is pending.';
     manifest.host_permissions=[...new Set([...manifest.host_permissions.filter(origin=>origin.startsWith('https:') && !origin.includes('daisugi.fyi')),publicOrigin+'/*'])];
     await writeFile(file,JSON.stringify(manifest,null,2)+'\n');
   }

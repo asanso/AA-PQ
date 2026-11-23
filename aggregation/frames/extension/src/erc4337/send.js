@@ -47,7 +47,7 @@ export async function sendCall({ to, value = 0n, data = '0x', reviewed, activity
       if (expectedNonce != null && BigInt(expectedNonce) !== quote.account.nonce) throw Error('The requested nonce does not match the EntryPoint account nonce.');
       if (quote.account.address.toLowerCase() !== address.toLowerCase()) throw Error('Account derivation mismatch.');
       guard();
-      log('Signing with SPHINCS-G', 'step');
+      log('Signing with SPHINCS', 'step');
       onPhase('signing');
       const start = performance.now();
       const signed = await signDigest(account, quote.digest);

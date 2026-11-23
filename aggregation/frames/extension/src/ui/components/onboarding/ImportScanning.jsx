@@ -160,8 +160,8 @@ export function ImportScanning() {
     : done
       ? "Your wallet has been restored from the seed phrase."
       : recovering
-        ? "Deriving your SPHINCS-G account…"
-        : "Restoring your SPHINCS-G account…";
+        ? "Deriving your SPHINCS account…"
+        : "Restoring your SPHINCS account…";
 
   return (
     <div class="w-full h-full flex flex-col">
