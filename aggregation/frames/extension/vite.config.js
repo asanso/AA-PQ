@@ -7,6 +7,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
 import * as ethers from 'ethers';
 import {createClient} from './src/aggregated-frame/client.mjs';
+import {createNativeClient} from './src/native-frame/native-client.mjs';
 
 // __dirname is not defined in ESM modules. Reconstruct it from import.meta.url
 // so `resolve(__dirname, "popup.html")` works on both POSIX and Windows. The
@@ -21,10 +22,28 @@ if (aggregationProfile.active) {
   // the actual chain, genesis, contract bytecode and RPC capabilities.
   createClient(ethers,{config:aggregationProfile,rpc:async()=>{},receiptOutcome:()=>{}});
 }
+// Native (non-aggregated) frame accounts: an optional second profile for the same network.
+const nativeProfilePath = resolve(__dirname, process.env.NICETRY_NATIVE_PROFILE || 'src/native-frame/native-deployment.json');
+const nativeProfile = JSON.parse(readFileSync(nativeProfilePath,'utf8'));
+if (typeof nativeProfile.active !== 'boolean') throw Error('The native profile requires an explicit boolean active flag.');
+if (nativeProfile.active) {
+  createNativeClient(ethers,{config:nativeProfile,rpc:async()=>{},receiptOutcome:()=>{}});
+  if (aggregationProfile.active && (nativeProfile.chainId !== aggregationProfile.chainId || nativeProfile.genesisHash !== aggregationProfile.genesisHash))
+    throw Error('The native and aggregation profiles must pin the same network.');
+}
+// Every import of a default profile file resolves to the selected profile, whatever form its specifier takes
+// (relative to the importer, '@/' alias or absolute). Matching specifier text alone missed './native-deployment.json'.
+const defaultProfiles = new Map([
+  [resolve(__dirname, 'src/aggregated-frame/deployment.json'), profilePath],
+  [resolve(__dirname, 'src/native-frame/native-deployment.json'), nativeProfilePath],
+]);
 const deploymentProfile = {
   name:'aggregate-deployment-profile',enforce:'pre',
-  resolveId(source) {
-    if (source.endsWith('/aggregated-frame/deployment.json')) return profilePath;
+  resolveId(source, importer) {
+    const target = source.startsWith('@/') ? resolve(__dirname, 'src', source.slice(2))
+      : source.startsWith('.') && importer ? resolve(dirname(importer.split('?')[0]), source)
+      : source.startsWith('/') ? resolve(source) : null;
+    return defaultProfiles.get(target);
   }
 };
 const publicRpc = process.env.NICETRY_RPC_URL;

@@ -1,15 +1,18 @@
 import { formatEther, getAddress } from 'ethers';
 import { vaultManager } from '../vault/VaultManager.js';
 import { publicKey, signDigest } from './keys.js';
-import { prepareCall, submitCall, refreshRecord, recoverRecord, journalKey as journalKeyFor } from './client.js';
+import * as frameClient from './client.js';
 import { withSigningLock } from '../transactions/signing-lock.js';
 import { createTransactionActivity, settleActivity } from '../transactions/transaction-activity.js';
 import { busy, smartAddr, chainId } from '../ui/store.js';
 import { DEFAULT_CHAIN_ID } from '../config/chain-defaults.js';
 import { log } from '../ui/logger.js';
 
-export async function sendCall({ to, value = 0n, data = '0x', reviewed, activity, details = {}, expectedNonce, onPhase = () => {} }) {
-  if (vaultManager.getTransactionMode() !== 'frame') throw Error('Transaction mode mismatch.');
+// One send path for both SPHINCS frame modes: aggregated frames (client.js) and native frames (native.js) share the
+// client interface, journal and activity records; only the mode and the client differ.
+export function createSendCall(mode, { prepareCall, submitCall, refreshRecord, recoverRecord, journalKey: journalKeyFor }) {
+  return async function sendCall({ to, value = 0n, data = '0x', reviewed, activity, details = {}, expectedNonce, onPhase = () => {} }) {
+  if (vaultManager.getTransactionMode() !== mode) throw Error('Transaction mode mismatch.');
   const epoch = vaultManager.sessionEpoch;
   if (busy.value) throw Error('Another transaction is already in progress.');
   const account = vaultManager.getActiveAccountIndex();
@@ -18,18 +21,18 @@ export async function sendCall({ to, value = 0n, data = '0x', reviewed, activity
   if (!hd || !address) throw Error('Unlock the wallet and wait for the account address.');
   const fingerprint = hd.getIdentityAddress(account);
   const assertContext = () => {
-    if (!vaultManager.isUnlocked() || vaultManager.sessionEpoch !== epoch || vaultManager.getTransactionMode() !== 'frame' || vaultManager.getActiveAccountIndex() !== account ||
+    if (!vaultManager.isUnlocked() || vaultManager.sessionEpoch !== epoch || vaultManager.getTransactionMode() !== mode || vaultManager.getActiveAccountIndex() !== account ||
         vaultManager.getHdKeyring()?.getIdentityAddress(account) !== fingerprint ||
         smartAddr.value !== address || BigInt(chainId.value) !== BigInt(DEFAULT_CHAIN_ID))
       throw Error('Wallet account changed or was locked. Review the transaction again.');
   };
   to = getAddress(to);
   const history = activity || createTransactionActivity({ to, amount: formatEther(value), smartAddr: address,
-    chainId: DEFAULT_CHAIN_ID, accountIndex: account, mode: 'SPHINCS', transactionType: 6, ...details });
+    chainId: DEFAULT_CHAIN_ID, accountIndex: account, mode: 'SPHINCS', transactionType: 6, protocol: mode, ...details });
   busy.value = true;
   log('Transaction started', 'step');
   try {
-    return await withSigningLock('native-frame-send', async (assertLock = () => {}) => {
+    return await withSigningLock(mode === 'frame' ? 'native-frame-send' : mode + '-frame-send', async (assertLock = () => {}) => {
       const guard = () => { assertContext(); assertLock(); };
       guard();
       const journalKey = journalKeyFor(address);
@@ -96,4 +99,7 @@ export async function sendCall({ to, value = 0n, data = '0x', reviewed, activity
   } catch (error) {
     await history.failed(error); log(error.message, 'err'); onPhase('error'); throw error;
   } finally { busy.value = false; }
+  };
 }
+
+export const sendCall = createSendCall('frame', frameClient);

@@ -4,12 +4,16 @@ import { vaultManager } from '@/vault/VaultManager.js';
 import { OnboardingHeader } from './OnboardingHeader.jsx';
 import { CornerTopLeft, CornerBottomRight } from './OnboardingCorners.jsx';
 import aggregation from '@/aggregated-frame/deployment.json';
-import { ERC4337_AVAILABLE } from '@/config/chain-defaults.js';
+import { ERC4337_AVAILABLE, NATIVE_AVAILABLE } from '@/config/chain-defaults.js';
 
+// Only modes this build can use on its network are offered: ERC-4337 exists only on the current Daisugi network,
+// native frame accounts only where a native profile is pinned.
 const options = [
-  { id: 'frame', title: 'Aggregated frames', description: 'SPHINCS-G with a block proof.' },
-  { id: 'aa', title: 'ERC-4337', description: 'Send UserOperations via bundler.' },
-];
+  { id: 'native', title: 'Native frames', description: 'SPHINCS-G verified by your account.', available: NATIVE_AVAILABLE },
+  { id: 'frame', title: 'Aggregated frames', description: 'SPHINCS-G with a block proof.', available: aggregation.active },
+  { id: 'aa', title: 'ERC-4337', description: 'Send UserOperations via bundler.', available: ERC4337_AVAILABLE },
+].filter(option => option.available);
+const usable = mode => options.some(option => option.id === mode);
 
 export function ChooseTransactionMode() {
   const [, navigate] = useLocation();
@@ -53,16 +57,14 @@ export function ChooseTransactionMode() {
             ))}
           </fieldset>
           <p class="text-[12px] leading-relaxed text-text-dim">
-            {flow.transactionMode === 'aa' && !ERC4337_AVAILABLE
-              ? 'ERC-4337 is not deployed on this network. Choose aggregated frames.'
-              : aggregation.active
+            {options.length
               ? 'Each mode has its own account. Restore with the original mode.'
               : 'Aggregation preview. Native setup is unavailable until chain activation.'}
           </p>
         </div>
         <div class="shrink-0 px-5 pb-3 pt-2">
           <div class="w-full border-2 border-blue p-1.5 has-[:disabled]:opacity-40">
-            <button type="button" disabled={!flow.transactionMode || (flow.transactionMode === 'frame' && !aggregation.active) || (flow.transactionMode === 'aa' && !ERC4337_AVAILABLE)}
+            <button type="button" disabled={!usable(flow.transactionMode)}
               onClick={() => navigate(flow.branch === 'import' ? '/import/seed' : '/create/password')}
               class="w-full bg-blue py-3 px-8 text-text-primary font-bold text-[16px] uppercase tracking-[0.48px] hover:bg-primary-600 disabled:cursor-not-allowed">
               Continue

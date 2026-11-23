@@ -105,3 +105,39 @@ test('the extension network follows an active aggregation profile and drops ERC-
     assert.deepEqual(identity(file), {chainId:7357,genesisHash:'0x'+'33'.repeat(32),defaultChainId:'0x1cbd',erc4337:false});
   } finally { unlinkSync(file);rmdirSync(directory); }
 });
+
+test('every import of a default profile resolves to the selected profile, whatever its specifier form', () => {
+  const directory=mkdtempSync(join(tmpdir(),'nicetry-native-profile-'));
+  const aggregationFile=join(directory,'deployment.json'), nativeFile=join(directory,'native-deployment.json');
+  const p=createProtocol(e,'eip8288-lean');
+  const network={chainId:7357,genesisHash:'0x'+'33'.repeat(32),maxFeePerGas:'100000000000',eip8288Format:'eip8288-lean'};
+  writeFileSync(aggregationFile,JSON.stringify({...network,active:true,factory:'0x'+'10'.repeat(20),implementation:'0x'+'20'.repeat(20),
+    factoryCodeHash:e.keccak256('0x6000'),implementationCodeHash:e.keccak256(p.implementationRuntime()),profile:p.domain}));
+  writeFileSync(nativeFile,JSON.stringify({...network,active:true,factory:'0x'+'30'.repeat(20),implementation:'0x'+'40'.repeat(20),
+    verifier:'0x'+'50'.repeat(20),factoryCodeHash:'0x'+'44'.repeat(32),implementationCodeHash:'0x'+'55'.repeat(32),verifierCodeHash:'0x'+'66'.repeat(32)}));
+  const env={...process.env,NICETRY_AGGREGATION_PROFILE:aggregationFile,NICETRY_NATIVE_PROFILE:nativeFile};
+  // Resolves every profile import found in src through Vite's full resolver (alias included), then loads the
+  // modules that hold a profile and reports the factory each one received.
+  const result=spawnSync(process.execPath,['--input-type=module','-e',`import {createServer} from 'vite';
+    import {readdirSync,readFileSync} from 'node:fs'; import {join} from 'node:path';
+    const s=await createServer({logLevel:'silent',server:{middlewareMode:true,hmr:false},appType:'custom'});
+    try {
+      const files=readdirSync('src',{recursive:true}).filter(f=>/\\.(js|jsx|mjs)$/.test(f)).map(f=>join(process.cwd(),'src',f));
+      const imports=[];
+      for (const file of files) for (const [,spec] of readFileSync(file,'utf8').matchAll(/from\\s+['"]([^'"]*deployment\\.json)['"]/g))
+        imports.push({file,spec,id:(await s.pluginContainer.resolveId(spec,file))?.id});
+      const loaded={};
+      for (const [name,path] of [['native','/src/native-frame/native.js'],['frame','/src/native-frame/client.js'],['networks','/src/config/chain-defaults.js']]) {
+        const m=await s.ssrLoadModule(path); loaded[name]=m.config?.factory ?? m.NATIVE_AVAILABLE;
+      }
+      console.log(JSON.stringify({imports,loaded}));
+    } finally { await s.close(); }`],{cwd,env,encoding:'utf8',timeout:60000});
+  try {
+    assert.equal(result.status,0,result.stderr);
+    const {imports,loaded}=JSON.parse(result.stdout.trim().split('\n').at(-1));
+    assert.ok(imports.some(i=>i.spec==='./native-deployment.json'), 'the relative native import is covered');
+    assert.ok(imports.length>=6);
+    for (const i of imports) assert.equal(i.id, i.spec.endsWith('native-deployment.json') ? nativeFile : aggregationFile, i.file+' '+i.spec);
+    assert.deepEqual(loaded,{native:'0x'+'30'.repeat(20),frame:'0x'+'10'.repeat(20),networks:true});
+  } finally { unlinkSync(aggregationFile);unlinkSync(nativeFile);rmdirSync(directory); }
+});

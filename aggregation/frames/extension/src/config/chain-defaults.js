@@ -12,13 +12,16 @@
 
 import frame from '../aggregated-frame/deployment.json';
 import aa from '../erc4337/network.json';
+import native from '../native-frame/native-deployment.json';
 
 /** The build's only network. An active aggregated-frame profile selects it;
     otherwise it is Daisugi, chain 1337, as pinned by the ERC-4337 profile. */
-const identity = frame.active ? frame : aa;
+const identity = frame.active ? frame : native.active ? native : aa;
 export const NETWORK_IDENTITY = Object.freeze({ chainId: identity.chainId, genesisHash: identity.genesisHash });
 /** The ERC-4337 contracts are pinned to Daisugi; another network has none. */
 export const ERC4337_AVAILABLE = aa.chainId === identity.chainId && aa.genesisHash === identity.genesisHash;
+/** Native (non-aggregated) frame accounts exist only where a verified native profile pins this network. */
+export const NATIVE_AVAILABLE = native.active === true && native.chainId === identity.chainId && native.genesisHash === identity.genesisHash;
 
 /** Hex chainId used when no chain has been picked yet (or when the
     user hasn't completed onboarding). Update this single value to

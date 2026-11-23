@@ -36,7 +36,7 @@ export async function runQueuedSend(request, execute) {
   }
   const activity = queued ? createTransactionActivity({
     to: request.recipient, amount: request.amount, smartAddr: request.smartAddr,
-    chainId: request.chainId, accountIndex: request.accountIndex, mode: 'SPHINCS',
+    chainId: request.chainId, accountIndex: request.accountIndex, mode: 'SPHINCS', protocol: request.transactionMode,
     kind: request.selectedToken ? 'send-token' : undefined,
     tokenSymbol: request.selectedToken?.symbol, tokenAddress: request.selectedToken?.address,
   }, { notifySigned: false }) : null;
