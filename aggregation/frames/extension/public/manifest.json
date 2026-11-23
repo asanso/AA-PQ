@@ -3,7 +3,7 @@
   "name": "NiceTry Daisugi — frames and ERC-4337",
   "short_name": "NiceTry Daisugi",
   "version": "2.1.3.7",
-  "description": "Daisugi testnet wallet with SPHINCS signing and a choice of native frames or ERC-4337 during setup.",
+  "description": "Experimental Daisugi testnet wallet with SPHINCS signing. Builds set the transaction modes of their network.",
   "permissions": [
     "storage",
     "sidePanel",

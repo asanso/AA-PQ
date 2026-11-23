@@ -31,6 +31,18 @@ if (nativeProfile.active) {
   if (aggregationProfile.active && (nativeProfile.chainId !== aggregationProfile.chainId || nativeProfile.genesisHash !== aggregationProfile.genesisHash))
     throw Error('The native and aggregation profiles must pin the same network.');
 }
+// The transaction modes this build offers, decided as in src/config/chain-defaults.js, so the extension
+// description matches wallet setup.
+const erc4337Profile = JSON.parse(readFileSync(resolve(__dirname, 'src/erc4337/network.json'), 'utf8'));
+const buildNetwork = aggregationProfile.active ? aggregationProfile : nativeProfile.active ? nativeProfile : erc4337Profile;
+const sameNetwork = profile => profile.chainId === buildNetwork.chainId && profile.genesisHash === buildNetwork.genesisHash;
+const buildModes = [
+  nativeProfile.active && sameNetwork(nativeProfile) && 'native frames',
+  aggregationProfile.active && 'aggregated frames',
+  sameNetwork(erc4337Profile) && 'ERC-4337',
+].filter(Boolean);
+export const extensionDescription = 'Experimental Daisugi testnet wallet with SPHINCS signing: '
+  + (buildModes.length > 1 ? buildModes.slice(0, -1).join(', ') + ' and ' + buildModes.at(-1) : buildModes[0]) + '.';
 // Every import of a default profile file resolves to the selected profile, whatever form its specifier takes
 // (relative to the importer, '@/' alias or absolute). Matching specifier text alone missed './native-deployment.json'.
 const defaultProfiles = new Map([
@@ -82,9 +94,7 @@ const publicRpcManifest = {
     const file=resolve(outputDirectory,'manifest.json');
     const manifest=JSON.parse(await readFile(file,'utf8'));
     manifest.name='NiceTry Daisugi — aggregation preview';
-    manifest.description=aggregationProfile.active
-      ? 'Experimental Daisugi wallet with SPHINCS aggregated frames and ERC-4337.'
-      : 'Development preview of SPHINCS aggregated frames. Wallet deployment configuration is pending.';
+    manifest.description=extensionDescription;
     manifest.host_permissions=[...new Set([...manifest.host_permissions.filter(origin=>origin.startsWith('https:') && !origin.includes('daisugi.fyi')),publicOrigin+'/*'])];
     await writeFile(file,JSON.stringify(manifest,null,2)+'\n');
   }

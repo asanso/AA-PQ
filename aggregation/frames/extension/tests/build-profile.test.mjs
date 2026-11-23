@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
-import {mkdtempSync,writeFileSync,unlinkSync,rmdirSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,unlinkSync,rmdirSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import * as e from 'ethers';
@@ -140,4 +140,34 @@ test('every import of a default profile resolves to the selected profile, whatev
     for (const i of imports) assert.equal(i.id, i.spec.endsWith('native-deployment.json') ? nativeFile : aggregationFile, i.file+' '+i.spec);
     assert.deepEqual(loaded,{native:'0x'+'30'.repeat(20),frame:'0x'+'10'.repeat(20),networks:true});
   } finally { unlinkSync(aggregationFile);unlinkSync(nativeFile);rmdirSync(directory); }
+});
+
+test('the extension description lists exactly the transaction modes the build offers', () => {
+  const directory=mkdtempSync(join(tmpdir(),'nicetry-description-'));
+  const aggregationFile=join(directory,'deployment.json'), nativeFile=join(directory,'native-deployment.json');
+  const p=createProtocol(e,'eip8288-lean');
+  const aggregation=network=>({...network,active:true,factory:'0x'+'10'.repeat(20),implementation:'0x'+'20'.repeat(20),
+    factoryCodeHash:e.keccak256('0x6000'),implementationCodeHash:e.keccak256(p.implementationRuntime()),profile:p.domain,
+    maxFeePerGas:'100000000000',eip8288Format:'eip8288-lean'});
+  const lean={chainId:7357,genesisHash:'0x'+'33'.repeat(32)};
+  const current={chainId:1337,genesisHash:'0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55'};
+  writeFileSync(nativeFile,JSON.stringify({...lean,active:true,maxFeePerGas:'100000000000',eip8288Format:'eip8288-lean',
+    factory:'0x'+'30'.repeat(20),implementation:'0x'+'40'.repeat(20),verifier:'0x'+'50'.repeat(20),
+    factoryCodeHash:'0x'+'44'.repeat(32),implementationCodeHash:'0x'+'55'.repeat(32),verifierCodeHash:'0x'+'66'.repeat(32)}));
+  const describe=(aggregationNetwork,native)=>{
+    const env={...process.env};
+    delete env.NICETRY_AGGREGATION_PROFILE; delete env.NICETRY_NATIVE_PROFILE;
+    if (aggregationNetwork) { writeFileSync(aggregationFile,JSON.stringify(aggregation(aggregationNetwork))); env.NICETRY_AGGREGATION_PROFILE=aggregationFile; }
+    if (native) env.NICETRY_NATIVE_PROFILE=nativeFile;
+    const result=spawnSync(process.execPath,['--input-type=module','-e',
+      "const {extensionDescription}=await import('./vite.config.js'); console.log(extensionDescription);"],{cwd,env,encoding:'utf8',timeout:30000});
+    assert.equal(result.status,0,result.stderr);
+    return result.stdout.trim().split('\n').at(-1);
+  };
+  try {
+    const prefix='Experimental Daisugi testnet wallet with SPHINCS signing: ';
+    assert.equal(describe(lean,true), prefix+'native frames and aggregated frames.');
+    assert.equal(describe(current,false), prefix+'aggregated frames and ERC-4337.');
+    assert.equal(describe(undefined,false), prefix+'ERC-4337.');
+  } finally { rmSync(directory,{recursive:true,force:true}); }
 });
