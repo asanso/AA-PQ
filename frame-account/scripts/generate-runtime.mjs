@@ -2,75 +2,90 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 // Native opcodes from Nethermind c9ad4b5 (EIP-8141 prototype). Solidity cannot
 // emit them directly. Generate a small, labelled runtime without bytecode patching.
-const code = [], labels = new Map(), jumps = [], parameters = [];
-const op = byte => code.push(byte);
-const push = value => {
-  let hex = typeof value === 'number' ? value.toString(16) : value;
-  if (hex.length % 2) hex = `0${hex}`;
-  const bytes = Buffer.from(hex, 'hex');
-  if (!bytes.length || bytes.length > 32) throw Error('Invalid PUSH width');
-  op(0x5f + bytes.length); code.push(...bytes);
-};
-const parameter = (name, width) => {
-  op(0x5f + width); parameters.push({ name, offset: code.length, width });
-  code.push(...Array(width).fill(0));
-};
-const jump = (label, conditional = true) => {
-  op(0x61); jumps.push({ label, offset: code.length }); code.push(0, 0);
-  op(conditional ? 0x57 : 0x56);
-};
-const label = name => { labels.set(name, code.length); op(0x5b); };
-const requireTrue = () => { op(0x15); jump('reject'); };
-const tx = field => { push(field); op(0xb0); };
-const sig = field => { push(field); push(0); op(0xb4); };
-const store = (value, offset) => { push(value); push(offset); op(0x52); };
+// The same opcode layout runs the native accounts deployed on Daisugi devnet-0.
+//
+// One runtime per signature profile. The verifier interface differs only in how
+// many public-key bytes the clone carries:
+// - SPHINCS-G: verify(bytes32 pkSeed, bytes32 pkRoot, bytes32 message, bytes signature), 64 key bytes;
+// - leanSPHINCS: verify(bytes32 publicKey, bytes32 message, bytes signature), 32 key bytes.
+const profiles = [
+  { library: 'SphincsFrameRuntime', selector: '2bf6eda8', keyBytes: 64, signatureBytes: 6176 },
+  { library: 'LeanSphincsFrameRuntime', selector: 'de12c640', keyBytes: 32, signatureBytes: 7740 },
+];
 
-// Ordinary empty-calldata transfers can fund the account. They cannot approve
-// frame execution. Native entry calls must take the full verification path.
-op(0x33); push(0xaa); op(0x14); jump('verify');
-op(0x36); op(0x15); requireTrue(); op(0x00);
-label('verify');
-op(0x36); op(0x15); requireTrue(); // No owner suffix or other verification calldata.
-tx(2); op(0x30); op(0x14); requireTrue(); // Transaction sender is this account.
-op(0x30); op(0x3b); push(109); op(0x14); requireTrue(); // EIP-1167 clone plus 64 immutable key bytes.
-push(2); tx(0x0a); op(0xb3); push(1); op(0x14); requireTrue(); // Current mode VERIFY.
-tx(0x0b); push(1); op(0x14); requireTrue(); // Exactly one witness.
-sig(1); push(0); op(0x14); requireTrue(); // ARBITRARY scheme.
-sig(2); push(0); op(0x14); requireTrue(); // Canonical frame signing digest.
-sig(3); push(6176); op(0x14); requireTrue();
+function generate({ library, selector, keyBytes, signatureBytes }) {
+  const code = [], labels = new Map(), jumps = [], parameters = [];
+  const op = byte => code.push(byte);
+  const push = value => {
+    let hex = typeof value === 'number' ? value.toString(16) : value;
+    if (hex.length % 2) hex = `0${hex}`;
+    const bytes = Buffer.from(hex, 'hex');
+    if (!bytes.length || bytes.length > 32) throw Error('Invalid PUSH width');
+    op(0x5f + bytes.length); code.push(...bytes);
+  };
+  const parameter = (name, width) => {
+    op(0x5f + width); parameters.push({ name, offset: code.length, width });
+    code.push(...Array(width).fill(0));
+  };
+  const jump = (label, conditional = true) => {
+    op(0x61); jumps.push({ label, offset: code.length }); code.push(0, 0);
+    op(conditional ? 0x57 : 0x56);
+  };
+  const label = name => { labels.set(name, code.length); op(0x5b); };
+  const requireTrue = () => { op(0x15); jump('reject'); };
+  const tx = field => { push(field); op(0xb0); };
+  const sig = field => { push(field); push(0); op(0xb4); };
+  const store = (value, offset) => { push(value); push(offset); op(0x52); };
 
-// verify(bytes32,bytes32,bytes32,bytes), using the exact sphincs-g verifier.
-store('2bf6eda8' + '00'.repeat(28), 0);
-// DELEGATECALL preserves ADDRESS as the clone. Read its immutable public key
-// directly from code, immediately after the 45-byte EIP-1167 dispatcher.
-push(64); push(45); push(4); op(0x30); op(0x3c); // EXTCODECOPY.
-tx(8); push(68); op(0x52);
-store(128, 100); store(6176, 132);
-push(0); push(6176); push(0); push(164); op(0xb5); // SIGDATACOPY.
-push(32); push(0); push(6340); push(0);
-parameter('bytes20(verifier)', 20); op(0x5a); op(0xfa); // STATICCALL.
-requireTrue(); op(0x3d); push(32); op(0x14); requireTrue();
-push(0); op(0x51); push(1); op(0x14); requireTrue();
-push(3); push(0); push(0); op(0xaa); // APPROVE execution and payment, terminating.
-label('reject'); push(0); push(0); op(0xfd);
+  // Verifier calldata: selector, public key, message, offset and length of the signature, signature.
+  const messageAt = 4 + keyBytes, offsetAt = messageAt + 32, lengthAt = offsetAt + 32, signatureAt = lengthAt + 32;
 
-for (const { label, offset } of jumps) {
-  const destination = labels.get(label);
-  if (destination === undefined || destination > 65535) throw Error('Invalid jump');
-  code[offset] = destination >> 8; code[offset + 1] = destination & 255;
-}
-const pieces = []; let offset = 0;
-for (const param of parameters) {
-  pieces.push(`hex"${Buffer.from(code.slice(offset, param.offset)).toString('hex')}"`, param.name);
-  offset = param.offset + param.width;
-}
-pieces.push(`hex"${Buffer.from(code.slice(offset)).toString('hex')}"`);
-const source = `// SPDX-License-Identifier: MIT
+  // Ordinary empty-calldata transfers can fund the account. They cannot approve
+  // frame execution. Native entry calls must take the full verification path.
+  op(0x33); push(0xaa); op(0x14); jump('verify');
+  op(0x36); op(0x15); requireTrue(); op(0x00);
+  label('verify');
+  op(0x36); op(0x15); requireTrue(); // No owner suffix or other verification calldata.
+  tx(2); op(0x30); op(0x14); requireTrue(); // Transaction sender is this account.
+  op(0x30); op(0x3b); push(45 + keyBytes); op(0x14); requireTrue(); // EIP-1167 clone plus the immutable key bytes.
+  push(2); tx(0x0a); op(0xb3); push(1); op(0x14); requireTrue(); // Current mode VERIFY.
+  tx(0x0b); push(1); op(0x14); requireTrue(); // Exactly one witness.
+  sig(1); push(0); op(0x14); requireTrue(); // ARBITRARY scheme.
+  sig(2); push(0); op(0x14); requireTrue(); // Canonical frame signing digest.
+  sig(3); push(signatureBytes); op(0x14); requireTrue();
+
+  // The profile's verify function, using the exact pinned verifier.
+  store(selector + '00'.repeat(28), 0);
+  // DELEGATECALL preserves ADDRESS as the clone. Read its immutable public key
+  // directly from code, immediately after the 45-byte EIP-1167 dispatcher.
+  push(keyBytes); push(45); push(4); op(0x30); op(0x3c); // EXTCODECOPY.
+  tx(8); push(messageAt); op(0x52);
+  store(lengthAt - 4, offsetAt); store(signatureBytes, lengthAt); // ABI offset of the length word, after the selector.
+  push(0); push(signatureBytes); push(0); push(signatureAt); op(0xb5); // SIGDATACOPY.
+  push(32); push(0); push(signatureAt + signatureBytes); push(0);
+  parameter('bytes20(verifier)', 20); op(0x5a); op(0xfa); // STATICCALL.
+  requireTrue(); op(0x3d); push(32); op(0x14); requireTrue();
+  push(0); op(0x51); push(1); op(0x14); requireTrue();
+  push(3); push(0); push(0); op(0xaa); // APPROVE execution and payment, terminating.
+  label('reject'); push(0); push(0); op(0xfd);
+
+  for (const { label, offset } of jumps) {
+    const destination = labels.get(label);
+    if (destination === undefined || destination > 65535) throw Error('Invalid jump');
+    code[offset] = destination >> 8; code[offset + 1] = destination & 255;
+  }
+  const pieces = []; let offset = 0;
+  for (const param of parameters) {
+    pieces.push(`hex"${Buffer.from(code.slice(offset, param.offset)).toString('hex')}"`, param.name);
+    offset = param.offset + param.width;
+  }
+  pieces.push(`hex"${Buffer.from(code.slice(offset)).toString('hex')}"`);
+  const source = `// SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
 // Generated by scripts/generate-runtime.mjs. Edit that annotated source instead.
 // Native frame opcodes are specific to Nethermind c9ad4b5; not standard EVM.
-library SphincsFrameRuntime {
+library ${library} {
     function build(address verifier) internal pure returns (bytes memory) {
         return abi.encodePacked(
             ${pieces.join(',\n            ')}
@@ -78,8 +93,14 @@ library SphincsFrameRuntime {
     }
 }
 `;
-const target = new URL('../contracts/SphincsFrameRuntime.sol', import.meta.url);
-if (process.argv.includes('--check')) {
-  if (readFileSync(target, 'utf8') !== source) throw Error('Generated runtime is stale');
-} else writeFileSync(target, source);
-console.log(`Runtime: ${code.length} bytes; generated source ${process.argv.includes('--check') ? 'verified' : 'updated'}.`);
+  return { size: code.length, source };
+}
+
+for (const profile of profiles) {
+  const { size, source } = generate(profile);
+  const target = new URL(`../contracts/${profile.library}.sol`, import.meta.url);
+  if (process.argv.includes('--check')) {
+    if (readFileSync(target, 'utf8') !== source) throw Error(`Generated ${profile.library} is stale`);
+  } else writeFileSync(target, source);
+  console.log(`${profile.library}: ${size} bytes; generated source ${process.argv.includes('--check') ? 'verified' : 'updated'}.`);
+}

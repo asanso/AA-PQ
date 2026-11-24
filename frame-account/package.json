@@ -5,9 +5,9 @@
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
-    "generate": "node scripts/generate-runtime.mjs",
-    "check": "node scripts/generate-runtime.mjs --check",
-    "test": "npm run check && node --test tests/factory.test.mjs"
+    "generate": "node scripts/generate-runtime.mjs && node scripts/generate-verifier.mjs",
+    "check": "node scripts/generate-runtime.mjs --check && node scripts/generate-verifier.mjs --check",
+    "test": "npm run check && node --test tests/factory.test.mjs tests/leansphincs-reference.test.mjs tests/leansphincs-verifier.test.mjs tests/leansphincs-factory.test.mjs"
   },
   "overrides": { "solc": { "tmp": "0.2.7" } },
   "devDependencies": {
