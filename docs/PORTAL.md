@@ -30,6 +30,30 @@ corresponding FAQ. Legacy wallet/settings links return to Overview; legacy
 explorer category links return to the dashboard. Direct links, reload and browser
 Back/Forward are supported.
 
+### Networks with an operator-run explorer and faucet
+
+A network profile may set `externalExplorerUrl` and `externalFaucetUrl` (HTTPS
+origins; see `explorer/network-profile.mjs`). The Daisugi devnet profile points them
+to the EthPandaOps Dora explorer and faucet.
+
+With `externalExplorerUrl`, explorer links keep this site's URLs (the explorer host,
+for example `https://explorer.daisugi.fyi/tx/<hash>`, or `/explorer` on a preview),
+and those URLs redirect (HTTP 302) to the matching Dora page: `/tx/<hash>`,
+`/address/<address>`, `/block/<number>`, the Dora home page for the explorer root,
+or `/search?q=<query>` for other lookups. Every page of the explorer host redirects;
+on other hosts `/explorer` and the old record paths do. The frontend sends the
+redirect; the explorer service, when it serves the shared portal, passes on only a
+redirect to the `externalExplorerUrl` origin. In-page navigation redirects in the
+browser. This site's own explorer dashboard and its API calls stay off.
+
+With `externalFaucetUrl`, the faucet page explains the steps and links to that
+faucet; the portal sends no funds and needs no `FAUCET_PRIVATE_KEY`. The explorer
+service in `explorer/` stays in the source for networks without these fields.
+
+On the devnet, Overview starts with the network details (chain, clients, NiceTry
+contracts and EthPandaOps public endpoints), followed by the FAQ; `/network` opens
+Overview at the network details.
+
 Overview contains the current six FAQs: Daisugi, post-quantum account research,
 NiceTry, network configuration, faucet and first transaction. The dashboard
 contains network metrics, recent blocks, UserOperations, account deployments and
@@ -89,7 +113,8 @@ review helpers are specific to that environment and are not part of the source
 release.
 
 Configure the RPC, bundler, EntryPoint and funded faucet account through the
-server environment. `FAUCET_PRIVATE_KEY` is required. `FAUCET_RPC_URL` optionally
+server environment. `FAUCET_PRIVATE_KEY` is required unless the network profile
+sets `externalFaucetUrl` (see below). `FAUCET_RPC_URL` optionally
 separates transaction submission from read-only RPC access. `EXPLORER_URL`
 defaults to `http://127.0.0.1:3001`. RPC ports can change when a devnet is
 recreated; use the actual service addresses.

@@ -739,6 +739,9 @@ label {
 .result-box a {
   font-size:11px
 }
+/* Devnet faucet: steps and a link to the network operators' faucet. */
+.form-panel > p {margin:0 0 12px;line-height:1.6;}
+.faucet-steps {margin:4px 0 20px;padding-left:20px;line-height:1.8;}
 .faucet-aside {
   padding-top:24px
 }
@@ -1443,11 +1446,6 @@ main {padding-bottom:40px;}
 .native-fields>div:first-child { grid-column:1/-1 }
 .native-fields dt { color:var(--muted); font-size:11px; margin-bottom:6px }
 .native-fields dd { margin:0; overflow-wrap:anywhere }
-.aggregation-panel {margin-bottom:12px;min-width:0;}
-.aggregation-stats {display:flex;flex-wrap:wrap;gap:16px 28px;margin:0 0 16px;}
-.aggregation-stats dt {font-size:11px;color:var(--muted);margin-bottom:6px;}
-.aggregation-stats dd {margin:0;font-size:13px;overflow-wrap:anywhere;}
-.aggregation-transactions {padding-left:18px;line-height:1.8;overflow-wrap:anywhere;}
 .native-mode { color:var(--muted); font-weight:400; margin-left:12px; font-size:11px }
 .native-frame .embedded-input { margin-top:16px }
 .native-raw { margin-top:16px }
@@ -1541,10 +1539,11 @@ details[open]>summary>.disclosure-chevron {transform:rotate(90deg);}
 /* Network variants: eip8288-lean networks show the new home, others keep the current one. */
 html[data-network="lean"] .legacy-only { display:none !important; }
 html:not([data-network="lean"]) .lean-only { display:none !important; }
-.resource-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px; margin-top:16px; }
-.resource-list a { display:block; padding:14px 16px; border:1px solid var(--line, currentColor); border-radius:10px; text-decoration:none; }
-.resource-list a small { display:block; opacity:.7; margin-top:4px; }
 .network-panel { padding:20px; }
+/* Devnet Overview: the network details come first, then the questions. */
+.network-details { margin-bottom:40px; scroll-margin-top:84px; }
+.network-heading { margin:28px 0 12px; }
+.network-note { margin-top:20px; }
 /* eip8288-lean: three metrics and two activity panels fill the row. */
 @media (min-width: 1051px) {
   html[data-network="lean"] .metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }

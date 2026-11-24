@@ -7,10 +7,13 @@ import {createPortalApi, createFaucetLimiter} from "./portal-api.mjs";
 import {isPortalPage, publicSiteConfig, siteConfigScript} from "./site-config.mjs";
 import {createRpcProxy, RPC_BODY_LIMIT} from './rpc-policy.mjs';
 import {NETWORK} from '../explorer/network-profile.mjs';
+import {externalExplorerHref, parseRoute} from './public/routes.js';
 
 const root = fileURLToPath(new URL("./public", import.meta.url));
 const port = Number(process.env.PORT || 3000);
-const siteSettings = {...publicSiteConfig(), chainId:NETWORK.chainId, entryPoint:NETWORK.entryPoint, eip8288Format:NETWORK.eip8288Format, networkName:NETWORK.name};
+const siteSettings = {...publicSiteConfig(), chainId:NETWORK.chainId, entryPoint:NETWORK.entryPoint, eip8288Format:NETWORK.eip8288Format, networkName:NETWORK.name,
+  nativeAccountScheme:NETWORK.nativeAccountScheme, nativeVerifier:NETWORK.nativeVerifier, nativeFactory:NETWORK.nativeFactory, nativeImplementation:NETWORK.nativeImplementation,
+  externalExplorerUrl:NETWORK.externalExplorerUrl ?? null, externalFaucetUrl:NETWORK.externalFaucetUrl ?? null};
 const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:18545";
 const nativeFramesEnabled = process.env.NATIVE_FRAME_RPC_ENABLED === 'true';
 const aggregationEnabled = process.env.NATIVE_AGGREGATION_RPC_ENABLED === 'true';
@@ -27,8 +30,19 @@ const publicRpcUrl = process.env.PUBLIC_RPC_URL || null;
 const publicBundlerUrl = process.env.PUBLIC_BUNDLER_URL || null;
 const portal = createPortalApi({provider, bundlerUrl, entryPoint, rpcUrl, explorerUrl:process.env.EXPLORER_URL || 'http://127.0.0.1:3001'});
 const claimFaucet = createFaucetLimiter();
-const faucet = new ethers.Wallet(faucetKey, faucetProvider);
+// The site's own faucet runs only with a key. Only a network whose operators run the faucet may omit it.
+if (!faucetKey && !NETWORK.externalFaucetUrl) throw new Error('FAUCET_PRIVATE_KEY is required unless the network profile sets externalFaucetUrl');
+const faucet = faucetKey ? new ethers.Wallet(faucetKey, faucetProvider) : null;
 let pendingFaucetSubmission = Promise.resolve();
+// With an operator-run explorer (Dora) in the profile, this site's explorer URLs redirect to the matching Dora page:
+// every page of the explorer host, and /explorer (plus the old record paths) on any other host.
+const explorerHost = new URL(siteSettings.explorerUrl).host;
+const explorerHostIsSeparate = explorerHost !== new URL(siteSettings.siteUrl).host;
+function externalExplorerRedirect(url, host = '') {
+  if (!NETWORK.externalExplorerUrl) return null;
+  const route = parseRoute(url, explorerHostIsSeparate && host.toLowerCase() === explorerHost);
+  return route?.page === 'explorer' ? externalExplorerHref(NETWORK.externalExplorerUrl, route) : null;
+}
 const factoryAddress = process.env.FACTORY_ADDRESS || '0x610178dA211FEF7D417bC0e6FeD39F05609AD788';
 const factory = new ethers.Contract(factoryAddress, ['function getAddress(address,uint256) view returns(address)', 'function createAccount(address,uint256) returns(address)'], provider);
 const packedType = '(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)';
@@ -92,6 +106,7 @@ async function proxy(req, res, target) {
 }
 
 async function faucetSend(req, res) {
+  if (!faucet) return json(res, 503, {error:'This site has no faucet of its own. Use the faucet of the network operators.'});
   try {
     const payload = await body(req);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
@@ -133,7 +148,7 @@ async function config(res) {
   try {
     const network = await provider.getNetwork();
     if (Number(network.chainId) !== NETWORK.chainId) throw new Error(`The RPC is not connected to ${NETWORK.name} (chain ${NETWORK.chainId}).`);
-    json(res, 200, { chainId: NETWORK.chainId, rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet.address, networkName:NETWORK.name, publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60, nativeFrameSubmissionEnabled:nativeFramesEnabled, nativeAggregationSubmissionEnabled:aggregationEnabled });
+    json(res, 200, { chainId: NETWORK.chainId, rpcUrl: "/rpc", bundlerUrl: "/bundler", entryPoint, faucet: faucet?.address ?? null, networkName:NETWORK.name, publicRpcUrl, publicBundlerUrl, faucetCooldownSeconds:60, nativeFrameSubmissionEnabled:nativeFramesEnabled, nativeAggregationSubmissionEnabled:aggregationEnabled });
   } catch (error) {
     json(res, 503, { error: error instanceof Error ? error.message : String(error) });
   }
@@ -170,7 +185,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/api/config") return config(res);
   if (req.method !== "GET") return json(res, 405, { error: "method not allowed" });
 
-  const relative = isPortalPage(url.pathname) ? "/index.html" : url.pathname;
+  const portalPage = isPortalPage(url.pathname);
+  const redirect = portalPage && externalExplorerRedirect(url, req.headers.host);
+  if (redirect) {
+    res.writeHead(302, {location:redirect, 'cache-control':'no-store'});
+    return res.end();
+  }
+  const relative = portalPage ? "/index.html" : url.pathname;
   const file = normalize(join(root, relative));
   if (!file.startsWith(root)) return json(res, 404, { error: "not found" });
   try {

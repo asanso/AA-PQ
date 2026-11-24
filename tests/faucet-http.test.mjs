@@ -13,7 +13,7 @@ const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const {Transaction} = createRequire(new URL('../frontend/package.json', import.meta.url))('ethers');
 const recipient = digit => '0x' + digit.repeat(40);
 
-async function fixture(t, {chainId = '0x539', rejectFirstBroadcast = false, profile, entryPoint} = {}) {
+async function fixture(t, {chainId = '0x539', rejectFirstBroadcast = false, profile, entryPoint, faucetKey = '0x' + '0'.repeat(63) + '1'} = {}) {
   const accepted = [], methods = [];
   let nonce = 0, broadcasts = 0;
   const block = {
@@ -82,7 +82,7 @@ async function fixture(t, {chainId = '0x539', rejectFirstBroadcast = false, prof
     env: {
       PATH: process.env.PATH, HOST: '127.0.0.1', PORT: String(port),
       RPC_URL: endpoint, FAUCET_RPC_URL: endpoint, BUNDLER_URL: endpoint,
-      EXPLORER_URL: endpoint, FAUCET_PRIVATE_KEY: '0x' + '0'.repeat(63) + '1', ...network,
+      EXPLORER_URL: endpoint, ...(faucetKey ? {FAUCET_PRIVATE_KEY: faucetKey} : {}), ...network,
       ...(entryPoint ? {ENTRY_POINT: entryPoint} : {})
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -214,4 +214,46 @@ test('a wrong-chain faucet never signs or broadcasts a transaction', async t => 
   assert.equal((await f.request({address: recipient('4')})).status, 503);
   assert.equal(f.accepted.length, 0);
   assert.equal(f.methods.includes('eth_sendRawTransaction'), false);
+});
+
+test('without its own faucet key the portal starts only for a network with an external faucet', async t => {
+  await assert.rejects(fixture(t, {faucetKey: null}), /FAUCET_PRIVATE_KEY is required/);
+  const explorerOnly = {...alternative, externalExplorerUrl: 'https://dora.example.org'};
+  await assert.rejects(fixture(t, {chainId: '0x1cbd', profile: explorerOnly, faucetKey: null}), /FAUCET_PRIVATE_KEY is required/);
+});
+
+test('a network whose operators run the explorer and faucet needs no faucet key', async t => {
+  const operated = {...alternative, externalExplorerUrl: 'https://dora.example.org', externalFaucetUrl: 'https://faucet.example.org'};
+  const f = await fixture(t, {chainId: '0x1cbd', profile: operated, faucetKey: null});
+  const siteConfig = await (await fetch(f.url + '/site-config.js')).text();
+  const browser = JSON.parse(siteConfig.match(/Object\.freeze\((.*)\);/)[1]);
+  assert.equal(browser.externalExplorerUrl, 'https://dora.example.org');
+  assert.equal(browser.externalFaucetUrl, 'https://faucet.example.org');
+  assert.equal((await (await fetch(f.url + '/api/config')).json()).faucet, null);
+  const result = await f.request({address: recipient('4'), amount: '1'});
+  assert.equal(result.status, 503);
+  assert.match(result.data.error, /no faucet of its own/);
+  assert.deepEqual(f.accepted, []);
+});
+
+test('with an operator-run explorer, this site\'s explorer URLs redirect to the matching Dora page', async t => {
+  const operated = {...alternative, externalExplorerUrl: 'https://dora.example.org', externalFaucetUrl: 'https://faucet.example.org'};
+  const f = await fixture(t, {chainId: '0x1cbd', profile: operated, faucetKey: null});
+  const tx = '0x' + 'ab'.repeat(32), address = '0x' + '12'.repeat(20);
+  const get = (base, path, host) => new Promise((resolve, reject) => {
+    http.get(base + path, host ? {headers: {host}} : {}, res => { res.resume(); resolve({status: res.statusCode, location: res.headers.location}); }).on('error', reject);
+  });
+  // On this site's host: /explorer, its record pages and the old record paths.
+  for (const [path, target] of [['/explorer', '/'], ['/explorer/tx/' + tx, '/tx/' + tx], ['/explorer/address/' + address, '/address/' + address],
+    ['/explorer/block/41927', '/block/41927'], ['/explorer/hash/' + tx, '/search?q=' + tx], ['/tx/' + tx, '/tx/' + tx]])
+    assert.deepEqual(await get(f.url, path), {status: 302, location: 'https://dora.example.org' + target}, path);
+  // On the explorer host every explorer page redirects, the root included.
+  assert.deepEqual(await get(f.url, '/', 'explorer.daisugi.fyi'), {status: 302, location: 'https://dora.example.org/'});
+  assert.deepEqual(await get(f.url, '/tx/' + tx, 'explorer.daisugi.fyi'), {status: 302, location: 'https://dora.example.org/tx/' + tx});
+  // The other pages are served as before.
+  for (const path of ['/', '/network', '/faucet', '/overview/wallet'])
+    assert.deepEqual(await get(f.url, path), {status: 200, location: undefined}, path);
+  // Without the profile field, the explorer pages stay on this site.
+  const plain = await fixture(t, {chainId: '0x1cbd', profile: alternative});
+  assert.deepEqual(await get(plain.url, '/explorer/tx/' + tx), {status: 200, location: undefined});
 });

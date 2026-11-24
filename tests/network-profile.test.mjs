@@ -19,6 +19,7 @@ const legacy = {
   nativeImplementationCodeHash:'0xc8117616be026fd5b351f98470a35e46a1932816f04733e6d23ba51c8b93be30',
   nativeVerifier:'0xf505ad2cff58b84e145d637d99fae0617b5685be',
   nativeVerifierCodeHash:'0x7ab53ba1ae0d906f2d144cb673fb481e04d58b22ec72a8a0ec37cc66079f3417',
+  nativeAccountScheme:'sphincs-g',
   eip8288Format:'daisugi-v1',
 };
 const alternative = {
@@ -27,7 +28,7 @@ const alternative = {
   entryPoint:'0x'+'22'.repeat(20), nativeFactory:'0x'+'33'.repeat(20),
   nativeImplementation:'0x'+'44'.repeat(20), nativeImplementationCodeHash:'0x'+'55'.repeat(32),
   nativeVerifier:'0x'+'66'.repeat(20), nativeVerifierCodeHash:'0x'+'77'.repeat(32),
-  eip8288Format:'eip8288-lean',
+  nativeAccountScheme:'lean-sphincs', eip8288Format:'eip8288-lean',
 };
 
 test('without a profile file, every consumer sees the running Daisugi network', () => {
@@ -49,6 +50,16 @@ test('a profile must be complete and well formed', () => {
   assert.throws(() => parseNetworkProfile({...alternative, genesisHash:'0x11'}), /genesisHash/);
   assert.throws(() => parseNetworkProfile({...alternative, nativeFactory:'0x'+'33'.repeat(19)}), /nativeFactory/);
   assert.throws(() => parseNetworkProfile({...alternative, eip8288Format:'daisugi-v2'}), /eip8288Format/);
+  assert.throws(() => parseNetworkProfile({...alternative, nativeAccountScheme:'sphincs'}), /nativeAccountScheme/);
+  // The operators' explorer and faucet are optional HTTPS origins.
+  const operated = {...alternative, externalExplorerUrl:'https://dora.example.org', externalFaucetUrl:'https://faucet.example.org'};
+  assert.equal(parseNetworkProfile(operated).externalExplorerUrl, 'https://dora.example.org');
+  for (const url of ['http://dora.example.org', 'https://dora.example.org/tx', 'https://user:pw@dora.example.org', 'https://dora.example.org?x=1'])
+    assert.throws(() => parseNetworkProfile({...alternative, externalExplorerUrl:url}), /externalExplorerUrl/);
+  assert.throws(() => parseNetworkProfile({...alternative, externalFaucetUrl:'faucet.example.org'}), /externalFaucetUrl/);
+  // Profiles written before the field existed keep SPHINCS-G accounts.
+  const {nativeAccountScheme, ...earlier} = alternative;
+  assert.equal(parseNetworkProfile(earlier).nativeAccountScheme, 'sphincs-g');
   assert.throws(() => parseNetworkProfile([]), /JSON object/);
   assert.equal(loadNetworkProfile({}), DAISUGI_PROFILE);
 });

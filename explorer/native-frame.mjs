@@ -1,4 +1,3 @@
-import {dependencyClaims} from './aggregation-proof.mjs';
 import {NETWORK} from './network-profile.mjs';
 
 export const DAISUGI_GENESIS = NETWORK.genesisHash;
@@ -29,7 +28,7 @@ export function nativeFrameDetails(tx, receipt) {
       executionGasLimit:quantity(frame.executionGas ?? frame.executionGasLimit), stateGasLimit:quantity(frame.stateGas ?? frame.stateGasLimit),
       status:receipt ? frameStatus(result?.status) : tx.blockNumber == null ? 'Pending' : 'Unavailable',
       executionGasUsed:quantity(result?.executionGasUsed), stateGasUsed:quantity(result?.stateGasUsed),
-      logs:result?.logs ?? null, dependencies:Number(frame.mode) === 4 ? dependencyClaims(frame.data) : null
+      logs:result?.logs ?? null
     };
   }) : null;
   const witnesses = Array.isArray(tx.signatures) ? tx.signatures.map((witness, index) => ({
@@ -52,6 +51,7 @@ export function nativeFrameSummary(tx, receipt, block) {
     timestamp:number(block.timestamp), transactionIndex:number(tx.transactionIndex), type:6,
     status:receipt?.status == null ? 'Unavailable' : Number(receipt.status) === 1 ? 'Success' : 'Failed',
     frameCount:details.frames?.length ?? null,
+    // Mode 4 frames mark transactions whose account does not verify its own signature; lists leave them out.
     hasAggregationDependency:details.frames ? details.frames.some(frame=>frame.mode===4) : null,
     frameStatuses:details.frames?.map(frame => frame.status) ?? null,
     targets:details.frames?.map(frame => frame.effectiveTarget).filter(Boolean) ?? [],

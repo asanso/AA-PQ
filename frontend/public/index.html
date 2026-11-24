@@ -23,7 +23,7 @@
           alt="Ethereum"><span class="brand-text"><span>daisugi<span class="brand-dot">.</span></span>
           <span class="brand-version" id="portalVersion" title="Portal and explorer version">version 0.3</span></span></a>
       <nav id="mainNav" aria-label="Main navigation"><a href="#overview" data-nav="overview">Overview</a><a
-          href="#explorer" data-nav="explorer">Explorer</a><a href="#faucet" data-nav="faucet">Faucet</a><a href="/network" data-nav="network" class="lean-only">Network</a></nav>
+          href="#explorer" data-nav="explorer">Explorer</a><a href="#faucet" data-nav="faucet">Faucet</a></nav>
       <div class="header-actions">
         <button id="themeToggle" class="theme-toggle" type="button" aria-label="Dark theme" aria-pressed="false" title="Switch to dark theme">
           <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
@@ -43,7 +43,7 @@
             <p class="eyebrow">DAISUGI / NETWORK EXPLORER</p>
             <h1 id="explorerTitle"><span class="legacy-only">Daisugi Testnet</span><span class="lean-only">Daisugi Devnet</span></h1>
             <p class="explorer-description legacy-only">A network for account abstraction and post-quantum account research.</p>
-            <p class="explorer-description lean-only">An experimental Ethereum devnet for post-quantum transactions: native frame transactions whose signatures are aggregated into one STARK proof per block.</p>
+            <p class="explorer-description lean-only">An experimental Ethereum devnet for post-quantum transactions: native frame transactions signed with leanSPHINCS and verified by each account.</p>
           </div><a class="explorer-guide" href="#overview/getting-started">Start building <span
               aria-hidden="true">↗</span></a>
         </div>
@@ -71,7 +71,7 @@
             class="metric-value">—</strong><small id="accountIndexStatus">Reading account deployments…</small></div>
         <div class="metric legacy-only"><span class="metric-label">Indexed UserOperations</span><strong id="metricOps"
             class="metric-value">—</strong><small>ERC-4337 EntryPoint events</small></div>
-        <div class="metric"><span class="metric-label">Indexed frame transactions</span><strong id="metricFrames"
+        <div class="metric"><span class="metric-label">Native frame transactions</span><strong id="metricFrames"
             class="metric-value">—</strong><small id="frameIndexStatus">Reading native frame index…</small></div>
       </section>
       <div class="activity-heading">
@@ -109,7 +109,7 @@
           <p class="eyebrow">BUILD ON DAISUGI</p>
           <h2 id="startTitle"><span class="legacy-only">Your first transaction starts here.</span><span class="lean-only">Your first post-quantum transaction starts here.</span></h2>
           <p class="legacy-only">Connect to the testnet, fund an account and inspect the result.</p>
-          <p class="lean-only">Install NiceTry, fund your account and follow your transaction into a proof-carrying block.</p>
+          <p class="lean-only">Install NiceTry, fund your account and follow your transaction frame by frame in the explorer.</p>
         </div>
         <div class="start-actions"><a class="button button-dark" href="#overview/getting-started">Connection guide <span
               aria-hidden="true">↗</span></a><a class="button button-plain" href="#faucet">Get test ETH <span
@@ -125,7 +125,19 @@
         </div><span class="network-label"><span class="tiny-mark"></span>Daisugi <span class="mono" data-chain-id></span></span>
       </div>
       <div class="form-layout">
-        <section class="panel form-panel">
+        <section class="panel form-panel lean-only">
+          <div class="panel-heading">
+            <h2>Request test ETH</h2><span class="tag">EthPandaOps faucet</span>
+          </div>
+          <p>Test ETH on the Daisugi devnet comes from the faucet run by EthPandaOps. It asks your browser to do a short proof of work, then sends test ETH to the address you enter.</p>
+          <ol class="faucet-steps">
+            <li>Copy your NiceTry account address.</li>
+            <li>Open the faucet, paste the address and start the claim.</li>
+            <li>When the claim completes, open its transaction in the explorer.</li>
+          </ol>
+          <a class="button button-primary" data-external-faucet href="https://faucet.daisugi-devnet-0.ethpandaops.io" target="_blank" rel="noopener noreferrer">Open the EthPandaOps faucet <span aria-hidden="true">↗</span></a>
+        </section>
+        <section class="panel form-panel legacy-only">
           <div class="panel-heading">
             <h2>Request test ETH</h2><span class="tag">1 ETH / request</span>
           </div>
@@ -154,13 +166,21 @@
               <dt>Chain ID</dt>
               <dd class="mono" data-chain-id></dd>
             </div>
-            <div>
+            <div class="legacy-only">
               <dt>Amount</dt>
               <dd>1 test ETH</dd>
             </div>
-            <div>
+            <div class="legacy-only">
               <dt>Cooldown</dt>
               <dd>60 seconds per address</dd>
+            </div>
+            <div class="lean-only">
+              <dt>Faucet</dt>
+              <dd>EthPandaOps proof-of-work faucet</dd>
+            </div>
+            <div class="lean-only">
+              <dt>Limits</dt>
+              <dd>Set by the faucet</dd>
             </div>
           </dl>
           <p class="subtle">After submitting, open the transaction in the explorer to check its confirmation.</p><a
@@ -205,6 +225,53 @@
           <p>Get to know Daisugi, set up your wallet and explore post-quantum accounts.</p>
         </div>
       </div>
+      <div class="network-details lean-only" id="network-details">
+        <div class="faq-intro">
+          <div>
+            <h2>Network details</h2>
+            <p>Daisugi is operated by EthPandaOps. Use these details to connect tools and wallets.</p>
+          </div>
+        </div>
+        <section class="panel network-panel">
+          <dl class="faq-network">
+            <div><dt>Network</dt><dd><code>daisugi-devnet-0</code></dd></div>
+            <div><dt>Chain ID</dt><dd><code data-chain-id></code></dd></div>
+            <div><dt>RPC endpoint</dt><dd><code class="subtle" data-site-rpc>https://daisugi.fyi/rpc</code></dd></div>
+            <div><dt>Explorer</dt><dd><code class="subtle" data-site-explorer>https://explorer.daisugi.fyi</code></dd></div>
+            <div><dt>Currency</dt><dd>ETH <span class="subtle">(test ETH, no monetary value)</span></dd></div>
+            <div><dt>Slot time</dt><dd>12 seconds</dd></div>
+            <div><dt>Execution</dt><dd>Prague with frame transactions (EIP-8141) and keyed nonces (EIP-8250) from genesis</dd></div>
+            <div><dt>Consensus</dt><dd>Electra from genesis, Daisugi fork at epoch 10</dd></div>
+            <div><dt>Block gas limit</dt><dd>60,000,000</dd></div>
+            <div><dt>Deposit contract</dt><dd><code class="subtle">0x00000000219ab540356cBB839Cbe05303d7705Fa</code></dd></div>
+          </dl>
+        </section>
+        <h3 class="network-heading">Clients</h3>
+        <section class="panel network-panel">
+          <dl class="faq-network">
+            <div><dt>Execution client</dt><dd>Nethermind at commit <code class="subtle">af50ed1917</code> · image <code class="subtle">ethpandaops/nethermind:daisugi-devnet-0</code></dd></div>
+            <div><dt>Consensus client</dt><dd>Lighthouse v8.2.2 with the Daisugi fork · image <code class="subtle">ethpandaops/lighthouse:daisugi-devnet-0</code></dd></div>
+          </dl>
+        </section>
+        <h3 class="network-heading">NiceTry account contracts</h3>
+        <section class="panel network-panel">
+          <dl class="faq-network">
+            <div><dt>Signature scheme</dt><dd>leanSPHINCS <span class="subtle">(32-byte public keys, 7,740-byte signatures)</span></dd></div>
+            <div><dt>Verifier</dt><dd data-native-verifier><span class="subtle">Unavailable</span></dd></div>
+            <div><dt>Account factory</dt><dd data-native-factory><span class="subtle">Unavailable</span></dd></div>
+            <div><dt>Account implementation</dt><dd data-native-implementation><span class="subtle">Unavailable</span></dd></div>
+          </dl>
+          <p class="subtle">Experimental contracts that have not been audited. Each account verifies its own signature in the VERIFY frame of its transactions.</p>
+        </section>
+        <h3 class="network-heading">Public endpoints from EthPandaOps</h3>
+        <section class="panel network-panel">
+          <dl class="faq-network">
+            <div><dt>JSON-RPC</dt><dd><code class="subtle">https://rpc.daisugi-devnet-0.ethpandaops.io</code></dd></div>
+            <div><dt>Beacon API</dt><dd><code class="subtle">https://beacon.daisugi-devnet-0.ethpandaops.io</code></dd></div>
+          </dl>
+        </section>
+        <p class="subtle network-note">Daisugi is experimental and is not a scheduled mainnet fork.</p>
+      </div>
       <div class="faq-intro">
         <div>
           <h2>Frequently asked questions</h2>
@@ -225,7 +292,7 @@
           <summary><span class="faq-number">02</span><span>What are post-quantum transaction signatures?</span><span
               class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
-            <p>Daisugi lets you test SPHINCS-like hash-based signatures, part of an ongoing effort by the Ethereum community to prepare for leanSPHINCS. The network will soon support an experimental version of signature aggregation, which makes it a testing environment for Ethereum's post-quantum migration.</p>
+            <p>Daisugi lets you test SPHINCS-like hash-based signatures, part of an ongoing effort by the Ethereum community to prepare for leanSPHINCS and Ethereum's post-quantum migration.</p>
           </div>
         </details>
         <details class="faq-item" id="faq-wallet" data-faq="wallet">
@@ -303,15 +370,16 @@
         <details class="faq-item" id="faq-lean-daisugi" data-faq="daisugi" open>
           <summary><span class="faq-number">01</span><span>What is Daisugi?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
-            <p>Daisugi is an experimental Ethereum devnet for post-quantum transactions. It runs native frame transactions (EIP-8141) with keyed nonces (EIP-8250) and, from the Daisugi fork, aggregates the post-quantum signatures of each block into a single recursive STARK proof (EIP-8288). It is not a scheduled mainnet fork.</p>
-            <p>The network is operated by EthPandaOps; this site provides an <a href="#explorer">Explorer</a>, a <a href="#faucet">Faucet</a> and a practical guide. Test ETH has no monetary value.</p>
+            <p>Daisugi is an experimental Ethereum devnet for post-quantum transactions, operated by EthPandaOps. It runs native frame transactions (EIP-8141) with keyed nonces (EIP-8250). It is not a scheduled mainnet fork.</p>
+            <p>This site is a practical guide to the network. The <a href="#explorer">explorer</a> (Dora) and the <a href="#faucet">faucet</a> are run by EthPandaOps. Test ETH has no monetary value.</p>
           </div>
         </details>
         <details class="faq-item" id="faq-lean-pq" data-faq="pq">
           <summary><span class="faq-number">02</span><span>How are post-quantum signatures handled?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
-            <p>Accounts sign with a hash-based signature scheme. A transaction does not verify its signature in the EVM: it declares the signature as a dependency and is submitted as a proof wrapper. The block producer checks these signatures and aggregates them into one STARK proof that travels with the block, and every node checks the proof's commitment in the block header.</p>
-            <p>Blocks without post-quantum transactions carry an empty proof. Where EIP-8288 is still open, Daisugi follows the Nethermind prototype.</p>
+            <p>NiceTry accounts sign with leanSPHINCS, a stateless hash-based signature scheme: a variant of SLH-DSA (FIPS 205) built on Keccak-256. A key signs at most 2<sup>30</sup> messages; a public key is 32 bytes and a signature 7,740 bytes.</p>
+            <p>The signature travels in the transaction. In its VERIFY frame, the account passes the transaction's signature hash and the signature to an on-chain leanSPHINCS verifier, and approves execution and payment only if the signature is valid. No bundler is involved.</p>
+            <p>The verifier and account contracts are experimental and have not been audited.</p>
           </div>
         </details>
         <details class="faq-item" id="faq-lean-frames" data-faq="frames">
@@ -323,7 +391,7 @@
         <details class="faq-item" id="faq-lean-wallet" data-faq="wallet">
           <summary><span class="faq-number">04</span><span>What is the NiceTry wallet and why would I need it?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
-            <p>NiceTry is a browser wallet that creates post-quantum smart accounts and sends frame transactions on Daisugi. Most wallets cannot sign post-quantum frame transactions yet.</p>
+            <p>NiceTry is a browser wallet that creates leanSPHINCS smart accounts and sends native frame transactions on Daisugi. Most wallets cannot sign post-quantum frame transactions yet.</p>
             <p>To install NiceTry:</p>
             <ol>
               <li>Go to the <a href="https://nicetry.xyz/" target="_blank" rel="noopener noreferrer">official NiceTry website ↗</a> and follow the installation instructions for a supported browser.</li>
@@ -336,52 +404,29 @@
         <details class="faq-item" id="faq-lean-network" data-faq="network">
           <summary><span class="faq-number">05</span><span>How do I connect another wallet or tool?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
-            <p>Use the details on the <a href="/network">Network</a> page. Other wallets can read the network and send ordinary transactions, but they cannot sign post-quantum frame transactions.</p>
+            <p>Use the <a href="/network">network details</a> above. Other wallets can read the network and send ordinary transactions, but they cannot sign post-quantum frame transactions.</p>
           </div>
         </details>
         <details class="faq-item" id="faq-lean-faucet" data-faq="faucet">
           <summary><span class="faq-number">06</span><span>How do I get test ETH?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
-            <p>Open the <a href="#faucet">Faucet</a>, paste your account address and submit the request. Each request sends 1 test ETH on Daisugi, with a 60-second cooldown per address. Open the returned transaction in the <a href="#explorer">Explorer</a> to check its confirmation.</p>
+            <p>Open the <a href="#faucet">Faucet</a> page and follow its link to the EthPandaOps faucet. Paste your account address and start the claim: your browser does a short proof of work, then the faucet sends test ETH. Open the claim's transaction in the <a href="#explorer">explorer</a> to check its confirmation.</p>
+          </div>
+        </details>
+        <details class="faq-item" id="faq-lean-check" data-faq="check">
+          <summary><span class="faq-number">07</span><span>How do I check my transaction?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
+          <div class="faq-answer">
+            <p>Search the transaction hash in the <a href="#explorer">explorer</a> (Dora). Its frames tab lists the frames: on an account's first transaction a DEFAULT frame creates the account, then the VERIFY frame checks the signature and the SENDER frame executes the transfer. Each frame shows its own result.</p>
+            <p>The NiceTry contracts that verify leanSPHINCS signatures are listed in the <a href="/network">network details</a> above.</p>
           </div>
         </details>
         <details class="faq-item" id="faq-lean-follow" data-faq="follow">
-          <summary><span class="faq-number">07</span><span>Where can I follow the network?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
+          <summary><span class="faq-number">08</span><span>Where can I follow the network?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
-            <p>The specification, client versions and genesis files are published by EthPandaOps (see <a href="/network">Network</a>). Dora shows the Daisugi fork and the STARK proof of each block.</p>
+            <p>Dora, the EthPandaOps <a href="#explorer">explorer</a>, shows blocks and transactions as well as the consensus layer, including the Daisugi fork. The <a href="/network">network details</a> above list the clients and the public endpoints.</p>
           </div>
         </details>
       </div>
-    </section>
-    <section class="container page lean-only" data-page="network" hidden>
-      <div class="page-heading">
-        <div>
-          <p class="eyebrow">NETWORK</p>
-          <h1>Network details</h1>
-          <p>Daisugi is operated by EthPandaOps. Use these details to connect tools and wallets.</p>
-        </div>
-      </div>
-      <section class="panel network-panel">
-        <dl class="faq-network">
-          <div><dt>Network</dt><dd><code>daisugi-devnet-0</code></dd></div>
-          <div><dt>Chain ID</dt><dd><code data-chain-id></code></dd></div>
-          <div><dt>RPC endpoint</dt><dd><code class="subtle">https://daisugi.fyi/rpc</code></dd></div>
-          <div><dt>Explorer</dt><dd><code class="subtle">https://explorer.daisugi.fyi</code></dd></div>
-          <div><dt>Currency</dt><dd>ETH <span class="subtle">(test ETH, no monetary value)</span></dd></div>
-          <div><dt>Slot time</dt><dd>12 seconds</dd></div>
-          <div><dt>Consensus</dt><dd>Electra with the Daisugi fork</dd></div>
-        </dl>
-      </section>
-      <h2 style="margin-top:28px">Resources from EthPandaOps</h2>
-      <div class="resource-list">
-        <a href="https://daisugi-devnet-0.ethpandaops.io/" target="_blank" rel="noopener noreferrer">Devnet overview ↗<small>Endpoints and tooling</small></a>
-        <a href="https://github.com/ethpandaops/daisugi-devnets/blob/master/docs/daisugi-devnet-0-spec.md" target="_blank" rel="noopener noreferrer">Network specification ↗<small>EIPs, parameters and clients</small></a>
-        <a href="https://github.com/ethpandaops/daisugi-devnets/tree/master/network-configs/devnet-0/metadata" target="_blank" rel="noopener noreferrer">Genesis configuration ↗<small>genesis.json, config.yaml, bootnodes</small></a>
-        <a href="https://dora.daisugi-devnet-0.ethpandaops.io" target="_blank" rel="noopener noreferrer">Dora explorer ↗<small>Consensus view and STARK proof per block</small></a>
-        <a href="https://checkpoint-sync.daisugi-devnet-0.ethpandaops.io" target="_blank" rel="noopener noreferrer">Checkpoint sync ↗<small>Start a node from a recent state</small></a>
-        <a href="https://forkmon.daisugi-devnet-0.ethpandaops.io" target="_blank" rel="noopener noreferrer">Forkmon ↗<small>Node head monitoring</small></a>
-      </div>
-      <p class="subtle" style="margin-top:20px">Daisugi is experimental and is not a scheduled mainnet fork.</p>
     </section>
   </main>
   <noscript>

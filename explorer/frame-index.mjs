@@ -101,7 +101,8 @@ export function createFrameIndex({rpc, cacheFile, startBlock = FRAME_ACTIVATION_
   }
   function snapshot(address) {
     const from = blocks[0]?.number ?? null, to = blocks.at(-1)?.number ?? null;
-    const records = blocks.flatMap(block => block.transactions);
+    // Native frame transactions only: those whose account verifies its own signature.
+    const records = blocks.flatMap(block => block.transactions).filter(tx => tx.hasAggregationDependency !== true);
     const filtered = address ? records.filter(tx => [tx.from,...tx.targets].some(a=>a?.toLowerCase()===address.toLowerCase())) : records;
     return {
       status:!ready ? 'unavailable' : error ? 'degraded' : observedHead < startBlock ? 'complete' : from === startBlock && to === observedHead ? 'complete' : 'indexing',

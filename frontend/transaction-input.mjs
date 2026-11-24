@@ -3,9 +3,10 @@ import {decodeInputData} from './input-decoder.mjs';
 import {isFrameTransaction} from '../explorer/native-frame.mjs';
 import {nativeAccountProfile} from './native-profile.mjs';
 import {NETWORK} from '../explorer/network-profile.mjs';
+import {NATIVE_ACCOUNT_SCHEME} from '../explorer/native-account-scheme.mjs';
 
 const packed = '(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)';
-const nativeFactoryInput = new Interface(['function createAccount(bytes32 pkSeed,bytes32 pkRoot,bytes32 salt)']);
+const nativeFactoryInput = new Interface([NATIVE_ACCOUNT_SCHEME.createAccount]);
 export const entryPointInput = new Interface([
   `function handleOps(${packed}[] ops,address beneficiary)`,
   `function handleAggregatedOps((${packed}[] userOps,address aggregator,bytes signature)[] opsPerAggregator,address beneficiary)`,

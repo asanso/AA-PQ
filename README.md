@@ -56,15 +56,15 @@ test -f .env || cp .env.example .env
 
 For an existing network, configure its endpoints and addresses in `.env`. The
 example file contains deliberately public development keys for a disposable
-testnet. `FAUCET_PRIVATE_KEY` must be set; the frontend no longer supplies a
-fallback key in its source.
+testnet. `FAUCET_PRIVATE_KEY` must be set unless the network profile sets
+`externalFaucetUrl`; the frontend no longer supplies a fallback key in its source.
 
 | Setting | Purpose |
 | --- | --- |
 | `RPC_URL` | Backend RPC used for chain reads |
 | `BUNDLER_URL` | Bundler upstream |
 | `ENTRY_POINT` | Optional. Defaults to the network profile's EntryPoint; any other value stops startup. |
-| `FAUCET_PRIVATE_KEY` | Funded server-side test account used by the faucet |
+| `FAUCET_PRIVATE_KEY` | Funded server-side test account used by the faucet. Optional only when the network profile sets `externalFaucetUrl`: the faucet page then links to the operators' faucet and `/api/faucet` answers 503. |
 | `FAUCET_RPC_URL` | Optional separate RPC for faucet submission; defaults to `RPC_URL` |
 | `EXPLORER_URL` | Native indexer API; defaults to `http://127.0.0.1:3001` |
 | `FACTORY_ADDRESS` | Deployed factory used by the retained AA helper and original integration test |

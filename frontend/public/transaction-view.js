@@ -1,8 +1,11 @@
-import {site, chainId} from './routes.js';
+import {site, chainId, lean, networkName} from './routes.js';
+
+// The record's network label: the devnet's own name, or the original testnet.
+const networkLabel = lean ? networkName : 'Daisugi Testnet';
 import { formatUnits } from '/ethers.js';
 import { renderInputPanel, inputSize } from './input-data.js';
 import {renderTimestamp, formatTimestamp} from './timestamp.js';
-import {renderNativeFrames,renderNativeWitnesses,renderNativeMetadata,renderNativeAggregation} from './native-frame-view.js';
+import {renderNativeFrames,renderNativeWitnesses,renderNativeMetadata} from './native-frame-view.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const int = value => value == null ? '—' : BigInt(value).toLocaleString('en-US');
 const short = value => String(value).slice(0, 10) + '…' + String(value).slice(-8);
@@ -46,7 +49,7 @@ export function renderTransactionDetails(data) {
   if (native) {
     const included = block != null;
     const inclusion = included ? 'Included in block' : pending ? 'Pending inclusion' : 'Inclusion unavailable';
-    return `<div class="tx-record native-tx-record"><div class="native-record-nav"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><span class="network-label">Daisugi Testnet · Type 0x06</span></div>${errors}
+    return `<div class="tx-record native-tx-record"><div class="native-record-nav"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><span class="network-label">${esc(networkLabel)} · Type 0x06</span></div>${errors}
       <section class="panel native-overview"><dl class="native-overview-grid">
       ${row('Transaction hash',`<span class="hash-value">${mono(data.hash)}${copy(data.hash)}</span>`,'Unique identifier of this native frame transaction.','native-wide')}
       ${row('Inclusion',`<span class="tx-status ${included?'success':'pending'}">${inclusion}</span>`,'Block inclusion is separate from the execution result of each frame.')}
@@ -56,7 +59,6 @@ export function renderTransactionDetails(data) {
       ${row('Total gas used',d.gasUsed != null ? int(d.gasUsed) : pending ? '<span class="tx-unavailable">Pending</span>' : notAvailable,'Total gas consumed according to the transaction receipt, including transaction overhead; distinct from the gas limit.')}
       </dl></section>
       ${renderNativeFrames(data.nativeFrame,{included})}
-      ${renderNativeAggregation(data.nativeFrame)}
       <div class="native-extra-grid"><details class="panel native-disclosure"><summary><span>Fees and transaction details</span><span class="disclosure-meta">${fee}</span><span class="disclosure-chevron" aria-hidden="true">›</span></summary><dl class="tx-properties">
       ${row('Transaction fee',fee,'Actual receipt gas used × effective gas price, plus blob fees if applicable.')}
       ${row('Gas price',price,'Effective price paid per unit of gas.')}${feeExtras}
@@ -67,9 +69,9 @@ export function renderTransactionDetails(data) {
       ${row('Internal transactions',internalTransfers(d.internalTransfers),'Internal transfer tracing is separate from individual frame execution results.')}
       </dl><div class="native-body">${renderNativeMetadata(data.nativeFrame)}</div></details>
       ${renderNativeWitnesses(data.nativeFrame)}</div>
-      <p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet · Test ETH has no monetary value.</p></div>`;
+      <p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">${esc(networkLabel)} · Test ETH has no monetary value.</p></div>`;
   }
-  return `<div class="tx-record"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><div class="tx-record-top"><span class="record-tab">Overview</span><span class="network-label">Daisugi Testnet <span class="mono">${esc(chainId)}</span></span></div>${errors}` +
+  return `<div class="tx-record"><a class="back-link" href="${site.href({page:'explorer'})}">← Back to explorer</a><div class="tx-record-top"><span class="record-tab">Overview</span><span class="network-label">${esc(networkLabel)} <span class="mono">${esc(chainId)}</span></span></div>${errors}` +
     section(row('Transaction hash', `<span class="hash-value">${mono(data.hash)}${copy(data.hash)}</span>`, 'Unique identifier of this transaction.') +
       row('Status', `<span class="tx-status ${status === 'Success' ? 'success' : status === 'Failed' ? 'failed' : 'pending'}">${status === 'Success' ? '✓ ' : status === 'Failed' ? '× ' : ''}${esc(status)}</span>`, 'Receipt execution status; distinct from each UserOperation result.') +
       row('Block', blockValue, 'Confirmations include the containing block, using the latest observed chain height.') +
@@ -86,7 +88,7 @@ export function renderTransactionDetails(data) {
       row('Other attributes', `<div class="attribute-list">${attributes || notAvailable}</div>`, 'Transaction envelope type, sender nonce and zero-based position in the block.', 'tx-group-start') +
       (native ? '' : row('Input data', `<div class="inline-input-size">${esc(inputSize(data.inputData))}</div>${input}`, 'Complete transaction input, with supported ABI decoding and original byte access.', 'tx-input-row')) +
       row('More details', `<button type="button" class="tx-details-toggle" aria-expanded="true" data-advanced-toggle>− Click to show less</button>`, 'Collapse or expand the additional gas and input details.')) +
-    `<p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">Daisugi testnet transaction. Test ETH has no monetary value.</p></div>`;
+    `<p id="txCopyStatus" class="copy-status" role="status"></p><p class="tx-record-note">${esc(networkLabel)} transaction. Test ETH has no monetary value.</p></div>`;
 }
 export function attachTransactionDetailEvents(container) {
   container.addEventListener('click', async event => {

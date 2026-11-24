@@ -8,11 +8,11 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {createFrameIndex} from './frame-index.mjs';
 import {isFrameTransaction, nativeFrameDetails} from './native-frame.mjs';
-import {loadBlockProof} from './aggregation-proof.mjs';
 import {NETWORK} from './network-profile.mjs';
+import {NATIVE_ACCOUNT_SCHEME} from './native-account-scheme.mjs';
 
 const port = Number(process.env.PORT || 3001);
-const portalProxy = createPortalProxy({origin:process.env.PORTAL_ORIGIN});
+const portalProxy = createPortalProxy({origin:process.env.PORTAL_ORIGIN, externalExplorerUrl:NETWORK.externalExplorerUrl});
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || 'http://127.0.0.1:8545',undefined,{batchMaxCount:1});
 const frameIndex = createFrameIndex({rpc:(method,params)=>provider.send(method,params),
   cacheFile:process.env.FRAME_INDEX_CACHE || join(homedir(),'.cache','daisugi-frame-index',`${port}.json`)});
@@ -26,21 +26,17 @@ const addBlockTimestamps = createBlockTimestampReader(provider);
 const entryPoint = process.env.ENTRY_POINT || NETWORK.entryPoint;
 // Count native deployments from the same immutable factory used by NiceTry.
 const nativeFactory = NETWORK.nativeFactory.toLowerCase();
-const aggregateFactory = process.env.NATIVE_AGGREGATION_FACTORY || null;
-if (aggregateFactory && !ethers.isAddress(aggregateFactory)) throw Error('Invalid aggregation factory address');
-const aggregateIface = new ethers.Interface(['event AccountCreated(address indexed account,bytes32 indexed salt,bytes32 keyHash)']);
 const iface = new ethers.Interface([
   'event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)',
   'event AccountDeployed(bytes32 indexed userOpHash,address indexed sender,address factory,address paymaster)',
-  'event AccountCreated(address indexed account,bytes32 indexed salt,bytes32 pkSeed,bytes32 pkRoot)',
+  NATIVE_ACCOUNT_SCHEME.accountCreated,
 ]);
 let indexedTo = -1, operations = [], deployments = [], nativeDeployments = [], syncing, entryPointIndexError = null;
 const serialize = value => JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v);
 function event(log) {
-  const aggregate = aggregateFactory && log.address.toLowerCase() === aggregateFactory.toLowerCase();
-  const parsed = (aggregate ? aggregateIface : iface).parseLog(log);
+  const parsed = iface.parseLog(log);
   if (!parsed) return null;
-  const expectedEmitter = aggregate ? aggregateFactory : parsed.name === 'AccountCreated' ? nativeFactory : entryPoint;
+  const expectedEmitter = parsed.name === 'AccountCreated' ? nativeFactory : entryPoint;
   if (log.address.toLowerCase() !== expectedEmitter.toLowerCase()) return null;
   const result = {type:parsed.name, transactionHash:log.transactionHash, blockHash:log.blockHash, blockNumber:log.blockNumber, logIndex:log.index};
   parsed.fragment.inputs.forEach((input,i) => {result[input.name] = parsed.args[i];});
@@ -56,7 +52,7 @@ async function sync() {
     const nextDeployments = deployments.filter(op => op.blockNumber < from);
     const nextNativeDeployments = nativeDeployments.filter(op => op.blockNumber < from);
     for (let start = from; start <= head; start += 1000) {
-      const logs = await provider.getLogs({address:[entryPoint,nativeFactory,...(aggregateFactory ? [aggregateFactory] : [])], fromBlock:start, toBlock:Math.min(head, start+999), topics:[[iface.getEvent('UserOperationEvent').topicHash, iface.getEvent('AccountDeployed').topicHash, iface.getEvent('AccountCreated').topicHash,...(aggregateFactory ? [aggregateIface.getEvent('AccountCreated').topicHash] : [])]]});
+      const logs = await provider.getLogs({address:[entryPoint,nativeFactory], fromBlock:start, toBlock:Math.min(head, start+999), topics:[[iface.getEvent('UserOperationEvent').topicHash, iface.getEvent('AccountDeployed').topicHash, iface.getEvent('AccountCreated').topicHash]]});
       for (const log of logs) {
         const item = event(log);
         if (item?.type === 'UserOperationEvent') nextOps.push(item);
@@ -87,7 +83,7 @@ async function api(path) {
   if (kind === 'block' && /^\d{1,12}$/.test(id || '')) {
     const block = await provider.getBlock(Number(id));
     if (!block) throw new Error('Block not found');
-    return {...blockSummary(block),aggregation:await loadBlockProof(provider,{blockHash:block.hash})};
+    return blockSummary(block);
   }
   if (kind === 'tx' && /^0x[0-9a-fA-F]{64}$/.test(id || '')) {
     const [tx, receipt] = await Promise.all([provider.getTransaction(id), provider.getTransactionReceipt(id)]);
@@ -97,7 +93,6 @@ async function api(path) {
       const [rawTx,rawReceipt] = await Promise.all([provider.send('eth_getTransactionByHash',[id]),provider.send('eth_getTransactionReceipt',[id])]);
       if (!rawTx || rawTx.hash !== tx.hash || rawTx.blockHash !== tx.blockHash) throw new Error('Transaction changed during retrieval; refresh this record.');
       nativeFrame = nativeFrameDetails(rawTx,rawReceipt);
-      if (nativeFrame.frames?.some(frame=>frame.mode === 4)) nativeFrame.aggregation = await loadBlockProof(provider,rawTx);
     }
     const events = receipt?.logs.filter(log => log.address.toLowerCase() === entryPoint.toLowerCase()).map(log => {try{return event(log);}catch{return null;}}).filter(Boolean) || [];
     const [record] = await addBlockTimestamps([{hash:tx.hash, from:tx.from, to:tx.to, value:ethers.formatEther(tx.value), blockHash:receipt?.blockHash ?? tx.blockHash, blockNumber:tx.blockNumber, status:receipt ? receipt.status === 1 ? 'Confirmed' : 'Reverted' : 'Pending', gasUsed:receipt?.gasUsed, selector:tx.data.slice(0,10), entryPoint, isAaBundle:tx.to?.toLowerCase() === entryPoint.toLowerCase() && events.some(e => e.type === 'UserOperationEvent')}]);

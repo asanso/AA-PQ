@@ -95,8 +95,8 @@ test('an eip8288-lean network forwards the wallet native envelope and rejects th
   const {tmpdir} = await import('node:os');
   const {join} = await import('node:path');
   const {DAISUGI_PROFILE} = await import('../explorer/network-profile.mjs');
-  // The two native frame transactions included on daisugi-devnet-0, as built by the wallet.
-  const fixture = new URL('../aggregation/frames/extension/tests/fixtures/native-frame-devnet0.json', import.meta.url);
+  // The wallet's two leanSPHINCS native frame transactions for chain 701563864 (known answers: creation, then a transfer).
+  const fixture = new URL('../aggregation/frames/extension/tests/fixtures/native-lean-sphincs.json', import.meta.url);
   const directory = await mkdtemp(join(tmpdir(), 'daisugi-lean-rpc-'));
   const file = join(directory, 'network.json');
   await writeFile(file, JSON.stringify({...DAISUGI_PROFILE, name:'Daisugi Devnet', chainId:701563864, frameActivationBlock:0,

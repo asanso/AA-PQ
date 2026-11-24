@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSiteRouting} from '../frontend/public/routes.js';
+import {createSiteRouting, externalExplorerHref} from '../frontend/public/routes.js';
 import {isPortalPage, publicSiteConfig, siteConfigScript} from '../frontend/site-config.mjs';
 import {createPortalProxy} from '../explorer/portal-proxy.mjs';
 
@@ -100,4 +100,48 @@ test('disabled or unavailable shared portal has predictable behavior',async()=>{
   assert.equal(await proxy({method:'GET'},res,'/'),true);
   assert.equal(res.status,502);
   assert.match(res.body,/unavailable/);
+});
+
+test('a profile with an external explorer keeps this site\'s explorer URLs, which lead to the matching external pages',()=>{
+  const dora='https://dora.daisugi-devnet-0.ethpandaops.io';
+  const address='0x'+'2'.repeat(40);
+  for(const origin of ['https://daisugi.fyi','https://review.trycloudflare.com']){
+    const routing=createSiteRouting({...config,externalExplorerUrl:dora},origin+'/');
+    const explorer=routing.split?'https://explorer.daisugi.fyi':origin+'/explorer';
+    // Explorer links stay on this site: the explorer host, or /explorer on a preview host.
+    assert.equal(routing.href({page:'explorer'}),routing.split?explorer+'/':explorer);
+    assert.equal(routing.href({page:'explorer',kind:'tx',id:tx}),explorer+'/tx/'+tx);
+    // Those URLs lead to the matching Dora page.
+    assert.equal(routing.externalHref({page:'explorer'}),dora+'/');
+    assert.equal(routing.externalHref({page:'explorer',kind:'tx',id:tx}),dora+'/tx/'+tx);
+    assert.equal(routing.externalHref({page:'explorer',kind:'address',id:address}),dora+'/address/'+address);
+    assert.equal(routing.externalHref({page:'explorer',kind:'block',id:'41927'}),dora+'/block/41927');
+    assert.equal(routing.externalHref({page:'explorer',kind:'hash',id:tx}),dora+'/search?q='+tx);
+    // Old bookmarks of this site's explorer land on the same record.
+    assert.equal(routing.externalHref(routing.resolve(origin+'/explorer/tx/'+tx)),dora+'/tx/'+tx);
+    assert.equal(new URL(routing.href({page:'faucet'})).origin,origin);
+  }
+  // On the explorer host, the root and record paths lead to the same Dora pages.
+  const host=createSiteRouting({...config,externalExplorerUrl:dora},'https://explorer.daisugi.fyi/tx/'+tx);
+  assert.equal(host.externalHref(host.resolve()),dora+'/tx/'+tx);
+  assert.equal(host.externalHref(host.resolve('https://explorer.daisugi.fyi/')),dora+'/');
+  // The external page uses the profile URL's origin only.
+  assert.equal(externalExplorerHref(dora+'/ignored/path',{page:'explorer',kind:'block',id:'7'}),dora+'/block/7');
+  // Without the profile field there is no external explorer.
+  assert.equal(createSiteRouting(config,'https://daisugi.fyi/').externalHref,null);
+});
+
+test('the explorer service passes on a redirect to the external explorer and no other',async()=>{
+  const dora='https://dora.daisugi-devnet-0.ethpandaops.io';
+  const redirecting=location=>async()=>new Response(null,{status:302,headers:{location}});
+  const passed=createPortalProxy({origin:'http://127.0.0.1:3000',externalExplorerUrl:dora,fetchImpl:redirecting(dora+'/tx/'+tx)});
+  const res=responseMock();
+  assert.equal(await passed({method:'GET'},res,'/tx/'+tx),true);
+  assert.deepEqual([res.status,res.headers.location],[302,dora+'/tx/'+tx]);
+  for(const [externalExplorerUrl,location] of [[dora,'https://example.com/tx/'+tx],[null,dora+'/tx/'+tx]]){
+    const blocked=createPortalProxy({origin:'http://127.0.0.1:3000',externalExplorerUrl,fetchImpl:redirecting(location)});
+    const other=responseMock();
+    assert.equal(await blocked({method:'GET'},other,'/tx/'+tx),true);
+    assert.equal(other.status,502);
+  }
 });

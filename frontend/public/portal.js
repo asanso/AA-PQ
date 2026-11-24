@@ -1,14 +1,23 @@
-import {site, chainId, entryPoint, lean} from '/routes.js';
+import {site, chainId, entryPoint, lean, nativeContracts, externalFaucetUrl} from '/routes.js';
 import {formatUnits, isAddress} from '/ethers.js';
 import './faucet.js';
 import {renderTransactionDetails,attachTransactionDetailEvents} from './transaction-view.js';
 import {renderTimestamp} from './timestamp.js';
-import {renderBlockAggregation} from './native-frame-view.js';
 import {renderInputPanel as dataPanel,clearInputPanels,attachInputPanelEvents} from './input-data.js';
 
 const $ = id => document.getElementById(id);
 for (const node of document.querySelectorAll('[data-chain-id]')) node.textContent = chainId ?? '';
 for (const node of document.querySelectorAll('[data-entry-point]')) node.textContent = entryPoint ?? '';
+// Devnets have no ERC-4337: their search boxes do not mention UserOperations.
+if (lean) for (const input of document.querySelectorAll('input[placeholder*="UserOperation"]')) input.placeholder = 'Address, transaction hash or block';
+// The RPC and explorer this site serves, whether it runs on its own domain or as a review preview.
+for (const node of document.querySelectorAll('[data-site-rpc]')) node.textContent = new URL('/rpc', site.href({page:'overview'})).href;
+for (const node of document.querySelectorAll('[data-site-explorer]')) node.textContent = site.href({page:'explorer'});
+// With an operator-run explorer (Dora) in the profile, this site's explorer URLs redirect to the matching Dora page,
+// and this site's own explorer dashboard and its API calls stay off.
+const externalExplorer = Boolean(site.externalHref);
+// The network operators' faucet, when the profile names one.
+if (externalFaucetUrl) for (const node of document.querySelectorAll('[data-external-faucet]')) node.href = externalFaucetUrl;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hashPattern = /^0x[0-9a-fA-F]{64}$/;
 const short = (value, size = 8) => String(value).length > size * 2 + 3 ? String(value).slice(0,size + 2) + '…' + String(value).slice(-size) : String(value);
@@ -54,6 +63,11 @@ function markLinks(selector, attribute, value) {
     if (active) item.setAttribute('aria-current','page'); else item.removeAttribute('aria-current');
   });
 }
+// Network page: the native account contracts this network pins, linked to their explorer pages.
+for (const [name, value] of Object.entries(nativeContracts)) {
+  for (const node of document.querySelectorAll('[data-native-' + name + ']'))
+    if (isAddress(value ?? '')) node.innerHTML = link('address', value, value);
+}
 function row(symbol, main, secondary, meta) {
   return `<div class="activity-row"><span class="row-symbol" aria-hidden="true">${symbol}</span><div class="row-main">${main}<small>${secondary}</small></div><div class="row-meta">${meta}</div></div>`;
 }
@@ -63,12 +77,12 @@ function showOverview() {
   $('metricBlockAge').textContent = network ? age(network.blockTimestamp) : 'RPC unavailable';
   $('metricAccounts').textContent = integer(overview?.smartAccountCount);
   $('accountIndexStatus').textContent = !overview || overview.entryPointIndex?.status === 'degraded' ? 'Account index unavailable' :
-    overview.smartAccountCount == null ? 'Reading account deployments…' : lean ? 'Daisugi account factory' : 'ERC-4337 + native factory';
+    overview.smartAccountCount == null ? 'Reading account deployments…' : lean ? 'NiceTry leanSPHINCS account factory' : 'ERC-4337 + native factory';
   $('metricOps').textContent = overview ? integer(overview.operationCount) : '—';
   const frames = overview?.nativeFrames;
   $('metricFrames').textContent = frames?.count == null ? '—' : integer(frames.count);
-  $('frameIndexStatus').textContent = frames?.count == null ? 'Native frame index unavailable' : frames.status === 'complete' ? 'Type 0x06 · native transactions' : 'Native frame index · partial';
-  $('latestFrames').innerHTML = frames?.transactions?.slice(0,5).map(tx=>row('Fr',link('tx',tx.hash),'From '+link('address',tx.from,short(tx.from,5))+'<br>'+renderTimestamp(tx.timestamp,{compact:true}),`${integer(tx.frameCount)} frames${tx.hasAggregationDependency ? '<br>Aggregate dependency' : ''}<br>${frameOutcome(tx)}`)).join('') || empty(frames?.count != null ? 'No native frame transactions in the indexed range.' : 'Native frame data is unavailable.');
+  $('frameIndexStatus').textContent = frames?.count == null ? 'Native frame index unavailable' : frames.status === 'complete' ? 'Type 0x06 · verified by the account' : 'Native frame index · partial';
+  $('latestFrames').innerHTML = frames?.transactions?.slice(0,5).map(tx=>row('Fr',link('tx',tx.hash),'From '+link('address',tx.from,short(tx.from,5))+'<br>'+renderTimestamp(tx.timestamp,{compact:true}),`${integer(tx.frameCount)} frames<br>${frameOutcome(tx)}`)).join('') || empty(frames?.count != null ? 'No native frame transactions in the indexed range.' : 'Native frame data is unavailable.');
   $('overviewError').hidden = !explorerError && !networkError;
   $('overviewError').textContent = [networkError && 'Network: ' + networkError, explorerError && 'Explorer: ' + explorerError].filter(Boolean).join(' ');
   $('activityStatus').textContent = !overview ? 'Explorer unavailable' : overview.entryPointIndex?.message ||
@@ -77,7 +91,7 @@ function showOverview() {
   $('latestOperations').innerHTML = overview?.operations?.slice(0,5).map(op => row('Op',link('op',op.userOpHash),'From ' + link('address',op.sender,short(op.sender,5)) + '<br>' + renderTimestamp(op.timestamp,{compact:true}),outcome(op.success))).join('') || empty(overview ? 'No UserOperations indexed yet.' : 'UserOperation data is unavailable.');
 }
 async function refresh() {
-  if (refreshing) return;
+  if (refreshing || externalExplorer) return;
   refreshing = true;
   try {
     const results = await Promise.allSettled([api('/api/network'),api('/api/explorer/overview')]);
@@ -114,7 +128,7 @@ function renderDetail(kind, data) {
   section.classList.toggle('show-native-record',kind==='tx' && (Number(data.transactionDetails?.type ?? data.type)===6 || !!data.nativeFrame));
   section.querySelector('.page-heading h1').textContent=kind==='tx'?'Transaction details':kind==='op'?'UserOperation details':kind==='address'?'Address details':'Block details';
   section.querySelector('.page-heading p:not(.eyebrow)').textContent='On-chain records from Daisugi.';
-  if (kind === 'block') return detail('Block ' + integer(data.number),[['Block number',mono(integer(data.number))],['Block hash',mono(data.hash)],['Timestamp',renderTimestamp(data.timestamp)],['Transactions',integer(data.transactionCount)],['Gas used',mono(integer(data.gasUsed))],['Gas limit',mono(integer(data.gasLimit))]]) + renderBlockAggregation(data.aggregation) + table('Transactions','Included in this block',['Transaction hash','Timestamp (UTC)'],(data.transactions || []).map(tx=>[link('tx',typeof tx === 'string' ? tx : tx.hash,typeof tx === 'string' ? tx : tx.hash),renderTimestamp(data.timestamp,{compact:true})]),'This block contains no transactions.');
+  if (kind === 'block') return detail('Block ' + integer(data.number),[['Block number',mono(integer(data.number))],['Block hash',mono(data.hash)],['Timestamp',renderTimestamp(data.timestamp)],['Transactions',integer(data.transactionCount)],['Gas used',mono(integer(data.gasUsed))],['Gas limit',mono(integer(data.gasLimit))]]) + table('Transactions','Included in this block',['Transaction hash','Timestamp (UTC)'],(data.transactions || []).map(tx=>[link('tx',typeof tx === 'string' ? tx : tx.hash,typeof tx === 'string' ? tx : tx.hash),renderTimestamp(data.timestamp,{compact:true})]),'This block contains no transactions.');
   if (kind === 'address') return detail('Address', [['Address',mono(data.address)],['Balance',esc(data.balance) + ' ETH'],['Account type',esc(data.type)],['ERC-4337 deployment',data.deployment ? link('tx',data.deployment.transactionHash) : '<span class="subtle">No indexed EntryPoint deployment</span>']]) + frameRows(data.nativeFrames) + operationRows(data.operations || []);
   if (kind === 'op') {
     return detail('UserOperation', [['UserOperation hash',mono(data.userOpHash)],['Sender',link('address',data.sender,data.sender)],['Transaction',link('tx',data.transactionHash,data.transactionHash)],['Block',link('block',data.blockNumber)],['Timestamp',renderTimestamp(data.timestamp ?? data.transactionDetails?.timestamp)],['Result',outcome(data.success)],['Nonce',mono(data.nonce)],['Actual gas used',mono(integer(data.actualGasUsed))],['Actual gas cost',esc(units(data.actualGasCost)) + ' ETH'],['Paymaster',link('address',data.paymaster,data.paymaster)],['Signature size',dataSize(data.signature)],['Call data size',dataSize(data.operationCallData)]])
@@ -156,20 +170,28 @@ function rewriteLinks() {
 function route() {
   const next = site.resolve(location.href);
   if (!next) return;
+  // The server answers these URLs with a redirect; this covers in-page navigation and pages served by another service.
+  if (next.page === 'explorer' && externalExplorer) { location.replace(site.externalHref(next)); return; }
   const target = new URL(site.href(next));
   if (target.origin !== location.origin) { location.replace(target.href); return; }
   if (location.href !== target.href && location.hash !== '#main') history.replaceState(null,'',target.href);
-  page = next.page;
+  // /network is a section of Overview: the devnet's network details, or the network FAQ on the legacy site.
+  const networkSection = next.page === 'network';
+  page = networkSection ? 'overview' : next.page;
   sub = next.kind || next.topic || '';
   routeVersion++;
   const record = page === 'explorer' && Boolean(next.kind);
-  document.querySelectorAll('[data-page]').forEach(section => {section.hidden = section.dataset.page !== (record ? 'record' : page);});
+  const shown = record ? 'record' : page;
+  document.querySelectorAll('[data-page]').forEach(section => {section.hidden = section.dataset.page !== shown;});
   markLinks('[data-nav]','data-nav',page);
   $('mainNav').classList.remove('open'); $('menuToggle').setAttribute('aria-expanded','false');
-  document.title = 'Daisugi — ' + ({explorer:'Explorer',faucet:lean ? 'Devnet Faucet' : 'Testnet Faucet',overview:'Overview',network:'Network'})[page];
+  document.title = 'Daisugi — ' + ({explorer:'Explorer',faucet:lean ? 'Devnet Faucet' : 'Testnet Faucet',overview:'Overview'})[page];
   if (record) void loadDetail(next.kind,next.id);
-  if (page === 'overview' && next.topic) {
-    const faq = [...document.querySelectorAll('[data-faq]')].find(item=>item.dataset.faq === next.topic && item.closest('.faq-list')?.checkVisibility?.() !== false);
+  if (networkSection && lean) {
+    requestAnimationFrame(()=>{if (page === 'overview') $('network-details').scrollIntoView({block:'start',behavior:'instant'});});
+  } else if (page === 'overview' && (next.topic || networkSection)) {
+    const topic = next.topic || 'network';
+    const faq = [...document.querySelectorAll('[data-faq]')].find(item=>item.dataset.faq === topic && item.closest('.faq-list')?.checkVisibility?.() !== false);
     if (faq) {faq.open = true; requestAnimationFrame(()=>{if (page === 'overview') faq.scrollIntoView({block:'start',behavior:'instant'});});}
   } else if (location.hash === '#main') $('main').focus();
   else window.scrollTo({top:0,behavior:'instant'});

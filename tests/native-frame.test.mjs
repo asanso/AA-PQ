@@ -105,3 +105,47 @@ test('persisted coverage resumes, while the wrong genesis cannot expose cached c
   const second=createFrameIndex({rpc:chain.rpc,startBlock:1,batchSize:16,cacheFile});await second.update();assert.equal(second.snapshot().status,'complete');assert.equal(second.snapshot().count,4);
   const wrong=createFrameIndex({rpc:chain.rpc,startBlock:1,cacheFile,genesisHash:blockHash(999)});await wrong.update();assert.equal(wrong.snapshot().status,'unavailable');assert.equal(wrong.snapshot().count,null);
 });
+
+test('a leanSPHINCS network identifies its 32-byte-key clones and decodes their factory input', async t => {
+  const {mkdtemp:temp, writeFile} = await import('node:fs/promises');
+  const {execFile} = await import('node:child_process');
+  const {promisify} = await import('node:util');
+  const {createRequire} = await import('node:module');
+  const {keccak256} = createRequire(new URL('../frontend/package.json', import.meta.url))('ethers');
+  const wallet = JSON.parse(await readFile(new URL('../aggregation/frames/extension/tests/fixtures/native-lean-sphincs.json', import.meta.url), 'utf8'));
+  const directory = await temp(join(tmpdir(), 'lean-profile-'));
+  t.after(() => rm(directory, {recursive:true, force:true}));
+  const file = join(directory, 'network.json');
+  // Stand-in implementation and verifier code, pinned by hash as a deployment's profile pins the real code.
+  await writeFile(file, JSON.stringify({name:'Daisugi Devnet', chainId:wallet.config.chainId, genesisHash:wallet.config.genesisHash,
+    frameActivationBlock:0, entryPoint:'0x'+'e4'.repeat(20), nativeFactory:wallet.config.factory,
+    nativeImplementation:wallet.config.implementation, nativeImplementationCodeHash:keccak256('0x6001'),
+    nativeVerifier:wallet.config.verifier, nativeVerifierCodeHash:keccak256('0x6002'),
+    nativeAccountScheme:'lean-sphincs', eip8288Format:'eip8288-lean'}));
+  const probe = `
+    import {createRequire} from 'node:module';
+    const {decodeRlp, Interface} = createRequire(new URL('./frontend/package.json', import.meta.url))('ethers');
+    const {nativeAccountProfile} = await import('./frontend/native-profile.mjs');
+    const {NATIVE_ACCOUNT_SCHEME} = await import('./explorer/native-account-scheme.mjs');
+    const wallet = ${JSON.stringify({account:wallet.account, accountCode:wallet.accountCode, implementation:wallet.config.implementation,
+      verifier:wallet.config.verifier, genesis:wallet.config.genesisHash, raw:wallet.transactions[0].raw})};
+    const code = {[wallet.implementation.toLowerCase()]:'0x6001', [wallet.verifier.toLowerCase()]:'0x6002'};
+    const sphincsG = wallet.accountCode + '11'.repeat(32);
+    const profile = async accountCode => nativeAccountProfile({getBlock:async()=>({hash:wallet.genesis}),
+      getCode:async address => address.toLowerCase() === wallet.account.toLowerCase() ? accountCode : code[address.toLowerCase()] ?? '0x'},
+      {from:wallet.account, blockNumber:5}).then(p => p && p.name);
+    const createData = decodeRlp('0x' + wallet.raw.slice(4))[4][0][5];
+    const decoded = new Interface([NATIVE_ACCOUNT_SCHEME.createAccount]).parseTransaction({data:createData});
+    console.log(JSON.stringify({scheme:NATIVE_ACCOUNT_SCHEME.name, lean:await profile(wallet.accountCode), sphincsG:await profile(sphincsG),
+      createAccount:decoded.fragment.inputs.map(i => i.name), publicKey:decoded.args[0], event:NATIVE_ACCOUNT_SCHEME.accountCreated}));`;
+  const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', probe],
+    {cwd:new URL('..', import.meta.url), env:{...process.env, DAISUGI_NETWORK_PROFILE:file}});
+  const result = JSON.parse(stdout);
+  assert.equal(result.scheme, 'leanSPHINCS');
+  assert.equal(result.lean, 'leanSPHINCS');
+  // A clone carrying a 64-byte SPHINCS-G key is not a leanSPHINCS account.
+  assert.equal(result.sphincsG, null);
+  assert.deepEqual(result.createAccount, ['publicKey', 'salt']);
+  assert.equal(result.publicKey, wallet.publicKey);
+  assert.match(result.event, /bytes32 publicKey\)$/);
+});
