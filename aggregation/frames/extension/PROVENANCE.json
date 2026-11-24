@@ -1,6 +1,6 @@
 {
-  "version": "2.1.3.7",
-  "purpose": "Experimental native frame review build signing with leanSPHINCS; no live transaction recorded for this build",
+  "version": "3.0.0.0",
+  "purpose": "Experimental native frame build signing with leanSPHINCS",
   "interfaceSource": {
     "file": "NiceTry-Daisugi-2.1.3-mozilla-sources.zip",
     "sha256": "64c5b99c580b10b39ebe67ab20f24bae616bc2260ac861df8b356a268604de77"

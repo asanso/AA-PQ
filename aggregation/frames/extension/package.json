@@ -1,6 +1,6 @@
 {
   "name": "nice-try-quantum-wallet",
-  "version": "2.1.3.7",
+  "version": "3.0.0.0",
   "private": true,
   "description": "NiceTry Daisugi experimental native frame wallet (leanSPHINCS)",
   "type": "module",

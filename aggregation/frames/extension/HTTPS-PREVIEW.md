@@ -1,6 +1,6 @@
 # HTTPS review wallet
 
-Version 2.1.3.7 · native frames preview is an experimental build for a Daisugi
+Version 3.0.0.0 · leanSPHINCS is an experimental build for a Daisugi
 network with native frame transactions. It keeps the NiceTry interface and signs
 with leanSPHINCS; it has no other transaction mode.
 
