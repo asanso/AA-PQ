@@ -1539,11 +1539,20 @@ details[open]>summary>.disclosure-chevron {transform:rotate(90deg);}
 /* Network variants: eip8288-lean networks show the new home, others keep the current one. */
 html[data-network="lean"] .legacy-only { display:none !important; }
 html:not([data-network="lean"]) .lean-only { display:none !important; }
-.network-panel { padding:20px; }
+.network-panel { padding:20px; overflow:visible; }
 /* Devnet Overview: the network details come first, then the questions. */
 .network-details { margin-bottom:40px; scroll-margin-top:84px; }
 .network-heading { margin:28px 0 12px; }
 .network-note { margin-top:20px; }
+/* Information tooltip: shown on hover and keyboard focus. */
+.info-tip { position:relative; display:inline-block; margin-left:8px; vertical-align:1px; }
+.info-tip-button { width:16px; height:16px; padding:0; border:1px solid var(--control-border); border-radius:50%; background:transparent; color:var(--muted); font-family:inherit; font-size:10px; font-weight:600; line-height:14px; cursor:help; }
+.info-tip-button:hover, .info-tip-button:focus-visible { color:var(--accent); border-color:var(--accent); }
+.info-tip-text { position:absolute; z-index:30; left:50%; bottom:calc(100% + 8px); transform:translateX(-50%); width:min(380px, calc(100vw - 32px)); padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--paper); color:var(--secondary); box-shadow:0 8px 24px rgba(0,0,0,.12); font-size:12px; line-height:1.55; white-space:normal; visibility:hidden; opacity:0; transition:opacity .12s; }
+.info-tip-text span { display:block; }
+.info-tip-text span + span { margin-top:8px; }
+.info-tip:hover .info-tip-text, .info-tip:focus-within .info-tip-text { visibility:visible; opacity:1; }
+@media (max-width:640px) { .info-tip-text { left:auto; right:-12px; transform:none; width:min(320px, calc(100vw - 48px)); } }
 /* eip8288-lean: three metrics and two activity panels fill the row. */
 @media (min-width: 1051px) {
   html[data-network="lean"] .metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }

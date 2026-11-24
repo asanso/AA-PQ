@@ -230,6 +230,8 @@ attachInputPanelEvents($('explorerContent'));
 attachTransactionDetailEvents($('explorerContent'));
 $('menuToggle').addEventListener('click',()=>{$('menuToggle').setAttribute('aria-expanded',String($('mainNav').classList.toggle('open')));});
 $('explorerRefresh').addEventListener('click',async()=>{await refresh(); if (page === 'explorer') route();});
+// Escape dismisses an information tooltip opened by keyboard focus.
+document.addEventListener('keydown',event=>{if (event.key === 'Escape' && document.activeElement?.classList.contains('info-tip-button')) document.activeElement.blur();});
 window.addEventListener('hashchange',route);
 window.addEventListener('popstate',route);
 window.addEventListener('focus',()=>{if (!document.hidden && page === 'explorer') void refresh();});

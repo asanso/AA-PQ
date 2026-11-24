@@ -256,7 +256,7 @@
         <h3 class="network-heading">NiceTry account contracts</h3>
         <section class="panel network-panel">
           <dl class="faq-network">
-            <div><dt>Signature scheme</dt><dd>leanSPHINCS <span class="subtle">(32-byte public keys, 7,740-byte signatures)</span></dd></div>
+            <div><dt>Signature scheme</dt><dd>leanSPHINCS <span class="subtle">(32-byte public keys, 7,740-byte signatures)</span><span class="info-tip"><button type="button" class="info-tip-button" aria-label="How post-quantum signatures are handled" aria-describedby="leanSignatureTip">i</button><span class="info-tip-text" role="tooltip" id="leanSignatureTip"><span>NiceTry accounts sign with leanSPHINCS, a stateless hash-based signature scheme: a variant of SLH-DSA (FIPS 205) built on Keccak-256. A key signs at most 2<sup>30</sup> messages; a public key is 32 bytes and a signature 7,740 bytes.</span><span>The signature travels in the transaction. In its VERIFY frame, the account passes the transaction's signature hash and the signature to an on-chain leanSPHINCS verifier, and approves execution and payment only if the signature is valid. No bundler is involved.</span><span>The verifier and account contracts are experimental and have not been audited.</span></span></span></dd></div>
             <div><dt>Verifier</dt><dd data-native-verifier><span class="subtle">Unavailable</span></dd></div>
             <div><dt>Account factory</dt><dd data-native-factory><span class="subtle">Unavailable</span></dd></div>
             <div><dt>Account implementation</dt><dd data-native-implementation><span class="subtle">Unavailable</span></dd></div>
@@ -370,26 +370,18 @@
         <details class="faq-item" id="faq-lean-daisugi" data-faq="daisugi" open>
           <summary><span class="faq-number">01</span><span>What is Daisugi?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
-            <p>Daisugi is an experimental Ethereum devnet for post-quantum transactions, operated by EthPandaOps. It runs native frame transactions (EIP-8141) with keyed nonces (EIP-8250). It is not a scheduled mainnet fork.</p>
+            <p>Daisugi is an experimental Ethereum devnet for post-quantum transactions, operated by EthPandaOps. It runs native frame transactions (EIP-8141) with keyed nonces (EIP-8250).</p>
             <p>This site is a practical guide to the network. The <a href="#explorer">explorer</a> (Dora) and the <a href="#faucet">faucet</a> are run by EthPandaOps. Test ETH has no monetary value.</p>
           </div>
         </details>
-        <details class="faq-item" id="faq-lean-pq" data-faq="pq">
-          <summary><span class="faq-number">02</span><span>How are post-quantum signatures handled?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
-          <div class="faq-answer">
-            <p>NiceTry accounts sign with leanSPHINCS, a stateless hash-based signature scheme: a variant of SLH-DSA (FIPS 205) built on Keccak-256. A key signs at most 2<sup>30</sup> messages; a public key is 32 bytes and a signature 7,740 bytes.</p>
-            <p>The signature travels in the transaction. In its VERIFY frame, the account passes the transaction's signature hash and the signature to an on-chain leanSPHINCS verifier, and approves execution and payment only if the signature is valid. No bundler is involved.</p>
-            <p>The verifier and account contracts are experimental and have not been audited.</p>
-          </div>
-        </details>
         <details class="faq-item" id="faq-lean-frames" data-faq="frames">
-          <summary><span class="faq-number">03</span><span>What is a frame transaction?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
+          <summary><span class="faq-number">02</span><span>What is a frame transaction?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
             <p>A frame transaction (type <code>0x06</code>, EIP-8141) is a native transaction type that lets a smart account define how it is validated. Post-quantum accounts use it to send transactions directly, without an external bundler.</p>
           </div>
         </details>
         <details class="faq-item" id="faq-lean-wallet" data-faq="wallet">
-          <summary><span class="faq-number">04</span><span>What is the NiceTry wallet and why would I need it?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
+          <summary><span class="faq-number">03</span><span>What is the NiceTry wallet and why would I need it?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
             <p>NiceTry is a browser wallet that creates leanSPHINCS smart accounts and sends native frame transactions on Daisugi. Most wallets cannot sign post-quantum frame transactions yet.</p>
             <p>To install NiceTry:</p>
@@ -398,32 +390,19 @@
               <li>Open the extension and create your wallet through the setup flow.</li>
               <li>Copy your account address and request test ETH from the <a href="#faucet">Faucet</a>.</li>
             </ol>
-            <p>Account setup and transaction signing happen in the NiceTry extension. This portal does not connect to wallets.</p>
+            <p>NiceTry is an open source wallet developed by Project Eleven. Learn more on GitHub.</p>
           </div>
         </details>
         <details class="faq-item" id="faq-lean-network" data-faq="network">
-          <summary><span class="faq-number">05</span><span>How do I connect another wallet or tool?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
+          <summary><span class="faq-number">04</span><span>How do I connect another wallet or tool?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
             <p>Use the <a href="/network">network details</a> above. Other wallets can read the network and send ordinary transactions, but they cannot sign post-quantum frame transactions.</p>
           </div>
         </details>
         <details class="faq-item" id="faq-lean-faucet" data-faq="faucet">
-          <summary><span class="faq-number">06</span><span>How do I get test ETH?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
+          <summary><span class="faq-number">05</span><span>How do I get test ETH?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
           <div class="faq-answer">
             <p>Open the <a href="#faucet">Faucet</a> page and follow its link to the EthPandaOps faucet. Paste your account address and start the claim: your browser does a short proof of work, then the faucet sends test ETH. Open the claim's transaction in the <a href="#explorer">explorer</a> to check its confirmation.</p>
-          </div>
-        </details>
-        <details class="faq-item" id="faq-lean-check" data-faq="check">
-          <summary><span class="faq-number">07</span><span>How do I check my transaction?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
-          <div class="faq-answer">
-            <p>Search the transaction hash in the <a href="#explorer">explorer</a> (Dora). Its frames tab lists the frames: on an account's first transaction a DEFAULT frame creates the account, then the VERIFY frame checks the signature and the SENDER frame executes the transfer. Each frame shows its own result.</p>
-            <p>The NiceTry contracts that verify leanSPHINCS signatures are listed in the <a href="/network">network details</a> above.</p>
-          </div>
-        </details>
-        <details class="faq-item" id="faq-lean-follow" data-faq="follow">
-          <summary><span class="faq-number">08</span><span>Where can I follow the network?</span><span class="faq-toggle" aria-hidden="true"></span></summary>
-          <div class="faq-answer">
-            <p>Dora, the EthPandaOps <a href="#explorer">explorer</a>, shows blocks and transactions as well as the consensus layer, including the Daisugi fork. The <a href="/network">network details</a> above list the clients and the public endpoints.</p>
           </div>
         </details>
       </div>
