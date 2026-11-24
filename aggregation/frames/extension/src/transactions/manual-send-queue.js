@@ -31,7 +31,7 @@ export async function runQueuedSend(request, execute) {
   assertSendContext(request);
   const queued = manualSendCount.value > 0;
   if (!queued && (busy.value || (txHistory.value || []).some(tx =>
-    isUnconfirmedActivity(tx) && (tx.txHash || tx.userOpHash)))) {
+    isUnconfirmedActivity(tx) && tx.txHash))) {
     throw new Error('A previous transaction is still unresolved. Wait for its confirmation before confirming this send.');
   }
   const activity = queued ? createTransactionActivity({

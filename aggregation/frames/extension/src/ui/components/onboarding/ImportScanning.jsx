@@ -18,8 +18,8 @@ import { tree, currentIndex, smartAddr, mode as modeSignal } from "@/ui/store.js
 import { OnboardingHeader } from "./OnboardingHeader.jsx";
 import { CornerTopLeft, CornerBottomRight } from "./OnboardingCorners.jsx";
 
-const STEP = 4;
-const TOTAL_STEPS = 5;
+const STEP = 3;
+const TOTAL_STEPS = 4;
 
 
 const NONCE_WINDOW = 10;

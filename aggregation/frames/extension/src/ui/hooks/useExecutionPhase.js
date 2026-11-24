@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 
 // A short visual dwell makes a completed signature visible even when the
-// bundler accepts immediately. It never delays signing or submission.
+// node accepts the transaction immediately. It never delays signing or submission.
 export function useExecutionPhase(phase) {
   const signed = ['signed', 'creating', 'verifying'].includes(phase);
   const [showBundler, setShowBundler] = useState(false);

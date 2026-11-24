@@ -17,6 +17,20 @@
   from eth-infinitism/account-abstraction (ISC) and hardhat-deploy (MIT).
   Contract source is fetched separately at the pinned revision in README.
 - ethers is installed from npm, with its own MIT license in the package.
+- `frame-account/tests/fixtures/leansphincs-ethlib` contains EthLib's leanSPHINCS
+  test vectors (ethereum/EthLib `tests/cryptography/sphincs`, commit
+  `a2a9e655f965dbadf33b3acfbc645696078fc75d`, CC0-1.0), unmodified, as vendored by
+  leanEthereum/leanVM at `f7ba4999ae523b94c8d0969b32762c3effea4cbd` without its
+  `sync.sh`. `frame-account/contracts/LeanSphincsVerifier.sol` and
+  `frame-account/tests/leansphincs-reference.mjs` implement the verification
+  algorithm of leanVM's `crates/lean_sphincs` (MIT OR Apache-2.0) at that revision;
+  no upstream source text is copied.
+- `aggregation/frames/extension/src/crypto/lean-sphincs.wasm` is leanVM's
+  `crates/lean_sphincs` at `f7ba4999ae523b94c8d0969b32762c3effea4cbd` (MIT OR
+  Apache-2.0, used under MIT) compiled with the wrapper in
+  `aggregation/frames/extension/lean-sphincs-wasm`. The extension ships the MIT
+  text as `licenses/leanVM-LICENSE-MIT.txt`; `lean-sphincs-wasm/build.sh`
+  rebuilds the binary from the pinned source and checks it.
 - `deploy/nethermind/tohex-prefix.patch` modifies Nethermind's JavaScript
   tracer and associated tests at commit
   `c9ad4b5dc3b6db053c3a770ead8130594eb51152` (Demerzel Solutions Limited,
@@ -37,4 +51,5 @@ Nethermind's LGPL and GPL texts and Lighthouse's Apache 2.0 text. Overlay manife
 record original and replacement hashes; apply them only to the pinned sources.
 Build dependencies, including leanVM, are fetched separately at pinned revisions
 and retain their own licenses. The wallet retains the original NiceTry assets
-and cryptographic modules documented in its `PROVENANCE.json`.
+documented in its `PROVENANCE.json`; its signer is the leanSPHINCS WebAssembly
+module listed above.

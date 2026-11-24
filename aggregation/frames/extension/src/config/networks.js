@@ -2,11 +2,8 @@
 import { defineChain } from "viem";
 import { DEFAULT_CHAIN_ID, NETWORK_IDENTITY } from "./chain-defaults.js";
 import { transactionMode } from './transaction-mode.js';
-import frame from '../aggregated-frame/deployment.json';
-import aa from '../erc4337/network.json';
 import native from '../native-frame/native-deployment.json';
-export const DAISUGI_BUNDLER_URL = typeof __DAISUGI_BUNDLER_URL__ !== 'undefined' ? __DAISUGI_BUNDLER_URL__ : '';
-const accountProfile = () => ({ frame, native, aa })[transactionMode.value] ?? null;
+const accountProfile = () => transactionMode.value === 'native' && native.active ? native : null;
 const FACTORY_PLACEHOLDER = "__FACTORY_NOT_DEPLOYED__";
 const LEGACY_FACTORY = "0x0000000000000000000000000000000000000000";
 // Build-time endpoints are explicit. No local or public fallback is enabled.
@@ -26,10 +23,10 @@ export const NETWORKS = {
     genesisHash: NETWORK_IDENTITY.genesisHash,
     get accountFactory() { return accountProfile()?.factory || FACTORY_PLACEHOLDER; },
     get accountImplementation() { return accountProfile()?.implementation; },
-    get sphincsVerifier() { return transactionMode.value === 'native' ? native.verifier : "0xf505AD2Cff58b84E145D637d99Fae0617B5685BE"; },
-    sphincs: true, sphincsProfile: "sphincs-g",
+    get sphincsVerifier() { return accountProfile()?.verifier; },
+    sphincs: true, sphincsProfile: "lean-sphincs",
     priorityFeeWei: 1_000_000_000n, maxFeeCapWei: 3_000_000_000n,
-    badge: "EXPERIMENTAL TESTNET", description: "SPHINCS native frames and ERC-4337. Test ETH only.",
+    badge: "EXPERIMENTAL TESTNET", description: "SPHINCS native frames. Test ETH only.",
     iconKey: "ethereum", hidden: false,
   },
 };
@@ -69,7 +66,7 @@ export function getActiveNetwork() {
   return withOverrides(NETWORKS[id]);
 }
 
-// The native account uses the SPHINCS-G profile.
+// The native account uses leanSPHINCS.
 export function isSphincsChain(net) {
   return !!net && net.sphincs === true;
 }

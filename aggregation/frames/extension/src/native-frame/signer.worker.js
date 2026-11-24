@@ -1,20 +1,24 @@
-import { getBytes } from 'ethers';
-import { sphincsDerive, sphincsSign, sphincsVerify } from '../crypto/sphincs.js';
-import { ensureWasmKeccak } from '../crypto/keccak.js';
-import { keccakBatchInit } from '../crypto/keccak-batch.js';
-self.onmessage = async ({data}) => {
-  const seed = new Uint8Array(data.seed);
+import { getBytes, hexlify } from 'ethers';
+import { deriveLeanSphincsSeed, instantiateLeanSphincs } from '../crypto/lean-sphincs-core.mjs';
+import wasmUrl from '../crypto/lean-sphincs.wasm?url';
+
+// One request per worker: derive the leanSPHINCS public key, or sign a 32-byte digest and check the signature
+// locally before returning it. The HD identity key arrives as a transferred buffer and is zeroed with SK.seed.
+self.onmessage = async ({ data }) => {
+  const hdKey = new Uint8Array(data.seed);
   let secret;
   try {
-    await ensureWasmKeccak(); await keccakBatchInit();
+    const lean = await instantiateLeanSphincs(await (await fetch(wasmUrl)).arrayBuffer());
+    secret = deriveLeanSphincsSeed(hdKey);
+    const publicKey = lean.keyGen(secret);
     if (data.action === 'derive') {
-      const key = sphincsDerive(seed, 'sphincs-g'); secret = key.skSeed;
-      self.postMessage({backupPkSeed:key.backupPkSeed,backupPkRoot:key.backupPkRoot});
+      self.postMessage({ publicKey: hexlify(publicKey) });
     } else if (data.action === 'sign') {
-      const result = sphincsSign(seed, getBytes(data.digest), 'sphincs-g');
-      if (!sphincsVerify(result.backupPkSeed,result.backupPkRoot,data.digest,result.sigHex,'sphincs-g').valid) throw Error('Local signature verification failed.');
-      self.postMessage({signature:result.sigHex,backupPkSeed:result.backupPkSeed,backupPkRoot:result.backupPkRoot});
+      const digest = getBytes(data.digest);
+      const signature = lean.sign(secret, digest);
+      if (!lean.verify(publicKey, digest, signature)) throw Error('Local signature verification failed.');
+      self.postMessage({ signature: hexlify(signature), publicKey: hexlify(publicKey) });
     } else throw Error('Unsupported signer request.');
-  } catch(error) { self.postMessage({error:error.message}); }
-  finally { seed.fill(0); secret?.fill?.(0); }
+  } catch (error) { self.postMessage({ error: error.message }); }
+  finally { hdKey.fill(0); secret?.fill(0); }
 };

@@ -22,12 +22,12 @@ export function Welcome() {
 
   function goCreate() {
     flow.branch = "create";
-    navigate("/setup/mode");
+    navigate("/create/password");
   }
 
   function goImport() {
     flow.branch = "import";
-    navigate("/setup/mode");
+    navigate("/import/seed");
   }
 
   return (

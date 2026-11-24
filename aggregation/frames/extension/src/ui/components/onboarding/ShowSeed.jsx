@@ -12,8 +12,8 @@ import { OnboardingHeader } from "./OnboardingHeader.jsx";
 import { CornerTopLeft, CornerBottomRight } from "./OnboardingCorners.jsx";
 
 const REVEAL_COUNTDOWN_SECS = 5;
-const STEP = 3;
-const TOTAL_STEPS = 4;
+const STEP = 2;
+const TOTAL_STEPS = 3;
 
 
 // The account address is derived locally (SPHINCS-G key and the build's network profile); no network access is

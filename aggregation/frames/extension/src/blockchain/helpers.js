@@ -7,7 +7,7 @@ export async function getSmartAccountAddress(account=vaultManager.getActiveAccou
   const {config,accountAddress}=activeProtocol();
   const key=await publicKey(account);
   if(epoch!==vaultManager.sessionEpoch || !vaultManager.isUnlocked()) throw Error('Wallet context changed.');
-  const address=accountAddress(config,key.backupPkSeed,key.backupPkRoot);
+  const address=accountAddress(config,key.publicKey);
   if(vaultManager.getSmartAccountAddress(DEFAULT_CHAIN_ID,account)?.toLowerCase() !== address.toLowerCase())
     await vaultManager.setSmartAccountAddress(address,DEFAULT_CHAIN_ID,account);
   return address;
@@ -18,7 +18,7 @@ export async function predictAccountAddress() {
   const {config,accountAddress}=activeProtocol();
   const key=await publicKey();
   if(epoch!==vaultManager.sessionEpoch || !vaultManager.isUnlocked()) throw Error('Wallet context changed.');
-  return accountAddress(config,key.backupPkSeed,key.backupPkRoot);
+  return accountAddress(config,key.publicKey);
 }
 export const deploySmartAccount = () => getSmartAccountAddress();
 export const getAccountNonce = accountNonce;

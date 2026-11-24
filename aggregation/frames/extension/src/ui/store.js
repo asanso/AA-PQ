@@ -50,7 +50,7 @@ export const smartAddr = signal("");
 
 /* ── Multi-account ───────────────────────────────────────────────────
    `accounts` mirrors VaultManager.getAccountList() — one entry per
-   multi-account derived from the seed at m/44'/60'/{index}'/0'/i'.
+   multi-account derived from the seed at m/44'/60'/{index}'.
    `activeAccountIndex` is the currently selected account. Both are
    hydrated on unlock and updated on create/switch (see useAccounts). */
 export const accounts = signal([]);

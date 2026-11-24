@@ -17,7 +17,7 @@
 
    Storage shape:
      chrome.storage.local[`nt_txhistory_${smartAddressLower}_${chainId}`] = [
-       { id, time, txHash, userOpHash, to, amount, keyFrom, keyTo,
+       { id, time, txHash, to, amount, keyFrom, keyTo,
          signerAddr, newSignerAddr, mode },
        ...
      ]

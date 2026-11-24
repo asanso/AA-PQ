@@ -95,6 +95,10 @@ curl -s --cacert $RUN/aa-pq/tls/cert.pem --resolve daisugi.test:8443:127.0.0.1 h
 
 ## 5. Use the wallet
 
+The wallet offers only native frame transactions signed with leanSPHINCS. Its build needs a native profile for
+the run (`$RUN/aa-pq/native-profile.json`, fields in `aggregation/frames/extension/README.md`), and these scripts
+do not deploy the leanSPHINCS verifier and factory yet.
+
 ```bash
 scripts/local-devnet/build-extension.sh $RUN        # writes $RUN/aa-pq/extension
 chromium --user-data-dir=$(mktemp -d) --no-first-run \

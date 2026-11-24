@@ -1,3 +1,5 @@
+// leanSPHINCS public keys and signatures of the active account, computed in a short-lived worker
+// (signer.worker.js) from the account's HD identity key. Results carry the 32-byte public key.
 import { vaultManager } from '../vault/VaultManager.js';
 import { getBytes } from 'ethers';
 const commitments = new Map();
@@ -8,13 +10,13 @@ function context(account) {
 }
 async function work(account, action, digest) {
   const {hd,fingerprint,epoch} = context(account);
-  const seed = getBytes(hd.getKeyAtIndex(0,vaultManager.getHdAccountIndex(account),0).privateKey);
+  const seed = getBytes(hd.getKeyAtIndex(0,vaultManager.getHdAccountIndex(account)).privateKey);
   const worker = new Worker(new URL('./signer.worker.js',import.meta.url),{type:'module'});
   try {
     const result = await new Promise((resolve,reject) => {
-      const timer = setTimeout(()=>reject(Error('SPHINCS signing timed out. No transaction was submitted.')),180000);
+      const timer = setTimeout(()=>reject(Error('leanSPHINCS signing timed out. No transaction was submitted.')),60000);
       worker.onmessage = ({data}) => {clearTimeout(timer);data.error?reject(Error(data.error)):resolve(data);};
-      worker.onerror = () => {clearTimeout(timer);reject(Error('SPHINCS worker failed.'));};
+      worker.onerror = () => {clearTimeout(timer);reject(Error('leanSPHINCS worker failed.'));};
       worker.postMessage({action,digest,seed:seed.buffer},[seed.buffer]);
     });
     if (context(account).fingerprint !== fingerprint || vaultManager.sessionEpoch !== epoch) throw Error('The unlocked wallet changed.');

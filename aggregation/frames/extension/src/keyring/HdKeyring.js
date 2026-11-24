@@ -1,4 +1,5 @@
-const accountIdentityPath = account => "m/44'/60'/"+account+"'/0'/0'";
+// One identity key per account: hardened BIP-44 account level, with no chain or index level below it.
+const accountIdentityPath = account => "m/44'/60'/"+account+"'";
 import { HDNodeWallet } from "ethers/wallet";
 import { Mnemonic } from "ethers/wallet";
 
@@ -68,7 +69,7 @@ export class HdKeyring {
   }
 
   /* Add `n` new multi-accounts. Each account's identity is a stable,
-     chain-independent label (accountIdentityPath — sentinel chain 0').
+     chain-independent label (accountIdentityPath).
      Returns the newly added identity addresses (lower-cased). */
   addAccounts(n = 1) {
     if (!this._root)
@@ -144,8 +145,8 @@ export class HdKeyring {
   }
 
 
-  getKeyAtIndex(index,account=0,chainId=0) {
-    if(index!==0 || Number(chainId)!==0) throw Error('Native accounts use one stable SPHINCS identity key.');
+  getKeyAtIndex(index,account=0) {
+    if(index!==0) throw Error('Native accounts use one stable SPHINCS identity key.');
     if(!this._root)throw Error('No HD root');
     const path=accountIdentityPath(account),child=this._root.derivePath(path);
     return {index,account,path,address:child.address,privateKey:child.privateKey};

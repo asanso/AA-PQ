@@ -1,8 +1,7 @@
-import { createNativeProtocol, CREATE_GAS, CREATE_STATE_GAS, VERIFY_GAS, VERIFY_GAS_FIRST, SIGNATURE_BYTES } from './native-protocol.mjs';
+import { createNativeProtocol, CREATE_GAS, CREATE_STATE_GAS, VERIFY_GAS, SIGNATURE_BYTES } from './native-protocol.mjs';
 
-// Transport adapter for native SPHINCS-G frame accounts. Same interface as the aggregated-frame client, so the
-// existing send path, journal and activity poller drive both modes. The caller supplies HTTPS transport and the
-// frame-receipt parser.
+// Transport adapter for native leanSPHINCS frame accounts, driven by the send path, journal and activity poller.
+// The caller supplies HTTPS transport and the frame-receipt parser. A key is { publicKey }: PK.seed || PK.root.
 export function createNativeClient(e, { config: input, rpc, receiptOutcome, now = Date.now }) {
   const config = Object.freeze({ ...input });
   const p = createNativeProtocol(e);
@@ -15,7 +14,7 @@ export function createNativeClient(e, { config: input, rpc, receiptOutcome, now 
   e.getAddress(config.factory); e.getAddress(config.implementation); e.getAddress(config.verifier);
   if (BigInt(config.maxFeePerGas ?? 0) <= 0n) throw Error('A fee ceiling is required.');
   if (typeof rpc !== 'function' || typeof receiptOutcome !== 'function') throw Error('Transport and receipt parser are required.');
-  // As in the aggregated client: a JSON-RPC error answering the submission itself proves it was not admitted, except
+  // A JSON-RPC error answering the submission itself proves it was not admitted, except
   // internal errors, timeouts, 5xx replies other than 503 and errors a transaction already holding the nonce could cause.
   const submit = (method, params) => rpc(method, params).catch(error => { error.submission = true; throw error; });
   const rejected = error => error?.submission === true && Number.isInteger(error.rpcCode) && ![-32603, -32016].includes(error.rpcCode)
@@ -28,24 +27,24 @@ export function createNativeClient(e, { config: input, rpc, receiptOutcome, now 
       rpc('eth_getCode', [config.factory, 'latest']), rpc('eth_getCode', [config.implementation, 'latest']),
       rpc('eth_getCode', [config.verifier, 'latest']),
       rpc('eth_call', [{ to: config.factory, data: p.abi.encodeFunctionData('ACCOUNT_IMPL') }, 'latest']),
-      rpc('eth_call', [{ to: config.factory, data: p.abi.encodeFunctionData('SPHINCS_VERIFIER') }, 'latest']),
+      rpc('eth_call', [{ to: config.factory, data: p.abi.encodeFunctionData('LEAN_SPHINCS_VERIFIER') }, 'latest']),
     ]);
     if (BigInt(chain) !== BigInt(config.chainId) || genesis?.hash !== config.genesisHash) throw Error('Unexpected network. Sending is disabled.');
     if (e.keccak256(factoryCode) !== config.factoryCodeHash || e.keccak256(implementationCode) !== config.implementationCodeHash
         || e.keccak256(verifierCode) !== config.verifierCodeHash
         || e.getAddress(p.abi.decodeFunctionResult('ACCOUNT_IMPL', implementation)[0]) !== e.getAddress(config.implementation)
-        || e.getAddress(p.abi.decodeFunctionResult('SPHINCS_VERIFIER', verifier)[0]) !== e.getAddress(config.verifier))
+        || e.getAddress(p.abi.decodeFunctionResult('LEAN_SPHINCS_VERIFIER', verifier)[0]) !== e.getAddress(config.verifier))
       throw Error('Contract identity does not match this wallet build. Sending is disabled.');
   }
 
   async function accountState(key) {
-    const address = p.accountAddress(config, key.backupPkSeed, key.backupPkRoot);
+    const address = p.accountAddress(config, key.publicKey);
     const [balance, nonce, code] = await Promise.all([
       rpc('eth_getBalance', [address, 'latest']), rpc('eth_getTransactionCount', [address, 'pending']),
       rpc('eth_getCode', [address, 'latest']),
     ]);
     const deployed = code !== '0x';
-    if (deployed && code.toLowerCase() !== p.accountRuntime(config.implementation, key.backupPkSeed, key.backupPkRoot))
+    if (deployed && code.toLowerCase() !== p.accountRuntime(config.implementation, key.publicKey))
       throw Error('Unexpected account bytecode.');
     return { address, deployed, nonce: BigInt(nonce), balance: BigInt(balance) };
   }
@@ -64,7 +63,7 @@ export function createNativeClient(e, { config: input, rpc, receiptOutcome, now 
     if (callGas > 5000000n) throw Error('Contract call exceeds the supported gas budget.');
     const deployed = code !== '0x';
     // Every frame limit, plus intrinsic gas for the witness and calldata: a conservative reservation, not a measurement.
-    const reserveGas = (deployed ? VERIFY_GAS : CREATE_GAS + CREATE_STATE_GAS + VERIFY_GAS_FIRST) + callGas * 2n
+    const reserveGas = (deployed ? VERIFY_GAS : CREATE_GAS + CREATE_STATE_GAS + VERIFY_GAS) + callGas * 2n
       + 100000n + BigInt(SIGNATURE_BYTES + e.getBytes(data).length) * 16n;
     return { maxFee, priorityFee, callGas, reserveGas, feeReserve: reserveGas * maxFee, balance: BigInt(balance), deployed };
   }
@@ -77,7 +76,7 @@ export function createNativeClient(e, { config: input, rpc, receiptOutcome, now 
       throw Error('The reviewed fee changed or expired. Review this transaction again.');
     if (account.balance < BigInt(value) + quote.feeReserve) throw Error('Insufficient test ETH for the call and fee reservation.');
     // max_fee is the total fee budget: the reviewed reservation, which covers the transaction's maximum gas.
-    const payload = p.prepare({ config, pkSeed: key.backupPkSeed, pkRoot: key.backupPkRoot, nonce: account.nonce,
+    const payload = p.prepare({ config, publicKey: key.publicKey, nonce: account.nonce,
       recipient, value, data, deployed: account.deployed, maxFee: quote.feeReserve, priorityFee: quote.priorityFee, callGas: quote.callGas });
     if (payload.sender !== account.address) throw Error('Account derivation mismatch.');
     return { ...quote, account, key: { ...key }, recipient: e.getAddress(recipient), value: BigInt(value), data,
@@ -88,8 +87,7 @@ export function createNativeClient(e, { config: input, rpc, receiptOutcome, now 
     assertContext();
     if (typeof persist !== 'function') throw Error('A durable transaction journal is required.');
     if (now() - quote.preparedAt > 240000) throw Error('Transaction preparation expired.');
-    if (signed.backupPkSeed !== quote.key.backupPkSeed || signed.backupPkRoot !== quote.key.backupPkRoot)
-      throw Error('Signing key changed.');
+    if (signed.publicKey?.toLowerCase() !== quote.key.publicKey?.toLowerCase()) throw Error('Signing key changed.');
     const request = p.signedRequest(quote.payload, signed.signature);
     await verifyNetwork();
     const current = await accountState(quote.key);
@@ -116,7 +114,7 @@ export function createNativeClient(e, { config: input, rpc, receiptOutcome, now 
     const result = receiptOutcome(await rpc('eth_getTransactionReceipt', [record.hash]), record.hash, record.frameCount);
     return result.status === 'pending' ? record : { ...record, ...result };
   }
-  // As in the aggregated client: resolved only by its receipt or by its nonce being used in a finalized block. A re-send
+  // Resolved only by its receipt or by its nonce being used in a finalized block. A re-send
   // carries the identical signed bytes and its own errors prove nothing about the first copy.
   async function recoverRecord(record, { rebroadcast = false } = {}) {
     if (record.rejected) return { ...record, status: 'failed' };

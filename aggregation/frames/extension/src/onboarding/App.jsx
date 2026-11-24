@@ -18,7 +18,6 @@
 import { Route, Switch, Router } from "wouter-preact";
 import { useEffect, useState, useCallback } from "preact/hooks";
 
-import { ChooseTransactionMode } from "@/ui/components/onboarding/ChooseTransactionMode.jsx";
 import { useOnboardingFlow } from "@/ui/hooks/useOnboardingFlow.js";
 import { vaultManager } from "@/vault/VaultManager.js";
 import { Welcome } from "@/ui/components/onboarding/Welcome.jsx";
@@ -48,19 +47,6 @@ function useHashLocation() {
   return [loc, navigate];
 }
 
-function ModeGuard() {
-  const [loc, navigate] = useHashLocation();
-  const flow = useOnboardingFlow();
-  useEffect(() => {
-    if (loc === '/create/done' && vaultManager.isUnlocked()) return;
-    if (loc !== '/' && loc !== '/setup/mode' && !flow.transactionMode) {
-      flow.branch = loc.startsWith('/import/') ? 'import' : 'create';
-      navigate('/setup/mode');
-    }
-  }, [loc, flow.transactionMode]);
-  return null;
-}
-
 export function App() {
   return (
    <div class="relative overflow-hidden flex flex-col h-screen justify-center items-center bg-bg-primary">
@@ -87,11 +73,9 @@ export function App() {
         <div class="overflow-hidden flex flex-col border-2 border-stone-100 justify-center w-full h-full p-6">
           <div className="w-full h-full min-w-0">
             <Router hook={useHashLocation} >
-              <ModeGuard />
               <Switch>
 
                   <Route path="/" component={Welcome} />
-                  <Route path="/setup/mode" component={ChooseTransactionMode} />
                   <Route path="/create/password" component={CreatePassword} />
                   <Route path="/create/seed" component={ShowSeed} />
                   <Route path="/create/done" component={FinalStep} />

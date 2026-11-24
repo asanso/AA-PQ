@@ -23,10 +23,9 @@ import { useEffect, useState } from "preact/hooks";
 
 /* Where "back" goes from each step. A route absent here renders no arrow. */
 const BACK_TARGET = {
-  "/setup/mode": "/",
-  "/create/password": "/setup/mode",
+  "/create/password": "/",
   "/create/seed": "/create/password",
-  "/import/seed": "/setup/mode",
+  "/import/seed": "/",
   "/import/password": "/import/seed",
 };
 

@@ -89,7 +89,7 @@ function PinIcon() {
 export function FinalStep() {
   const flow = useOnboardingFlow();
   // create branch is 3 steps (password → seed → done); import is 4.
-  const totalSteps = flow.branch === "import" ? 5 : 4;
+  const totalSteps = flow.branch === "import" ? 4 : 3;
   // Falls back to an inline "click the puzzle icon" panel when
   // chrome.action.openPopup() can't pop the popup itself — e.g. the
   // extension hasn't been pinned to the toolbar (the most common cause)

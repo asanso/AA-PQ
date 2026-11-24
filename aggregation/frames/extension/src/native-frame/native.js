@@ -1,7 +1,7 @@
-import * as ethers from '../aggregated-frame/ethers-primitives.js';
+import * as ethers from './ethers-primitives.js';
 import {createNativeClient} from './native-client.mjs';
-import {receiptOutcome} from './protocol.js';
-import {rpc} from './client.js';
+import {receiptOutcome} from './receipt.js';
+import {rpc} from './rpc.js';
 import config from './native-deployment.json';
 export {config, rpc};
 // chrome.storage key of a native account's journaled submission: written before broadcast, removed once resolved.

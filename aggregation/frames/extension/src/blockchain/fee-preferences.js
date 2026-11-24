@@ -20,8 +20,8 @@ export function feeTierLabel(tier) {
 }
 
 /**
- * Resolve the user's choice against a Pimlico getUserOperationGasPrice
- * result ({slow, standard, fast} with BigInt fields). Falls back to
+ * Resolve the user's choice against a tier quote
+ * ({slow, standard, fast} with BigInt fields). Falls back to
  * fast when the chosen tier is missing or the custom values are
  * malformed — never returns undefined fees.
  */

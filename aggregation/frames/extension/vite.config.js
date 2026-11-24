@@ -6,7 +6,6 @@ import tailwindcss from "@tailwindcss/vite";
 import {readFile,writeFile} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
 import * as ethers from 'ethers';
-import {createClient} from './src/aggregated-frame/client.mjs';
 import {createNativeClient} from './src/native-frame/native-client.mjs';
 
 // __dirname is not defined in ESM modules. Reconstruct it from import.meta.url
@@ -14,43 +13,24 @@ import {createNativeClient} from './src/native-frame/native-client.mjs';
 // previous vite.config.ts got away with a bare `__dirname` because Vite's TS
 // pipeline shimmed it; the plain .js version needs this line.
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const profilePath = resolve(__dirname, process.env.NICETRY_AGGREGATION_PROFILE || 'src/aggregated-frame/deployment.json');
-const aggregationProfile = JSON.parse(readFileSync(profilePath,'utf8'));
-if (typeof aggregationProfile.active !== 'boolean') throw Error('The aggregation profile requires an explicit boolean active flag.');
-if (aggregationProfile.active) {
-  // Build-time validation checks pin completeness. Runtime checks also compare
-  // the actual chain, genesis, contract bytecode and RPC capabilities.
-  createClient(ethers,{config:aggregationProfile,rpc:async()=>{},receiptOutcome:()=>{}});
-}
-// Native (non-aggregated) frame accounts: an optional second profile for the same network.
+// The native frame profile pins the network, the leanSPHINCS account factory, its implementation and verifier.
+// A build requires an active one; the inactive default serves tests and the dev server only.
 const nativeProfilePath = resolve(__dirname, process.env.NICETRY_NATIVE_PROFILE || 'src/native-frame/native-deployment.json');
 const nativeProfile = JSON.parse(readFileSync(nativeProfilePath,'utf8'));
 if (typeof nativeProfile.active !== 'boolean') throw Error('The native profile requires an explicit boolean active flag.');
 if (nativeProfile.active) {
+  // Build-time validation checks pin completeness. Runtime checks also compare
+  // the actual chain, genesis, contract bytecode and RPC capabilities.
   createNativeClient(ethers,{config:nativeProfile,rpc:async()=>{},receiptOutcome:()=>{}});
-  if (aggregationProfile.active && (nativeProfile.chainId !== aggregationProfile.chainId || nativeProfile.genesisHash !== aggregationProfile.genesisHash))
-    throw Error('The native and aggregation profiles must pin the same network.');
 }
-// The transaction modes this build offers, decided as in src/config/chain-defaults.js, so the extension
-// description matches wallet setup.
-const erc4337Profile = JSON.parse(readFileSync(resolve(__dirname, 'src/erc4337/network.json'), 'utf8'));
-const buildNetwork = aggregationProfile.active ? aggregationProfile : nativeProfile.active ? nativeProfile : erc4337Profile;
-const sameNetwork = profile => profile.chainId === buildNetwork.chainId && profile.genesisHash === buildNetwork.genesisHash;
-const buildModes = [
-  nativeProfile.active && sameNetwork(nativeProfile) && 'native frames',
-  aggregationProfile.active && 'aggregated frames',
-  sameNetwork(erc4337Profile) && 'ERC-4337',
-].filter(Boolean);
-export const extensionDescription = 'Experimental Daisugi testnet wallet with SPHINCS signing: '
-  + (buildModes.length > 1 ? buildModes.slice(0, -1).join(', ') + ' and ' + buildModes.at(-1) : buildModes[0]) + '.';
-// Every import of a default profile file resolves to the selected profile, whatever form its specifier takes
-// (relative to the importer, '@/' alias or absolute). Matching specifier text alone missed './native-deployment.json'.
+export const extensionDescription = 'Experimental Daisugi testnet wallet with SPHINCS signing: native frames.';
+// Every import of the default profile file resolves to the selected profile, whatever form its specifier takes
+// (relative to the importer, '@/' alias or absolute).
 const defaultProfiles = new Map([
-  [resolve(__dirname, 'src/aggregated-frame/deployment.json'), profilePath],
   [resolve(__dirname, 'src/native-frame/native-deployment.json'), nativeProfilePath],
 ]);
 const deploymentProfile = {
-  name:'aggregate-deployment-profile',enforce:'pre',
+  name:'native-deployment-profile',enforce:'pre',
   resolveId(source, importer) {
     const target = source.startsWith('@/') ? resolve(__dirname, 'src', source.slice(2))
       : source.startsWith('.') && importer ? resolve(dirname(importer.split('?')[0]), source)
@@ -60,13 +40,6 @@ const deploymentProfile = {
 };
 const publicRpc = process.env.NICETRY_RPC_URL;
 const publicExplorer = process.env.NICETRY_EXPLORER_URL;
-const publicBundler = process.env.NICETRY_BUNDLER_URL;
-if (publicBundler) {
-  const url = new URL(publicBundler);
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/bundler' || url.origin !== new URL(publicRpc).origin) {
-    throw new Error('NICETRY_BUNDLER_URL must be the HTTPS /bundler endpoint on the configured RPC origin.');
-  }
-}
 if (publicExplorer) {
   const url = new URL(publicExplorer);
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || /^(localhost|127\.|\[::1\])/.test(url.hostname)) {
@@ -85,7 +58,8 @@ const publicRpcManifest = {
   name:'native-public-rpc-profile',
   buildEnd(error) { buildFailed = Boolean(error); },
   configResolved(config) {
-    if (config.command === 'build' && (!publicRpc || !publicExplorer || !publicBundler)) throw new Error('Set NICETRY_RPC_URL, NICETRY_BUNDLER_URL and NICETRY_EXPLORER_URL to the verified HTTPS environment before building.');
+    if (config.command === 'build' && (!publicRpc || !publicExplorer)) throw new Error('Set NICETRY_RPC_URL and NICETRY_EXPLORER_URL to the verified HTTPS environment before building.');
+    if (config.command === 'build' && !nativeProfile.active) throw new Error('Set NICETRY_NATIVE_PROFILE to an active native frame profile before building.');
     outputDirectory=resolve(config.root,config.build.outDir);
     if (publicRpc && outputDirectory === resolve(__dirname,'nicetry-daisugi')) throw new Error('Use a separate --outDir for an HTTPS preview build.');
   },
@@ -93,7 +67,7 @@ const publicRpcManifest = {
     if (!publicRpc || buildFailed) return;
     const file=resolve(outputDirectory,'manifest.json');
     const manifest=JSON.parse(await readFile(file,'utf8'));
-    manifest.name='NiceTry Daisugi — aggregation preview';
+    manifest.name='NiceTry Daisugi — native frames preview';
     manifest.description=extensionDescription;
     manifest.host_permissions=[...new Set([...manifest.host_permissions.filter(origin=>origin.startsWith('https:') && !origin.includes('daisugi.fyi')),publicOrigin+'/*'])];
     await writeFile(file,JSON.stringify(manifest,null,2)+'\n');
@@ -105,8 +79,8 @@ export default defineConfig({
 
   plugins: [deploymentProfile, preact(), tailwindcss(), publicRpcManifest],
 
-  // SPHINCS⁺ FORS workers are spawned as ES module workers
-  // (new Worker(url, { type: "module" })); emit them as ES modules.
+  // The leanSPHINCS signer runs in an ES module worker
+  // (new Worker(url, { type: "module" })); emit it as an ES module.
   worker: {
     format: "es",
   },
@@ -156,7 +130,6 @@ export default defineConfig({
   },
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
-    ...(publicBundler ? {__DAISUGI_BUNDLER_URL__:JSON.stringify(publicBundler)} : {}),
     ...(publicRpc ? {__DAISUGI_RPC_URL__:JSON.stringify(publicRpc)} : {}),
     ...(publicExplorer ? {__DAISUGI_EXPLORER_URL__:JSON.stringify(publicExplorer.replace(/\/$/,''))} : {}),
   },

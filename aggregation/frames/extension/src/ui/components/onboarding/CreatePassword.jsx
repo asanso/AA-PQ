@@ -104,8 +104,8 @@ export function CreatePassword() {
     navigate("/create/seed");
   }
 
-  const totalSteps = 4;
-  const currentStep = 2;
+  const totalSteps = 3;
+  const currentStep = 1;
 
   const isValid = strength.ok && pw === confirm && terms;
 

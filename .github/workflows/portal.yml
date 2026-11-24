@@ -59,12 +59,13 @@ jobs:
           npm test --prefix aggregation/frames/extension
           node aggregation/frames/wallet/test.mjs frontend/package.json
           python3 -m unittest discover -s aggregation/frames/consensus/fork -p 'test_*.py' -v
-      - name: Build the aggregation wallet with an inactive test profile
+      - name: Build the native frame wallet with a test profile
         env:
           NICETRY_RPC_URL: https://staging.invalid/rpc
-          NICETRY_BUNDLER_URL: https://staging.invalid/bundler
           NICETRY_EXPLORER_URL: https://staging.invalid/explorer
-        run: npm run build --prefix aggregation/frames/extension -- --outDir nicetry-aggregation-ci
+        run: |
+          node -e "process.stdout.write(JSON.stringify(require('./aggregation/frames/extension/tests/fixtures/native-lean-sphincs.json').config))" > "$RUNNER_TEMP/native-profile.json"
+          NICETRY_NATIVE_PROFILE="$RUNNER_TEMP/native-profile.json" npm run build --prefix aggregation/frames/extension -- --outDir nicetry-native-ci
       - name: Build the wallet with non-routable test endpoints
         env:
           NICETRY_RPC_URL: https://staging.invalid/rpc

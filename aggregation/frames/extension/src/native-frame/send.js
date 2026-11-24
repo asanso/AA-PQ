@@ -1,15 +1,13 @@
 import { formatEther, getAddress } from 'ethers';
 import { vaultManager } from '../vault/VaultManager.js';
 import { publicKey, signDigest } from './keys.js';
-import * as frameClient from './client.js';
 import { withSigningLock } from '../transactions/signing-lock.js';
 import { createTransactionActivity, settleActivity } from '../transactions/transaction-activity.js';
 import { busy, smartAddr, chainId } from '../ui/store.js';
 import { DEFAULT_CHAIN_ID } from '../config/chain-defaults.js';
 import { log } from '../ui/logger.js';
 
-// One send path for both SPHINCS frame modes: aggregated frames (client.js) and native frames (native.js) share the
-// client interface, journal and activity records; only the mode and the client differ.
+// The send path of native frame transactions: prepare, sign with leanSPHINCS, journal, submit and follow the receipt.
 export function createSendCall(mode, { prepareCall, submitCall, refreshRecord, recoverRecord, journalKey: journalKeyFor }) {
   return async function sendCall({ to, value = 0n, data = '0x', reviewed, activity, details = {}, expectedNonce, onPhase = () => {} }) {
   if (vaultManager.getTransactionMode() !== mode) throw Error('Transaction mode mismatch.');
@@ -32,7 +30,7 @@ export function createSendCall(mode, { prepareCall, submitCall, refreshRecord, r
   busy.value = true;
   log('Transaction started', 'step');
   try {
-    return await withSigningLock(mode === 'frame' ? 'native-frame-send' : mode + '-frame-send', async (assertLock = () => {}) => {
+    return await withSigningLock(mode + '-frame-send', async (assertLock = () => {}) => {
       const guard = () => { assertContext(); assertLock(); };
       guard();
       const journalKey = journalKeyFor(address);
@@ -50,7 +48,7 @@ export function createSendCall(mode, { prepareCall, submitCall, refreshRecord, r
       if (expectedNonce != null && BigInt(expectedNonce) !== quote.account.nonce) throw Error('The requested nonce does not match the current account nonce.');
       if (quote.account.address.toLowerCase() !== address.toLowerCase()) throw Error('Account derivation mismatch.');
       guard();
-      log('Signing with SPHINCS', 'step'); onPhase('signing');
+      log('Signing with leanSPHINCS', 'step'); onPhase('signing');
       const start = performance.now();
       const signed = await signDigest(account, quote.digest);
       guard();
@@ -101,5 +99,3 @@ export function createSendCall(mode, { prepareCall, submitCall, refreshRecord, r
   } finally { busy.value = false; }
   };
 }
-
-export const sendCall = createSendCall('frame', frameClient);

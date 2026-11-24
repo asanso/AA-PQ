@@ -205,7 +205,7 @@ export class VaultManager {
   }
 
   _applyDecryptedVault(data) {
-    if(data.meta?.schemaVersion!==SCHEMA_VERSION) throw Error('Unsupported vault version. Restore the seed phrase and choose its original transaction mode.');
+    if(data.meta?.schemaVersion!==SCHEMA_VERSION) throw Error('Unsupported vault version. Reset the wallet and restore it from its recovery phrase.');
     this.transactionMode = requireTransactionMode(data.meta.transactionMode);
     transactionMode.value = this.transactionMode;
     this.sessionEpoch++;

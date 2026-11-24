@@ -9,8 +9,7 @@ export function formatSigningMs(ms) {
 // Never turn an observed successful receipt back into pending or failed.
 export function upsertActivity(items, update) {
   const same = item => (update.activityId && item.activityId === update.activityId)
-    || (update.txHash && item.txHash?.toLowerCase() === update.txHash.toLowerCase())
-    || (update.userOpHash && item.userOpHash?.toLowerCase() === update.userOpHash.toLowerCase());
+    || (update.txHash && item.txHash?.toLowerCase() === update.txHash.toLowerCase());
   const matches = items.filter(same);
   const existing = matches.find(item => item.activityId) || matches[0];
   let merged = { ...existing, ...update };

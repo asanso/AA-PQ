@@ -35,9 +35,6 @@ import { hydrateTheme } from "@/ui/theme.js";
 import { probeVault } from "@/ui/hooks/useVault.js";
 import { vaultManager } from "@/vault/VaultManager.js";
 
-import { ensureWasmKeccak } from "@/crypto/keccak.js";
-import { keccakBatchInit } from "@/crypto/keccak-batch.js";
-
 import {
   page,
   tree,
@@ -72,21 +69,6 @@ import { App } from "./App.jsx";
 // load effect fires on the smartAddr change during unlock.
 installTxHistoryPersistence();
 installTokenPersistence();
-
-// Upgrade keccak-256 to the WASM fast-path (hash-wasm) for the whole popup
-// context at boot. SPHINCS-G uses the original Keccak implementation.
-// back to @noble until the swap completes — well before the first
-// user-triggered send. Also benefits any main-thread SPHINCS⁺ hashing.
-ensureWasmKeccak().catch(() => {});
-
-// Also load the Rust batch kernel (keccak-batch): forsSign/buildAllTrees
-// dispatch to the batched twins the moment it is active, per-hash until
-// then — bit-identical either way. Fire-and-forget like above.
-keccakBatchInit()
-  .then((r) =>
-    console.log(`[NiceTry keccak-batch] popup: active=${r.active} simd=${r.simd}`),
-  )
-  .catch(() => {});
 
 // Hydrate the popup-vs-sidebar mode signal from storage and re-apply
 // the matching chrome.action / chrome.sidePanel config in case the

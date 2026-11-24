@@ -34,7 +34,6 @@ export function explorerUrl(hashOrAddr, type = "tx", chainId) {
 // Native activities link to the actual transaction hash.
 export function activityExplorerUrl(tx) {
   if(tx?.txHash) return explorerUrl(tx.txHash,'tx',tx.chainId);
-  if(tx?.userOpHash) return explorerUrl(tx.userOpHash,'op',tx.chainId);
   return undefined;
 }
 

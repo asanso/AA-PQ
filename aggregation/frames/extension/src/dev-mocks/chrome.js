@@ -36,7 +36,7 @@
 
    Real on-chain sends WON'T work in dev because the rotation modules
    call `chrome.runtime.sendMessage({ type: "SESSION_ACTIVITY" })` but
-   more importantly hit real RPC endpoints and the bundler (these DO
+   more importantly hit real RPC endpoints (these DO
    work even in dev if your fetch() CORS settings allow it; the popup
    mock only fakes the `chrome` global).
 

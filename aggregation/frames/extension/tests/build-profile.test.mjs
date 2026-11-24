@@ -2,30 +2,47 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {test} from 'node:test';
-import {mkdtempSync,writeFileSync,unlinkSync,rmdirSync,rmSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import * as e from 'ethers';
-import {createProtocol} from '../src/aggregated-frame/protocol.mjs';
 
 const cwd = fileURLToPath(new URL('../', import.meta.url));
-function resolveProfile(rpc, explorer, bundler = rpc?.startsWith('https://') ? new URL('/bundler', rpc).href : undefined, profile) {
+// A complete active native profile: the pins of the leanSPHINCS known-answer fixture.
+const complete = JSON.parse(readFileSync(new URL('./fixtures/native-lean-sphincs.json', import.meta.url), 'utf8')).config;
+
+function withProfile(profile, run) {
+  const directory = mkdtempSync(join(tmpdir(), 'nicetry-native-profile-'));
+  const file = join(directory, 'native-deployment.json');
+  try {
+    if (profile) writeFileSync(file, JSON.stringify(profile));
+    return run(profile ? file : undefined);
+  } finally { rmSync(directory, {recursive:true, force:true}); }
+}
+function environment(profile, rpc, explorer) {
   const env = {...process.env};
-  delete env.NICETRY_RPC_URL;
-  delete env.NICETRY_EXPLORER_URL;
-  delete env.NICETRY_BUNDLER_URL;
-  delete env.NICETRY_AGGREGATION_PROFILE;
-  if (profile) env.NICETRY_AGGREGATION_PROFILE=profile;
-  if (bundler !== undefined) env.NICETRY_BUNDLER_URL = bundler;
+  for (const name of ['NICETRY_RPC_URL', 'NICETRY_EXPLORER_URL', 'NICETRY_BUNDLER_URL', 'NICETRY_AGGREGATION_PROFILE', 'NICETRY_NATIVE_PROFILE']) delete env[name];
+  if (profile) env.NICETRY_NATIVE_PROFILE = profile;
   if (rpc !== undefined) env.NICETRY_RPC_URL = rpc;
   if (explorer !== undefined) env.NICETRY_EXPLORER_URL = explorer;
+  return env;
+}
+const publicUrls = ['https://staging.invalid/rpc', 'https://staging.invalid/explorer'];
+function resolveBuild(profile, [rpc, explorer] = publicUrls) {
   return spawnSync(process.execPath, ['--input-type=module', '-e',
     "import {resolveConfig} from 'vite'; await resolveConfig({logLevel:'silent',build:{outDir:'nicetry-daisugi-profile-test'}},'build');"],
-  {cwd, env, encoding:'utf8', timeout:15000});
+  {cwd, env: environment(profile, rpc, explorer), encoding:'utf8', timeout:15000});
+}
+function serverModules(profile, script) {
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `import {createServer} from 'vite';
+    import {readdirSync,readFileSync} from 'node:fs'; import {join} from 'node:path';
+    const s=await createServer({logLevel:'silent',server:{middlewareMode:true,hmr:false},appType:'custom'});
+    try { ${script} } finally { await s.close(); }`], {cwd, env: environment(profile), encoding:'utf8', timeout:60000});
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout.trim().split('\n').at(-1));
 }
 
-test('requires explicit public HTTPS RPC and explorer URLs for extension builds', () => {
-  const valid = resolveProfile('https://staging.invalid/rpc', 'https://staging.invalid/explorer');
+test('requires explicit public HTTPS RPC and explorer URLs for extension builds', () => withProfile(complete, file => {
+  const valid = resolveBuild(file);
   assert.equal(valid.status, 0, valid.stderr);
   for (const [rpc, explorer] of [
     [undefined, undefined],
@@ -36,138 +53,71 @@ test('requires explicit public HTTPS RPC and explorer URLs for extension builds'
     ['https://staging.invalid/rpc?token=secret', 'https://staging.invalid/explorer'],
     ['https://staging.invalid/rpc', 'http://localhost:3003/explorer'],
   ]) {
-    const result = resolveProfile(rpc, explorer);
+    const result = resolveBuild(file, [rpc, explorer]);
     assert.equal(result.error, undefined);
     assert.notEqual(result.status, 0, 'An incomplete or non-public profile must not build');
   }
-});
+}));
 
-test('requires a bundler on the explicit RPC origin', () => {
-  for (const bundler of ['', 'https://another.invalid/bundler', 'http://localhost/bundler',
-    'https://staging.invalid/rpc', 'https://staging.invalid/bundler?token=secret']) {
-    const result = resolveProfile('https://staging.invalid/rpc', 'https://staging.invalid/explorer', bundler);
-    assert.equal(result.error, undefined);
+test('a build requires an active native profile', () => {
+  const missing = resolveBuild(undefined);
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /active native frame profile/);
+  withProfile({active:false}, file => {
+    const result = resolveBuild(file);
     assert.notEqual(result.status, 0);
-  }
+    assert.match(result.stderr, /active native frame profile/);
+  });
 });
 
-test('an activated aggregation build requires explicit chain and contract pins', () => {
-  const directory=mkdtempSync(join(tmpdir(),'nicetry-aggregation-profile-'));
-  const file=join(directory,'deployment.json');
-  try {
-    for (const profile of [{active:'true'}, {active:true,chainId:1}, {active:true,chainId:1337}]) {
-      writeFileSync(file,JSON.stringify(profile));
-      const result=resolveProfile('https://staging.invalid/rpc','https://staging.invalid/explorer','https://staging.invalid/bundler',file);
-      assert.notEqual(result.status,0);
-      assert.match(result.stderr,/active flag|pinned network or contract identity/);
-    }
-  } finally { unlinkSync(file);rmdirSync(directory); }
+test('an active native profile requires the envelope, chain and contract pins and a fee ceiling', () => {
+  for (const [profile, message] of [
+    [{active:'true'}, /active flag/],
+    [{...complete, chainId:'701563864'}, /pinned network or contract identity/],
+    [{...complete, chainId:undefined}, /pinned network or contract identity/],
+    [{...complete, verifierCodeHash:undefined}, /pinned network or contract identity/],
+    [{...complete, eip8288Format:'daisugi-v1'}, /eip8288-lean/],
+    [{...complete, maxFeePerGas:'0'}, /fee ceiling/],
+  ]) withProfile(profile, file => {
+    const result = resolveBuild(file);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, message);
+  });
 });
 
-test('an activated aggregation build takes its chain ID from the profile', () => {
-  const directory=mkdtempSync(join(tmpdir(),'nicetry-aggregation-profile-'));
-  const file=join(directory,'deployment.json');
-  const p=createProtocol(e,'eip8288-lean');
-  const complete={active:true,chainId:7357,genesisHash:'0x'+'33'.repeat(32),factory:'0x'+'10'.repeat(20),implementation:'0x'+'20'.repeat(20),
-    factoryCodeHash:e.keccak256('0x6000'),implementationCodeHash:e.keccak256(p.implementationRuntime()),profile:p.domain,
-    maxFeePerGas:'100000000000',eip8288Format:'eip8288-lean'};
-  try {
-    for (const [profile, builds] of [[complete,true],[{...complete,chainId:'7357'},false],[{...complete,chainId:undefined},false]]) {
-      writeFileSync(file,JSON.stringify(profile));
-      const result=resolveProfile('https://staging.invalid/rpc','https://staging.invalid/explorer','https://staging.invalid/bundler',file);
-      if (builds) assert.equal(result.status,0,result.stderr);
-      else { assert.notEqual(result.status,0); assert.match(result.stderr,/pinned network or contract identity/); }
-    }
-  } finally { unlinkSync(file);rmdirSync(directory); }
+test('the extension network follows the native profile; without one it has none', () => {
+  const identity = profile => serverModules(profile, `const m=await s.ssrLoadModule('/src/config/chain-defaults.js');
+    console.log(JSON.stringify({...m.NETWORK_IDENTITY,defaultChainId:m.DEFAULT_CHAIN_ID,native:m.NATIVE_AVAILABLE}));`);
+  assert.deepEqual(identity(), {chainId:0, genesisHash:null, defaultChainId:'0x0', native:false});
+  withProfile(complete, file => assert.deepEqual(identity(file),
+    {chainId:complete.chainId, genesisHash:complete.genesisHash, defaultChainId:'0x' + complete.chainId.toString(16), native:true}));
 });
 
-test('the extension network follows an active aggregation profile and drops ERC-4337 elsewhere', () => {
-  const directory=mkdtempSync(join(tmpdir(),'nicetry-aggregation-profile-'));
-  const file=join(directory,'deployment.json');
-  const p=createProtocol(e,'eip8288-lean');
-  writeFileSync(file,JSON.stringify({active:true,chainId:7357,genesisHash:'0x'+'33'.repeat(32),factory:'0x'+'10'.repeat(20),
-    implementation:'0x'+'20'.repeat(20),factoryCodeHash:e.keccak256('0x6000'),implementationCodeHash:e.keccak256(p.implementationRuntime()),
-    profile:p.domain,maxFeePerGas:'100000000000',eip8288Format:'eip8288-lean'}));
-  const identity = profile => {
-    const env={...process.env};
-    delete env.NICETRY_AGGREGATION_PROFILE;
-    if (profile) env.NICETRY_AGGREGATION_PROFILE=profile;
-    const result=spawnSync(process.execPath,['--input-type=module','-e',`import {createServer} from 'vite';
-      const s=await createServer({logLevel:'silent',server:{middlewareMode:true,hmr:false},appType:'custom'});
-      try { const m=await s.ssrLoadModule('/src/config/chain-defaults.js');
-        console.log(JSON.stringify({...m.NETWORK_IDENTITY,defaultChainId:m.DEFAULT_CHAIN_ID,erc4337:m.ERC4337_AVAILABLE})); } finally { await s.close(); }`],
-    {cwd,env,encoding:'utf8',timeout:30000});
-    assert.equal(result.status,0,result.stderr);
-    return JSON.parse(result.stdout.trim().split('\n').at(-1));
-  };
-  try {
-    assert.deepEqual(identity(), {chainId:1337,genesisHash:'0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55',defaultChainId:'0x539',erc4337:true});
-    assert.deepEqual(identity(file), {chainId:7357,genesisHash:'0x'+'33'.repeat(32),defaultChainId:'0x1cbd',erc4337:false});
-  } finally { unlinkSync(file);rmdirSync(directory); }
-});
-
-test('every import of a default profile resolves to the selected profile, whatever its specifier form', () => {
-  const directory=mkdtempSync(join(tmpdir(),'nicetry-native-profile-'));
-  const aggregationFile=join(directory,'deployment.json'), nativeFile=join(directory,'native-deployment.json');
-  const p=createProtocol(e,'eip8288-lean');
-  const network={chainId:7357,genesisHash:'0x'+'33'.repeat(32),maxFeePerGas:'100000000000',eip8288Format:'eip8288-lean'};
-  writeFileSync(aggregationFile,JSON.stringify({...network,active:true,factory:'0x'+'10'.repeat(20),implementation:'0x'+'20'.repeat(20),
-    factoryCodeHash:e.keccak256('0x6000'),implementationCodeHash:e.keccak256(p.implementationRuntime()),profile:p.domain}));
-  writeFileSync(nativeFile,JSON.stringify({...network,active:true,factory:'0x'+'30'.repeat(20),implementation:'0x'+'40'.repeat(20),
-    verifier:'0x'+'50'.repeat(20),factoryCodeHash:'0x'+'44'.repeat(32),implementationCodeHash:'0x'+'55'.repeat(32),verifierCodeHash:'0x'+'66'.repeat(32)}));
-  const env={...process.env,NICETRY_AGGREGATION_PROFILE:aggregationFile,NICETRY_NATIVE_PROFILE:nativeFile};
+test('every import of the default profile resolves to the selected profile, whatever its specifier form', () => withProfile(complete, file => {
   // Resolves every profile import found in src through Vite's full resolver (alias included), then loads the
-  // modules that hold a profile and reports the factory each one received.
-  const result=spawnSync(process.execPath,['--input-type=module','-e',`import {createServer} from 'vite';
-    import {readdirSync,readFileSync} from 'node:fs'; import {join} from 'node:path';
-    const s=await createServer({logLevel:'silent',server:{middlewareMode:true,hmr:false},appType:'custom'});
-    try {
-      const files=readdirSync('src',{recursive:true}).filter(f=>/\\.(js|jsx|mjs)$/.test(f)).map(f=>join(process.cwd(),'src',f));
-      const imports=[];
-      for (const file of files) for (const [,spec] of readFileSync(file,'utf8').matchAll(/from\\s+['"]([^'"]*deployment\\.json)['"]/g))
-        imports.push({file,spec,id:(await s.pluginContainer.resolveId(spec,file))?.id});
-      const loaded={};
-      for (const [name,path] of [['native','/src/native-frame/native.js'],['frame','/src/native-frame/client.js'],['networks','/src/config/chain-defaults.js']]) {
-        const m=await s.ssrLoadModule(path); loaded[name]=m.config?.factory ?? m.NATIVE_AVAILABLE;
-      }
-      console.log(JSON.stringify({imports,loaded}));
-    } finally { await s.close(); }`],{cwd,env,encoding:'utf8',timeout:60000});
-  try {
-    assert.equal(result.status,0,result.stderr);
-    const {imports,loaded}=JSON.parse(result.stdout.trim().split('\n').at(-1));
-    assert.ok(imports.some(i=>i.spec==='./native-deployment.json'), 'the relative native import is covered');
-    assert.ok(imports.length>=6);
-    for (const i of imports) assert.equal(i.id, i.spec.endsWith('native-deployment.json') ? nativeFile : aggregationFile, i.file+' '+i.spec);
-    assert.deepEqual(loaded,{native:'0x'+'30'.repeat(20),frame:'0x'+'10'.repeat(20),networks:true});
-  } finally { unlinkSync(aggregationFile);unlinkSync(nativeFile);rmdirSync(directory); }
-});
+  // modules that hold the profile and reports what each one received.
+  const {imports, loaded} = serverModules(file, `
+    const files=readdirSync('src',{recursive:true}).filter(f=>/\\.(js|jsx|mjs)$/.test(f)).map(f=>join(process.cwd(),'src',f));
+    const imports=[];
+    for (const file of files) for (const [,spec] of readFileSync(file,'utf8').matchAll(/from\\s+['"]([^'"]*deployment\\.json)['"]/g))
+      imports.push({file,spec,id:(await s.pluginContainer.resolveId(spec,file))?.id});
+    const loaded={};
+    for (const [name,path] of [['native','/src/native-frame/native.js'],['networks','/src/config/chain-defaults.js']]) {
+      const m=await s.ssrLoadModule(path); loaded[name]=m.config?.factory ?? m.NATIVE_AVAILABLE;
+    }
+    console.log(JSON.stringify({imports,loaded}));`);
+  assert.ok(imports.some(i => i.spec === './native-deployment.json'), 'the relative native import is covered');
+  assert.ok(imports.length >= 3);
+  for (const i of imports) assert.equal(i.id, file, i.file + ' ' + i.spec);
+  assert.deepEqual(loaded, {native:complete.factory, networks:true});
+}));
 
-test('the extension description lists exactly the transaction modes the build offers', () => {
-  const directory=mkdtempSync(join(tmpdir(),'nicetry-description-'));
-  const aggregationFile=join(directory,'deployment.json'), nativeFile=join(directory,'native-deployment.json');
-  const p=createProtocol(e,'eip8288-lean');
-  const aggregation=network=>({...network,active:true,factory:'0x'+'10'.repeat(20),implementation:'0x'+'20'.repeat(20),
-    factoryCodeHash:e.keccak256('0x6000'),implementationCodeHash:e.keccak256(p.implementationRuntime()),profile:p.domain,
-    maxFeePerGas:'100000000000',eip8288Format:'eip8288-lean'});
-  const lean={chainId:7357,genesisHash:'0x'+'33'.repeat(32)};
-  const current={chainId:1337,genesisHash:'0x3f08ccf3cbc9a60e7a328a3260f2fccf1ee2e8e36e647f030f77b8122cd83e55'};
-  writeFileSync(nativeFile,JSON.stringify({...lean,active:true,maxFeePerGas:'100000000000',eip8288Format:'eip8288-lean',
-    factory:'0x'+'30'.repeat(20),implementation:'0x'+'40'.repeat(20),verifier:'0x'+'50'.repeat(20),
-    factoryCodeHash:'0x'+'44'.repeat(32),implementationCodeHash:'0x'+'55'.repeat(32),verifierCodeHash:'0x'+'66'.repeat(32)}));
-  const describe=(aggregationNetwork,native)=>{
-    const env={...process.env};
-    delete env.NICETRY_AGGREGATION_PROFILE; delete env.NICETRY_NATIVE_PROFILE;
-    if (aggregationNetwork) { writeFileSync(aggregationFile,JSON.stringify(aggregation(aggregationNetwork))); env.NICETRY_AGGREGATION_PROFILE=aggregationFile; }
-    if (native) env.NICETRY_NATIVE_PROFILE=nativeFile;
-    const result=spawnSync(process.execPath,['--input-type=module','-e',
-      "const {extensionDescription}=await import('./vite.config.js'); console.log(extensionDescription);"],{cwd,env,encoding:'utf8',timeout:30000});
-    assert.equal(result.status,0,result.stderr);
-    return result.stdout.trim().split('\n').at(-1);
-  };
-  try {
-    const prefix='Experimental Daisugi testnet wallet with SPHINCS signing: ';
-    assert.equal(describe(lean,true), prefix+'native frames and aggregated frames.');
-    assert.equal(describe(current,false), prefix+'aggregated frames and ERC-4337.');
-    assert.equal(describe(undefined,false), prefix+'ERC-4337.');
-  } finally { rmSync(directory,{recursive:true,force:true}); }
+test('the extension describes its only transaction mode', () => {
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+    "const {extensionDescription}=await import('./vite.config.js'); console.log(extensionDescription);"],
+  {cwd, env: environment(), encoding:'utf8', timeout:30000});
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim().split('\n').at(-1), 'Experimental Daisugi testnet wallet with SPHINCS signing: native frames.');
+  assert.equal(JSON.parse(readFileSync(new URL('../public/manifest.json', import.meta.url), 'utf8')).description,
+    'Experimental Daisugi testnet wallet with SPHINCS signing: native frames.');
 });

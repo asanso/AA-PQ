@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 test('setup requires an explicit supported mode before creating or importing any vault', async () => {
-  for (const mode of [undefined, null, '', 'secp', 'FRAME', '__proto__']) {
+  for (const mode of [undefined, null, '', 'secp', 'frame', 'aa', 'NATIVE', '__proto__']) {
     assert.throws(() => requireTransactionMode(mode));
     const vault = new VaultManager();
     await assert.rejects(vault.createNewVault(password, {transactionMode: mode}));
@@ -29,7 +29,7 @@ test('setup requires an explicit supported mode before creating or importing any
   }
 });
 
-for (const mode of ['frame', 'aa']) {
+for (const mode of ['native']) {
   test(`${mode}: authenticated mode and account metadata survive password and session-key unlock`, async () => {
     const vault = new VaultManager();
     await vault.restoreVault(password, phrase, {transactionMode: mode});
@@ -54,7 +54,7 @@ for (const mode of ['frame', 'aa']) {
     await reopened.unlockWithKey(key);
     assert.equal(reopened.getTransactionMode(), mode);
     assert.equal(reopened.getHdKeyring().getIdentityAddress(0), identity);
-    await assert.rejects(reopened.restoreVault(password, phrase, {transactionMode: mode === 'frame' ? 'aa' : 'frame'}), /already exists/);
+    await assert.rejects(reopened.restoreVault(password, phrase, {transactionMode: mode}), /already exists/);
     assert.equal(reopened.getTransactionMode(), mode);
   });
   test(`${mode}: new wallet creation records the choice only when setup is completed`, async () => {
@@ -68,10 +68,19 @@ for (const mode of ['frame', 'aa']) {
 }
 
 test('missing or unsupported encrypted mode and older vault schemas are rejected', async () => {
-  for (const meta of [{schemaVersion:10}, {schemaVersion:10, transactionMode:'unknown'}, {schemaVersion:9, transactionMode:'frame'}]) {
+  for (const meta of [{schemaVersion:10}, {schemaVersion:10, transactionMode:'unknown'}, {schemaVersion:9, transactionMode:'native'}]) {
     stored[vaultKey] = (await encryptVaultDetailed(password, {meta, keyrings:[]})).encrypted;
     const vault = new VaultManager();
     await assert.rejects(vault.unlock(password));
+    assert.equal(vault.isUnlocked(), false);
+  }
+});
+
+test('a vault of a removed transaction mode is refused with a way to recover it', async () => {
+  for (const mode of ['frame', 'aa']) {
+    stored[vaultKey] = (await encryptVaultDetailed(password, {meta:{schemaVersion:10, transactionMode:mode}, keyrings:[]})).encrypted;
+    const vault = new VaultManager();
+    await assert.rejects(vault.unlock(password), /no longer supports.*recovery phrase/);
     assert.equal(vault.isUnlocked(), false);
   }
 });
@@ -82,7 +91,7 @@ test('the aggregation namespace does not import existing native, unified or ERC-
   stored.nt_sphincs_aa_vault_v1 = {fixture: true};
   assert.equal(await new VaultManager().hasVault(), false);
   const vault = new VaultManager();
-  await vault.restoreVault(password, phrase, {transactionMode:'aa'});
+  await vault.restoreVault(password, phrase, {transactionMode:'native'});
   await vault.deleteVault();
   assert.equal(await vault.hasVault(), false);
   assert.deepEqual(stored.nt_frame_vault_v1, {fixture: true});

@@ -23,8 +23,8 @@ import {
   MIN_PASSWORD_LENGTH,
 } from "@/utils/password-strength.js";
 
-const STEP = 3;
-const TOTAL_STEPS = 5;
+const STEP = 2;
+const TOTAL_STEPS = 4;
 
 function EyeIcon({ open }) {
   return open ? (

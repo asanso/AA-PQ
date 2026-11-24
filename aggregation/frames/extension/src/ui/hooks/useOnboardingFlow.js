@@ -23,8 +23,10 @@
 
 import { signal } from "@preact/signals";
 import { DEFAULT_CHAIN_ID } from "@/config/networks.js";
+import { DEFAULT_TRANSACTION_MODE } from "@/config/transaction-mode.js";
 
-const transactionMode = signal(null);
+// Native frames are the only transaction mode; the vault still records it.
+const transactionMode = signal(DEFAULT_TRANSACTION_MODE);
 const password = signal("");
 const phrase = signal("");
 const chainId = signal(DEFAULT_CHAIN_ID);
@@ -49,7 +51,7 @@ export function useOnboardingFlow() {
 
     /** Zero sensitive data. Called at end of flow. */
     reset() {
-      transactionMode.value = null;
+      transactionMode.value = DEFAULT_TRANSACTION_MODE;
       password.value = "";
       phrase.value = "";
       chainId.value = DEFAULT_CHAIN_ID;

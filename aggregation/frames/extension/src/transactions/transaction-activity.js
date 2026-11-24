@@ -44,21 +44,21 @@ export function createTransactionActivity(details, { notifySigned = true } = {})
       await publish(entry);
     },
     async cancelled(reason) {
-      if (!entry || entry.txHash || entry.userOpHash) return;
+      if (!entry || entry.txHash) return;
       entry = { ...entry, status: 'cancelled', error: reason };
       await publish(entry);
     },
-    async signed({ txHash, userOpHash, signingMs, smartAddr: address, frameCount }) {
+    async signed({ txHash, signingMs, smartAddr: address, frameCount }) {
       const now = Date.now();
       entry = { ...details, activityId: crypto.randomUUID(), id: now,
         time: new Date(now).toTimeString().slice(0, 8), ...entry, signedAt: now,
-        smartAddr: address, txHash, userOpHash, frameCount, signingMs, status: 'signed' };
+        smartAddr: address, txHash, frameCount, signingMs, status: 'signed' };
       if (notifySigned) signedActivity.value = entry;
       await publish(entry);
     },
-    async submitted({ txHash, userOpHash }) {
+    async submitted({ txHash }) {
       if (!entry) return;
-      entry = { ...entry, txHash, userOpHash, status: 'submitted' };
+      entry = { ...entry, txHash, status: 'submitted' };
       await publish(entry);
     },
     async included({ txHash, success }) {
@@ -77,7 +77,7 @@ export function createTransactionActivity(details, { notifySigned = true } = {})
       if (!entry || entry.status === 'confirmed' || entry.status === 'failed') return;
       // A transport error or timeout cannot establish rejection. Keep the
       // local transaction hash so reopening the wallet can resolve its receipt.
-      const rejected = error?.submissionRejected || (!entry.txHash && !entry.userOpHash);
+      const rejected = error?.submissionRejected || !entry.txHash;
       entry = { ...entry, status: rejected ? 'failed' : 'unknown',
         error: error?.message || String(error) };
       await publish(entry);
@@ -106,7 +106,7 @@ export async function pollPendingActivities() {
         error: 'Not sent: wallet window was closed. Create a new send to continue.' });
     } catch { /* Another open wallet may still own this queue. */ }
   }
-  const entries = (txHistory.value || []).filter(tx => isUnconfirmedActivity(tx) && (tx.txHash || tx.userOpHash) && tx.smartAddr);
+  const entries = (txHistory.value || []).filter(tx => isUnconfirmedActivity(tx) && tx.txHash && tx.smartAddr);
   if (!entries.length) return;
   polling = true;
   try {

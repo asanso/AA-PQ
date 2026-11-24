@@ -86,8 +86,8 @@ const confirmBtnClass =
  * Full-width "NETWORK FEE" row under the recap cards. `costEth` is the
  * already-computed cost string for the CURRENT choice (the caller
  * derives it so sufficiency and the display always agree). `locked`
- * renders a fixed, non-navigable line (SPHINCS ops, Pimlico fallback
- * quote); `checking` shows the in-flight estimate state.
+ * renders a fixed, non-navigable line (SPHINCS transactions); `checking`
+ * shows the in-flight estimate state.
  */
 export function NetworkFeeButton({ gasCheck, symbol, costEth, locked, checking, onOpen }) {
   const editable =
@@ -226,7 +226,7 @@ function AdvancedFeePage({ gasCheck, symbol, onBack, onDone }) {
   const prioWei = parseGweiSafe(prioStr);
   const maxFeeWei = baseWei != null && prioWei != null ? baseWei + prioWei : null;
 
-  /* Bundler floor: Pimlico rejects submissions below its slow tier. */
+  /* Floor: custom fees may not go below the slow tier. */
   const minMax = tiers.slow.maxFeePerGas;
   const minPrio = tiers.slow.maxPriorityFeePerGas;
 
@@ -237,14 +237,14 @@ function AdvancedFeePage({ gasCheck, symbol, onBack, onDone }) {
     : baseWei == null
       ? "Enter a valid gwei value"
       : maxFeeWei != null && maxFeeWei < minMax
-        ? `Base + priority below the bundler floor (min ${fmtGwei(minMax)} gwei total)`
+        ? `Base + priority below the slow-tier floor (min ${fmtGwei(minMax)} gwei total)`
         : null;
   const prioError = !prioStr.trim()
     ? null
     : prioWei == null
       ? "Enter a valid gwei value"
       : prioWei < minPrio
-        ? `Priority below the bundler floor (min ${fmtGwei(minPrio)} gwei)`
+        ? `Priority below the slow-tier floor (min ${fmtGwei(minPrio)} gwei)`
         : null;
   const invalid = baseWei == null || prioWei == null || !!baseError || !!prioError;
 
@@ -366,7 +366,7 @@ export function NetworkFeePage({ gasCheck, symbol, onClose }) {
 
   /* ── Network-status card data ─────────────────────────────────────
      Derived from the tier quotes already in hand — no extra RPCs.
-     Base fee ≈ standard maxFee − standard priority (Pimlico quotes
+     Base fee ≈ standard maxFee − standard priority (the quotes give
      maxFee as base-derived + priority; close enough for display).
      "Busy" when the fast priority runs ≥3× the slow one — a wide
      spread means searchers are bidding up inclusion. */

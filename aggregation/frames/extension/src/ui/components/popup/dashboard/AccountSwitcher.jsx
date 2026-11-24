@@ -2,7 +2,7 @@
    AccountSwitcher — /accounts page: pick / create / manage accounts
    ───────────────────────────────────────────────────────────────────
    MetaMask-style account list. Every row is an independent account
-   derived at m/44'/60'/{index}'/0'/i' (its own FORS stream, smart
+   derived at m/44'/60'/{index}' (its own leanSPHINCS key, smart
    account, balance and history). The 3-dot menu on each row offers
    Rename, Pin to top / Unpin, and Hide account. Hidden accounts move
    to a collapsible section (their keys stay derivable from the seed).
